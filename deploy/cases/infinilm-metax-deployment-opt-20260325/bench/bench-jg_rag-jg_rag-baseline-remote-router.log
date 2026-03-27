@@ -1,0 +1,37 @@
+INFO 03-26 20:45:43 [importing.py:68] Triton not installed or not compatible; certain GPU-related functions will not be available.
+WARNING 03-26 20:45:44 [interface.py:221] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+Namespace(seed=0, num_prompts=40, dataset_name='custom', no_stream=False, dataset_path='/home/zenghua/workspace/infinilm-svc-refactor/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325/bench/jg_rag_benchmark.jsonl', no_oversample=False, skip_chat_template=False, disable_shuffle=False, custom_output_len=256, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, blazedit_min_distance=0.0, blazedit_max_distance=1.0, random_input_len=1024, random_output_len=128, random_range_ratio=0.0, random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, label='jg_rag-baseline', backend='openai-chat', base_url=None, host='172.22.163.151', port=8000, endpoint='/v1/chat/completions', header=None, max_concurrency=4, model='Qwen3-32B', input_len=None, output_len=None, tokenizer='/data-aisoft/zenghua/models/Qwen3-32B', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=1.0, burstiness=1.0, trust_remote_code=False, disable_tqdm=False, num_warmups=0, profile=False, save_result=True, save_detailed=False, append_result=False, metadata=None, result_dir='/home/zenghua/workspace/infinilm-svc-refactor/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325/results', result_filename=None, ignore_eos=False, percentile_metrics=None, metric_percentiles='99', goodput=None, request_id_prefix='bench-fc6874a1-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, common_prefix_len=None, served_model_name=None, lora_modules=None, ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, extra_body=None, prompt_cache_key=None)
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: 1.0
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 4
+  0%|          | 0/40 [00:00<?, ?it/s]  2%|▎         | 1/40 [00:28<18:29, 28.44s/it]  5%|▌         | 2/40 [00:48<15:01, 23.73s/it] 12%|█▎        | 5/40 [01:16<07:48, 13.38s/it] 15%|█▌        | 6/40 [01:30<07:36, 13.42s/it] 22%|██▎       | 9/40 [01:35<03:46,  7.31s/it] 25%|██▌       | 10/40 [01:50<04:25,  8.87s/it] 28%|██▊       | 11/40 [02:00<04:22,  9.04s/it] 30%|███       | 12/40 [02:09<04:14,  9.08s/it] 35%|███▌      | 14/40 [02:30<04:12,  9.71s/it] 38%|███▊      | 15/40 [02:44<04:27, 10.71s/it] 40%|████      | 16/40 [02:53<04:05, 10.22s/it] 42%|████▎     | 17/40 [02:54<03:01,  7.90s/it] 45%|████▌     | 18/40 [03:14<04:03, 11.07s/it] 48%|████▊     | 19/40 [03:22<03:38, 10.39s/it] 50%|█████     | 20/40 [03:28<03:00,  9.00s/it] 52%|█████▎    | 21/40 [03:32<02:23,  7.55s/it] 55%|█████▌    | 22/40 [03:40<02:17,  7.65s/it] 57%|█████▊    | 23/40 [03:48<02:14,  7.94s/it] 60%|██████    | 24/40 [04:05<02:46, 10.41s/it] 62%|██████▎   | 25/40 [04:11<02:15,  9.06s/it] 65%|██████▌   | 26/40 [04:31<02:54, 12.48s/it] 68%|██████▊   | 27/40 [04:45<02:48, 12.98s/it] 70%|███████   | 28/40 [04:57<02:30, 12.57s/it] 72%|███████▎  | 29/40 [05:07<02:11, 11.93s/it] 75%|███████▌  | 30/40 [05:21<02:05, 12.59s/it] 78%|███████▊  | 31/40 [05:29<01:39, 11.08s/it] 80%|████████  | 32/40 [05:35<01:15,  9.42s/it] 82%|████████▎ | 33/40 [05:50<01:19, 11.29s/it] 85%|████████▌ | 34/40 [05:55<00:55,  9.27s/it] 88%|████████▊ | 35/40 [05:59<00:39,  7.87s/it] 90%|█████████ | 36/40 [06:02<00:25,  6.34s/it] 92%|█████████▎| 37/40 [06:23<00:31, 10.57s/it]100%|██████████| 40/40 [06:23<00:00,  4.64s/it]100%|██████████| 40/40 [06:23<00:00,  9.58s/it]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     40        
+Failed requests:                         0         
+Maximum request concurrency:             4         
+Request rate configured (RPS):           1.00      
+Benchmark duration (s):                  383.18    
+Total input tokens:                      357301    
+Total generated tokens:                  18901     
+Request throughput (req/s):              0.10      
+Output token throughput (tok/s):         49.33     
+Peak output token throughput (tok/s):    1000.00   
+Peak concurrent requests:                7.00      
+Total token throughput (tok/s):          981.78    
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1905.27   
+Median TTFT (ms):                        1215.87   
+P99 TTFT (ms):                           6775.15   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          76.31     
+Median TPOT (ms):                        75.28     
+P99 TPOT (ms):                           116.92    
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           76.59     
+Median ITL (ms):                         38.68     
+P99 ITL (ms):                            372.59    
+==================================================

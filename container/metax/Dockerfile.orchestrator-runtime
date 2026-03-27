@@ -1,0 +1,69 @@
+# InfiniOrchestrator Metax runtime: base SVC image + baked InfiniCore/InfiniLM trees.
+# Build context root must contain directories InfiniCore/ and InfiniLM/ (see build-image.sh).
+
+ARG BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209
+FROM ${BASE_IMAGE}
+
+WORKDIR /workspace
+
+COPY InfiniCore /workspace/InfiniCore
+COPY InfiniLM /workspace/InfiniLM
+
+# Bake in matching prebuilt runtime artifacts (libinfinicore/libinfinilm, etc.)
+# so the compiled Python extensions from the vendored sources can resolve symbols.
+#
+# build-image.sh optionally populates `root/.infini` in the build context.
+# If it is empty (offline build mode), we must not clobber the base image's
+# /root/.infini runtime libraries.
+COPY root/.infini /tmp/infini-runtime/
+RUN set -euo pipefail; \
+  if [ -d /tmp/infini-runtime ] && [ -n "$(ls -A /tmp/infini-runtime 2>/dev/null)" ]; then \
+    rm -rf /root/.infini; \
+    cp -a /tmp/infini-runtime /root/.infini; \
+  fi
+
+# Rebuild native artifacts from copied source trees during image build.
+# Intentionally always-on (no switch): InfiniCore first, then InfiniLM.
+#
+# We avoid `pip install -e .` and `scripts/install.py` (which can trigger broader
+# installs) and only build/install the native extension targets.
+RUN bash -lc 'set -euo pipefail; \
+  if [ -f /home/zenghua/env-set.sh ]; then source /home/zenghua/env-set.sh; fi; \
+  export MACA_ROOT="${MACA_ROOT:-/opt/hpcc}"; \
+  export MACA_HOME="${MACA_HOME:-${MACA_ROOT}}"; \
+  export MACA_PATH="${MACA_PATH:-${MACA_ROOT}}"; \
+  export INFINI_ROOT="${INFINI_ROOT:-/root/.infini}"; \
+  # MetaX: when xmake is configured with --flash-attn, it links the pip-built
+  # flash_attn_2_cuda shared library. Make the .so path explicit to be stable.
+  export FLASH_ATTN_2_CUDA_SO="${FLASH_ATTN_2_CUDA_SO:-/opt/conda/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-aarch64-linux-gnu.so}"; \
+  export PATH="${INFINI_ROOT}/bin:${PATH}"; \
+  export LD_LIBRARY_PATH="${INFINI_ROOT}/lib:${LD_LIBRARY_PATH:-}"; \
+  \
+  # Ensure cu-bridge + HPCC include dirs are visible to compilers.
+  export CPATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${CPATH:-}"; \
+  export CPLUS_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${CPLUS_INCLUDE_PATH:-}"; \
+  export C_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${C_INCLUDE_PATH:-}"; \
+  \
+  export XMAKE_ROOT=y; \
+  cd /workspace/InfiniCore; \
+  # Build: flash-attn + aten + graph (cuda graph interface)
+  xmake f --metax-gpu=y --aten=y --flash-attn=. --graph=y --ccl=y -cv; \
+  # Install C++ headers/libs so InfiniLM compilation can include
+  # `infinicore/ops/*` headers (e.g. mha_kvcache.hpp).
+  xmake build; \
+  xmake install; \
+  xmake build _infinicore; \
+  xmake install _infinicore; \
+  # Worker containers import infinicore from `/InfiniCore/python` (see
+  # BABYSITTER_CONFIG*.toml PYTHONPATH). Copy freshly built `_infinicore*.so`
+  # into that runtime-visible location to avoid base-image ABI/symbol
+  # mismatches.
+  mkdir -p /InfiniCore/python/infinicore/lib; \
+  cp -a /workspace/InfiniCore/python/infinicore/lib/* /InfiniCore/python/infinicore/lib/ 2>/dev/null || true; \
+  cp -a /workspace/InfiniLM/python/infinilm/lib/* /InfiniLM/python/infinilm/lib/ 2>/dev/null || true; \
+  cd /workspace/InfiniLM; \
+  xmake build _infinilm; \
+  xmake install _infinilm'
+
+LABEL org.opencontainers.image.source="InfiniOrchestrator"
+LABEL org.opencontainers.image.description="Metax SVC base with InfiniCore and InfiniLM sources baked in"

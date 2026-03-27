@@ -1,0 +1,4 @@
+# Used only when the build context directory is this folder (not used by build-image.sh).
+# Kept for manual experiments: place InfiniCore and InfiniLM here or use build-image.sh instead.
+.git
+**/.git

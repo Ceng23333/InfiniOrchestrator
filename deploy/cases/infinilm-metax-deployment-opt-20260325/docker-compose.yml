@@ -1,0 +1,231 @@
+version: "2.4"
+services:
+  master:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-master-opt-20260325
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: registry,router
+      REGISTRY_PORT: ${REGISTRY_PORT}
+      ROUTER_PORT: ${ROUTER_PORT}
+      # Used by router to find registry when not local (kept for clarity).
+      ROUTER_REGISTRY_URL: http://localhost:${REGISTRY_PORT}
+      # Optional: size-based routing threshold (bytes)
+      CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD}
+    ports:
+      - "${ROUTER_PORT}:8000"
+      - "${REGISTRY_PORT}:18000"
+
+  worker-master-9g-8100:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-master-9g-8100-20260325
+    restart: unless-stopped
+    depends_on:
+      - master
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: http://master:${REGISTRY_PORT}
+      ROUTER_URL: http://master:${ROUTER_PORT}
+      BABYSITTER_CONFIGS: /config/master-9g_8b_thinking.toml
+      # Make sure the registry advertises a reachable hostname on the compose network.
+      BABYSITTER_HOST: worker-master-9g-8100
+    volumes:
+      - ./config:/config:ro
+      - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-master-qwen-paged-8200:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-master-qwen-paged-8200-20260325
+    restart: unless-stopped
+    depends_on:
+      - master
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: http://master:${REGISTRY_PORT}
+      ROUTER_URL: http://master:${ROUTER_PORT}
+      BABYSITTER_CONFIGS: /config/master-qwen3-32b-paged.toml
+      BABYSITTER_HOST: worker-master-qwen-paged-8200
+    volumes:
+      - ./config:/config:ro
+      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-master-embeddings-20002:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-master-embeddings-20002-20260325
+    restart: unless-stopped
+    depends_on:
+      - master
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: http://master:${REGISTRY_PORT}
+      ROUTER_URL: http://master:${ROUTER_PORT}
+      BABYSITTER_CONFIGS: /config/master-embeddings.toml
+      BABYSITTER_HOST: worker-master-embeddings-20002
+    volumes:
+      - ./config:/config:ro
+      - ./embeddings_server.py:/app/embeddings_server.py:ro
+      - ${EMBEDDING_MODEL_DIR:-./models}:/workspace/models:ro
+    ports:
+      - "${EMBEDDING_PORT:-20002}:20002"
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  # Optional "slave preset" workers (kept in the file, can be started as needed).
+  worker-slave-fla-9g-8100:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-slave-fla-9g-8100-20260325
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
+      ROUTER_URL: ${SLAVE_ROUTER_URL}
+      BABYSITTER_CONFIGS: /config/slave-fla-9g.toml
+      BABYSITTER_HOST: worker-slave-fla-9g-8100
+    volumes:
+      - ./config:/config:ro
+      - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-slave-fla-qwen-8200:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-slave-fla-qwen-8200-20260325
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
+      ROUTER_URL: ${SLAVE_ROUTER_URL}
+      BABYSITTER_CONFIGS: /config/slave-fla-qwen-paged.toml
+      BABYSITTER_HOST: worker-slave-fla-qwen-8200
+    volumes:
+      - ./config:/config:ro
+      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-slave-3vllm-vllm-1:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-slave-3vllm-vllm-1-20260325
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
+      ROUTER_URL: ${SLAVE_ROUTER_URL}
+      BABYSITTER_CONFIGS: /config/slave-3vllm-vllm-1.toml
+      BABYSITTER_HOST: worker-slave-3vllm-vllm-1
+    volumes:
+      - ./config:/config:ro
+      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-slave-3vllm-vllm-2:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-slave-3vllm-vllm-2-20260325
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
+      ROUTER_URL: ${SLAVE_ROUTER_URL}
+      BABYSITTER_CONFIGS: /config/slave-3vllm-vllm-2.toml
+      BABYSITTER_HOST: worker-slave-3vllm-vllm-2
+    volumes:
+      - ./config:/config:ro
+      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
