@@ -6,15 +6,15 @@ services:
     restart: unless-stopped
     environment:
       LAUNCH_COMPONENTS: registry,router
-      REGISTRY_PORT: ${REGISTRY_PORT}
-      ROUTER_PORT: ${ROUTER_PORT}
+      REGISTRY_PORT: ${REGISTRY_PORT:-18000}
+      ROUTER_PORT: ${ROUTER_PORT:-8000}
       # Used by router to find registry when not local (kept for clarity).
-      ROUTER_REGISTRY_URL: http://localhost:${REGISTRY_PORT}
-      # Optional: size-based routing threshold (bytes)
-      CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD}
+      ROUTER_REGISTRY_URL: http://localhost:${REGISTRY_PORT:-18000}
+      # Optional: size-based routing threshold (bytes); default avoids empty-string parse issues
+      CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
     ports:
-      - "${ROUTER_PORT}:8000"
-      - "${REGISTRY_PORT}:18000"
+      - "${ROUTER_PORT:-8000}:8000"
+      - "${REGISTRY_PORT:-18000}:18000"
 
   worker-master-9g-8100:
     image: ${IMAGE_TAG}
@@ -24,14 +24,19 @@ services:
       - master
     environment:
       LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: http://master:${REGISTRY_PORT}
-      ROUTER_URL: http://master:${ROUTER_PORT}
+      REGISTRY_URL: http://master:${REGISTRY_PORT:-18000}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
       BABYSITTER_CONFIGS: /config/master-9g_8b_thinking.toml
-      # Make sure the registry advertises a reachable hostname on the compose network.
+      INFINILM_EXIT_ON_OOM: ${INFINILM_EXIT_ON_OOM:-0}
+      # For "master-only" (single docker-compose project), register with a Docker-resolvable host.
+      # Using MASTER_ADVERTISE_HOST (LAN IP) can be unreachable from the router container, causing "No route to host".
       BABYSITTER_HOST: worker-master-9g-8100
     volumes:
       - ./config:/config:ro
       - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ports:
+      - "${MASTER_9G_8B_THINKING_API_PORT:-8100}:8100"
+      - "${MASTER_9G_8B_THINKING_BABYSITTER_PORT:-8101}:8101"
     ipc: host
     shm_size: 100gb
     ulimits:
@@ -56,10 +61,15 @@ services:
       - master
     environment:
       LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: http://master:${REGISTRY_PORT}
-      ROUTER_URL: http://master:${ROUTER_PORT}
+      REGISTRY_URL: http://master:${REGISTRY_PORT:-18000}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
       BABYSITTER_CONFIGS: /config/master-qwen3-32b-paged.toml
+      INFINILM_EXIT_ON_OOM: ${INFINILM_EXIT_ON_OOM:-0}
+      # Register with docker-compose DNS name so the master router can reach the worker.
       BABYSITTER_HOST: worker-master-qwen-paged-8200
+    ports:
+      - "${MASTER_QWEN_PAGED_API_PORT:-8200}:8200"
+      - "${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}:8201"
     volumes:
       - ./config:/config:ro
       - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
@@ -87,10 +97,10 @@ services:
       - master
     environment:
       LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: http://master:${REGISTRY_PORT}
-      ROUTER_URL: http://master:${ROUTER_PORT}
+      REGISTRY_URL: http://master:${REGISTRY_PORT:-18000}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
       BABYSITTER_CONFIGS: /config/master-embeddings.toml
-      BABYSITTER_HOST: worker-master-embeddings-20002
+      BABYSITTER_HOST: ${MASTER_ADVERTISE_HOST:-}
     volumes:
       - ./config:/config:ro
       - ./embeddings_server.py:/app/embeddings_server.py:ro
@@ -123,10 +133,15 @@ services:
       REGISTRY_URL: ${SLAVE_REGISTRY_URL}
       ROUTER_URL: ${SLAVE_ROUTER_URL}
       BABYSITTER_CONFIGS: /config/slave-fla-9g.toml
-      BABYSITTER_HOST: worker-slave-fla-9g-8100
+      INFINILM_EXIT_ON_OOM: ${INFINILM_EXIT_ON_OOM:-0}
+      BABYSITTER_HOST: ${SLAVE_ADVERTISE_HOST:-}
     volumes:
       - ./config:/config:ro
       - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    # Inference (TOML port) + babysitter HTTP (port+1) for host-side curl/debug.
+    ports:
+      - "${SLAVE_FLA_9G_API_PORT:-8100}:8100"
+      - "${SLAVE_FLA_9G_BABYSITTER_PORT:-8101}:8101"
     ipc: host
     shm_size: 100gb
     ulimits:
@@ -152,68 +167,14 @@ services:
       REGISTRY_URL: ${SLAVE_REGISTRY_URL}
       ROUTER_URL: ${SLAVE_ROUTER_URL}
       BABYSITTER_CONFIGS: /config/slave-fla-qwen-paged.toml
-      BABYSITTER_HOST: worker-slave-fla-qwen-8200
+      INFINILM_EXIT_ON_OOM: ${INFINILM_EXIT_ON_OOM:-0}
+      BABYSITTER_HOST: ${SLAVE_ADVERTISE_HOST:-}
     volumes:
       - ./config:/config:ro
       - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
-    ipc: host
-    shm_size: 100gb
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    devices:
-      - /dev/dri
-      - /dev/htcd
-      - /dev/infiniband
-    group_add:
-      - video
-    privileged: true
-    security_opt:
-      - apparmor=unconfined
-
-  worker-slave-3vllm-vllm-1:
-    image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-slave-3vllm-vllm-1-20260325
-    restart: unless-stopped
-    environment:
-      LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
-      ROUTER_URL: ${SLAVE_ROUTER_URL}
-      BABYSITTER_CONFIGS: /config/slave-3vllm-vllm-1.toml
-      BABYSITTER_HOST: worker-slave-3vllm-vllm-1
-    volumes:
-      - ./config:/config:ro
-      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
-    ipc: host
-    shm_size: 100gb
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    devices:
-      - /dev/dri
-      - /dev/htcd
-      - /dev/infiniband
-    group_add:
-      - video
-    privileged: true
-    security_opt:
-      - apparmor=unconfined
-
-  worker-slave-3vllm-vllm-2:
-    image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-slave-3vllm-vllm-2-20260325
-    restart: unless-stopped
-    environment:
-      LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
-      ROUTER_URL: ${SLAVE_ROUTER_URL}
-      BABYSITTER_CONFIGS: /config/slave-3vllm-vllm-2.toml
-      BABYSITTER_HOST: worker-slave-3vllm-vllm-2
-    volumes:
-      - ./config:/config:ro
-      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+    ports:
+      - "${SLAVE_FLA_QWEN_API_PORT:-8200}:8200"
+      - "${SLAVE_FLA_QWEN_BABYSITTER_PORT:-8201}:8201"
     ipc: host
     shm_size: 100gb
     ulimits:

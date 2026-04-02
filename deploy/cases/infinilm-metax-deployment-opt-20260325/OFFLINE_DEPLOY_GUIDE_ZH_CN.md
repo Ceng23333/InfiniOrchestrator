@@ -19,6 +19,9 @@
 - 确认该 deploy case 的 `.env` 中模型挂载路径正确：
   - `MODEL1_DIR=/path/on/host/9g_8b_thinking_llama`
   - `QWEN3_32B_DIR=/path/on/host/Qwen3-32B`
+- （推荐）确认已按需设置 worker 的 OOM 退出开关：
+  - `INFINILM_EXIT_ON_OOM=1`：当 worker 进程在 Python forward 路径检测到 OOM/allocator failure（如 `hcMalloc`/`infinirtMalloc`、CUDA/PyTorch OOM）时，输出一次性标记 `INFINILM_OOM_EXIT` 并立刻以 **exit code 137** 退出，便于 babysitter/编排层快速拉起新进程。
+  - 默认 `0/未设置`：不做硬退出（保持原有异常传播/失败行为）。
 - 确认基础镜像已存在于本地（避免构建时拉取）：
   - `infinilm-svc:metax-hpcc-1004_218-202602281209`
 
@@ -55,8 +58,8 @@ DOCKER_BUILD_NO_CACHE=1 \
 
 ```bash
 docker run --rm --privileged --ipc=host --network=host \
-  -v /root/zenghua:/home/zenghua \
-  -v /root/zenghua/models:/models \
+  -v /home/zenghua:/home/zenghua \
+  -v /data-aisoft/zenghua/models:/models \
   --device /dev/dri:/dev/dri \
   --device /dev/htcd:/dev/htcd \
   --device /dev/infiniband:/dev/infiniband \
@@ -74,12 +77,13 @@ export LD_LIBRARY_PATH=$TORCH_LIB:/root/.infini/lib:${LD_LIBRARY_PATH:-}
 
 python $REPO/InfiniLM/examples/jiuge.py \
   --metax \
-  --model_path=/models/Qwen3-32B \
-  --tp=4
-  --max_new_tokens=24 \
+  --model-path /models/Qwen3-32B \
+  --tp 4 \
+  --max-new-tokens 1024 \
   --attn=flash-attn \
   --enable-graph \
-  --enable-paged-attn
+  --enable-paged-attn \
+  --prompt "你好，请用一句话介绍PagedKV+Graph自检。"
 '
 ```
 
@@ -121,7 +125,8 @@ docker-compose up -d --force-recreate \
 - 若 slave 与 master 不在同一台主机，请在 slave 主机的 `.env` 显式设置：
   - `SLAVE_REGISTRY_URL=http://<master_ip>:18000`
   - `SLAVE_ROUTER_URL=http://<master_ip>:8000`
-- 这两个 slave worker 会向 `SLAVE_REGISTRY_URL/SLAVE_ROUTER_URL` 注册；这两个变量现在需要在 `.env` 显式设置（不再有 `master` 默认回退）。
+  - `SLAVE_ADVERTISE_HOST=<slave_ip>`（注册到 registry 的 OpenAI 服务地址必须是 master 能访问的 IP/主机名；`docker-compose.yml` 通过该变量渲染 `BABYSITTER_HOST`，未设置时回退为各 worker 的 Compose 服务名）
+- 这两个 slave worker 会向 `SLAVE_REGISTRY_URL/SLAVE_ROUTER_URL` 注册；跨机部署时上述三个变量均建议在 `.env` 显式设置。
 - `worker-slave-fla-9g-8100` 依赖 `MODEL1_DIR` 挂载 9g 模型；`worker-slave-fla-qwen-8200` 依赖 `QWEN3_32B_DIR` 挂载 Qwen 模型。
 - 若 `Qwen3-32B` 首次加载较慢，`validate.sh` 早期可能看到该 slave 服务尚未注册，等待后重试即可。
 
@@ -172,11 +177,11 @@ curl -s --max-time 5 http://192.168.163.151:20002/v1/embeddings \
 ```bash
 # Qwen paged worker（8200）
 docker exec infiniorch-worker-master-qwen-paged-8200-20260325 bash -lc \
-  'f=$(ls -t /app/logs/babysitter_master-qwen3-32b-paged_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
+  'f=$(ls -t /app/logs/babysitter_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
 
 # 9g worker（8100）
 docker exec infiniorch-worker-master-9g-8100-20260325 bash -lc \
-  'f=$(ls -t /app/logs/babysitter_master-9g_8b_thinking_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
+  'f=$(ls -t /app/logs/babysitter_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
 ```
 
 常见日志解读：

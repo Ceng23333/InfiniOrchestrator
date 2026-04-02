@@ -25,10 +25,17 @@ cp "${SCRIPT_DIR}/Dockerfile.orchestrator-runtime" "${STAGE}/Dockerfile"
 # Some build-cache dirs (e.g. `.xmake/` and `build/`) may be root-owned after
 # in-container builds; excluding them avoids host-side permission failures.
 rsync -a \
+  --no-perms --no-owner --no-group \
   --exclude='.git' \
   --exclude='.xmake/**' \
   --exclude='build/**' \
-  --exclude='**/__pycache__/**' \
+  --exclude='.pytest_cache/' \
+  --exclude='*/.pytest_cache/' \
+  --exclude='__pycache__/' \
+  --exclude='*/__pycache__/' \
+  --exclude='*.pyc' \
+  --exclude='*.pyo' \
+  --exclude='InfiniCore/python/infinicore/lib/**' \
   "${MONOREPO_ROOT}/InfiniCore" "${MONOREPO_ROOT}/InfiniLM" "${STAGE}/"
 
 # Optional: copy prebuilt runtime artifacts into the image so vendored

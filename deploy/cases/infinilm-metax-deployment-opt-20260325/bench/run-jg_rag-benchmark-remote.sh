@@ -37,6 +37,8 @@ DATASET_FORCE_REGEN="${DATASET_FORCE_REGEN:-0}"
 # Default generator params produce 10*4=40 records. For 4x larger dataset, use 40*4=160.
 DATASET_NUM_CONVERSATIONS="${DATASET_NUM_CONVERSATIONS:-}"
 DATASET_MESSAGES_PER_CONV="${DATASET_MESSAGES_PER_CONV:-}"
+# Cap --num-prompts to min(NUM_PROMPTS, dataset line count); unset = use full file.
+NUM_PROMPTS="${NUM_PROMPTS:-}"
 
 # Router readiness polling
 ROUTER_READY_TIMEOUT_SEC="${ROUTER_READY_TIMEOUT_SEC:-3600}" # 60 minutes
@@ -60,6 +62,7 @@ usage() {
   echo "  DATASET_FORCE_REGEN (default: 0) - set to 1 to regenerate dataset"
   echo "  DATASET_NUM_CONVERSATIONS - passed to generator --num-conversations"
   echo "  DATASET_MESSAGES_PER_CONV - passed to generator --messages-per-conv"
+  echo "  NUM_PROMPTS - cap requests to min(NUM_PROMPTS, dataset lines); omit for all lines"
   echo "  ROUTER_READY_TIMEOUT_SEC (default: 3600)"
   echo "  ROUTER_POLL_INTERVAL_SEC (default: 10)"
   echo ""
@@ -121,10 +124,20 @@ if [ ! -f "${DATASET_FILE}" ]; then
   exit 1
 fi
 
-NUM_REQUESTS="$(wc -l < "${DATASET_FILE}")"
+NUM_REQUESTS="$(wc -l < "${DATASET_FILE}" | tr -d '[:space:]')"
 if [ "${NUM_REQUESTS}" -le 0 ] 2>/dev/null; then
   echo "Error: dataset appears empty: ${DATASET_FILE}"
   exit 1
+fi
+
+if [ -n "${NUM_PROMPTS}" ]; then
+  if ! [[ "${NUM_PROMPTS}" =~ ^[0-9]+$ ]] || [ "${NUM_PROMPTS}" -lt 1 ]; then
+    echo "Error: NUM_PROMPTS must be a positive integer (got: ${NUM_PROMPTS})"
+    exit 1
+  fi
+  if [ "${NUM_PROMPTS}" -lt "${NUM_REQUESTS}" ]; then
+    NUM_REQUESTS="${NUM_PROMPTS}"
+  fi
 fi
 
 echo "=========================================="
@@ -147,10 +160,16 @@ if ! curl -s -f --connect-timeout 3 --noproxy "*" "${ROUTER_URL}/health" > /dev/
 fi
 echo "Router is reachable."
 
-echo "Waiting for router to report model '${MODEL}' via ${ROUTER_URL}/v1/models ..."
+echo "Waiting for router to report model '${MODEL}' via ${ROUTER_URL}/v1/models (fallback: /models) ..."
 deadline=$((SECONDS + ROUTER_READY_TIMEOUT_SEC))
 while [ "${SECONDS}" -lt "${deadline}" ]; do
+  # Some deployments expose the full model list at /models (OpenAI list models),
+  # while /v1/models may be incomplete. Prefer /v1/models, then fall back to /models.
   models_json="$(curl -s --noproxy "*" "${ROUTER_URL}/v1/models" 2>/dev/null || true)"
+  if ! echo "${models_json}" | grep -q "${MODEL}"; then
+    models_json="$(curl -s --noproxy "*" "${ROUTER_URL}/models" 2>/dev/null || true)"
+  fi
+
   if echo "${models_json}" | grep -q "${MODEL}"; then
     echo "Router model '${MODEL}' is available."
     break
@@ -162,7 +181,7 @@ done
 
 if ! echo "${models_json:-}" | grep -q "${MODEL}"; then
   echo "Error: Timed out after ${ROUTER_READY_TIMEOUT_SEC}s waiting for model '${MODEL}'"
-  echo "Last /v1/models response (truncated):"
+  echo "Last /v1/models or /models response (truncated):"
   echo "${models_json:-}" | head -c 2000 || true
   exit 1
 fi

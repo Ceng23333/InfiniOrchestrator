@@ -1,0 +1,3 @@
+# Line-delimited JSON (benchmark datasets, probes, etc.) — do not commit
+*.jsonl
+**/*.jsonl
