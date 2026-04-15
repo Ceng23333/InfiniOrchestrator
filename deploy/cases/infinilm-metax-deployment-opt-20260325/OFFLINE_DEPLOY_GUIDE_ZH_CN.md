@@ -19,9 +19,8 @@
 - 确认该 deploy case 的 `.env` 中模型挂载路径正确：
   - `MODEL1_DIR=/path/on/host/9g_8b_thinking_llama`
   - `QWEN3_32B_DIR=/path/on/host/Qwen3-32B`
-- （推荐）确认已按需设置 worker 的 OOM 退出开关：
-  - `INFINILM_EXIT_ON_OOM=1`：当 worker 进程在 Python forward 路径检测到 OOM/allocator failure（如 `hcMalloc`/`infinirtMalloc`、CUDA/PyTorch OOM）时，输出一次性标记 `INFINILM_OOM_EXIT` 并立刻以 **exit code 137** 退出，便于 babysitter/编排层快速拉起新进程。
-  - 默认 `0/未设置`：不做硬退出（保持原有异常传播/失败行为）。
+- （推荐）了解 worker 的 OOM 默认行为：
+  - `InferEngine.forward()` 在检测到 OOM-like 异常（allocator / CUDA / PyTorch OOM 等）时，会先 **logger.error** 再以 **exit code 137** 退出进程（默认行为，无需设置环境变量）。
 - 确认基础镜像已存在于本地（避免构建时拉取）：
   - `infinilm-svc:metax-hpcc-1004_218-202602281209`
 
