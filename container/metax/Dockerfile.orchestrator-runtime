@@ -40,9 +40,9 @@ RUN bash -lc 'set -euo pipefail; \
   export LD_LIBRARY_PATH="${INFINI_ROOT}/lib:${LD_LIBRARY_PATH:-}"; \
   \
   # Ensure cu-bridge + HPCC include dirs are visible to compilers.
-  export CPATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${CPATH:-}"; \
-  export CPLUS_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${CPLUS_INCLUDE_PATH:-}"; \
-  export C_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include:${C_INCLUDE_PATH:-}"; \
+  export CPATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include/common:${MACA_ROOT}/include/hcsparse:${MACA_ROOT}/include/hcblas:${MACA_ROOT}/include/hcsolver:${MACA_ROOT}/include:${CPATH:-}"; \
+  export CPLUS_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include/common:${MACA_ROOT}/include/hcsparse:${MACA_ROOT}/include/hcblas:${MACA_ROOT}/include/hcsolver:${MACA_ROOT}/include:${CPLUS_INCLUDE_PATH:-}"; \
+  export C_INCLUDE_PATH="${MACA_ROOT}/tools/cu-bridge/include:${MACA_ROOT}/include/hcr:${MACA_ROOT}/include/common:${MACA_ROOT}/include/hcsparse:${MACA_ROOT}/include/hcblas:${MACA_ROOT}/include/hcsolver:${MACA_ROOT}/include:${C_INCLUDE_PATH:-}"; \
   \
   export XMAKE_ROOT=y; \
   cd /workspace/InfiniCore; \

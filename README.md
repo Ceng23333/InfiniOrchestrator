@@ -33,7 +33,8 @@ If you prefer to build manually, use a context directory that contains `Dockerfi
 ## Deploy layout
 
 - `deploy/docker-compose/` — shared fragments (networks, common options) as they are added.
-- `deploy/cases/infinilm-metax-deployment-opt-20260325/` — first case: Compose, env templates, per-worker TOML under `config/` (filled in as the case is finalized).
+- `deploy/cases/infinilm-metax-deployment-opt-20260611/` — current case: offline Metax deploy with Phase 3 flags, master full stack + XiYanSQL slave preset.
+- `deploy/cases/infinilm-metax-deployment-opt-20260325/` — historical reference case (unchanged).
 
 ## Future: etcd-backed discovery (proposal)
 

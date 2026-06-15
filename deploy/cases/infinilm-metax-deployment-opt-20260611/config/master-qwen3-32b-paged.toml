@@ -1,0 +1,60 @@
+# Master (Server 1) - Qwen3-32B model with paged cache
+
+name = "master-qwen3-32b-paged"
+host = "0.0.0.0"
+port = 8200
+
+registry_url = "http://localhost:18000"
+router_url = "http://localhost:8000"
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+command = "/opt/conda/bin/python"
+args = [
+  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
+  "--device", "metax",
+  "--model", "/models/Qwen3-32B",
+  "--dtype", "bfloat16",
+  "--max-batch-size", "4",
+  "--num-blocks", "1024",
+  "--tp", "4",
+  "--temperature", "1.0",
+  "--top-p", "0.8",
+  "--top-k", "1",
+  "--host", "0.0.0.0",
+  "--port", "8200",
+  "--enable-paged-attn",
+  "--attn", "flash-attn",
+  "--enable-graph",
+]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+PATH = "/opt/conda/bin:/root/.infini/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python:/InfiniCore/python"
+INFINI_ROOT = "/root/.infini"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/conda/lib/python3.10/site-packages/torch/lib:/root/.infini/lib:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+MACA_HOME = "/opt/hpcc"
+MACA_PATH = "/opt/hpcc"
+HPCC_PATH = "/opt/hpcc"
+C_INCLUDE_PATH = "/opt/hpcc/include/hcr:/opt/hpcc/tools/cu-bridge/include"
+XMAKE_ROOT = "y"
+HPCC_VISIBLE_DEVICES = "4,5,6,7"
+FLASH_ATTN_2_CUDA_SO = "/opt/conda/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-aarch64-linux-gnu.so"
+INFINI_PREFILL_NATIVE_CG = "1"
+INFINI_COMPILE_MAX_SEQ = "8192"
+INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096,2048,1024,512"
+INFINI_PREFILL_CHUNKED = "1"
+INFINI_PREFILL_CHUNK_SIZE = "4096"
+INFINI_V1_SCHEDULER = "1"
+INFINI_SCHEDULE_HOMOGENEOUS = "1"
+INFINI_DECODE_LIGHT_SYNC = "1"
+
+[metadata]
+cache_type = "paged"
+static = false
