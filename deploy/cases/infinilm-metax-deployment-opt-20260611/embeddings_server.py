@@ -35,7 +35,7 @@ def log_response_info(response):
     return response
 
 
-embedding_model_name = "/workspace/models/MiniCPM-Embedding-Light"
+embedding_model_name = "/workspace/models/bge-m3"
 logger.info(f"Loading embedding model: {embedding_model_name}")
 tokenizer = LlamaTokenizer.from_pretrained(embedding_model_name, trust_remote_code=True, local_files_only=True)
 embedding_model = AutoModel.from_pretrained(embedding_model_name, trust_remote_code=True, torch_dtype=torch.float16, local_files_only=True).to("cuda")
@@ -80,7 +80,7 @@ def embeddings():
             return jsonify({"error": {"message": "Request body must be JSON", "type": "invalid_request_error"}}), 400
 
         # Parse OpenAI-compatible request
-        model_name = request.json.get("model", "text-embedding-ada-002")
+        model_name = request.json.get("model", "bge-m3")
         input_data = request.json.get("input")
         encoding_format = request.json.get("encoding_format", "float")
 

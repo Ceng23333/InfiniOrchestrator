@@ -134,13 +134,13 @@ services:
     restart: unless-stopped
     environment:
       LAUNCH_COMPONENTS: babysitter
-      REGISTRY_URL: ${SLAVE_REGISTRY_URL}
-      ROUTER_URL: ${SLAVE_ROUTER_URL}
+      REGISTRY_URL: ${SLAVE_REGISTRY_URL:-http://master:18000}
+      ROUTER_URL: ${SLAVE_ROUTER_URL:-http://master:8000}
       BABYSITTER_CONFIGS: /config/slave-xiyan-qwencoder-32b.toml
       BABYSITTER_HOST: ${SLAVE_ADVERTISE_HOST:-worker-slave-xiyan-qwencoder-8200}
     volumes:
       - ./config:/config:ro
-      - ${XIYAN_QWENCODER_DIR}:/models/XiYanSQL-QwenCoder-32B-2504:ro
+      - ${XIYAN_QWENCODER_DIR:-/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504}:/models/XiYanSQL-QwenCoder-32B-2504:ro
     ports:
       - "${SLAVE_XIYAN_API_PORT:-8200}:8200"
       - "${SLAVE_XIYAN_BABYSITTER_PORT:-8201}:8201"

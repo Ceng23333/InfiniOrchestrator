@@ -9,7 +9,7 @@ Historical reference: [`infinilm-metax-deployment-opt-20260325`](../infinilm-met
 | Repo | Branch | Commit |
 |------|--------|--------|
 | InfiniCore | `prefill_profile` | `8c901136` |
-| InfiniLM | `prefill_profile` | `8e8b492` (includes `gc.collect()` per-shard for XiYanSQL) |
+| InfiniLM | `prefill_profile` | `ece9948` (`gc.collect()` + Qwen2 `PiecewiseTextCausalLM` for XiYanSQL) |
 
 Phase 3 validation: [`bench_results/validate_phase3_gates_20260611_161905/validation_summary.md`](../../../../bench_results/validate_phase3_gates_20260611_161905/validation_summary.md)
 
@@ -54,11 +54,11 @@ cp .env.example .env
 docker-compose up -d master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 ```
 
-Slave (XiYanSQL primary preset):
+Slave (XiYanSQL):
 
 ```bash
 docker-compose up -d worker-slave-xiyan-qwencoder-8200
-./validate.sh <master_ip> <slave_ip> xiyan
+./validate.sh <master_ip> <slave_ip>
 ```
 
 Endpoints:

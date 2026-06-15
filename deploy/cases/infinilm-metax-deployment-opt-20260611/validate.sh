@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
-# Validate infinilm-metax-deployment-opt-20260611 (registry, router, master backends, optional slave)
+# Validate infinilm-metax-deployment-opt-20260611 (registry, router, master backends, optional XiYan slave)
 
 set -e
 
 usage() {
   echo "Usage:"
-  echo "  $0 <REGISTRY_IP> [SLAVE_IP] [SLAVE_PRESET] [MASTER_PRESET]"
-  echo ""
-  echo "SLAVE_PRESET (when SLAVE_IP given): xiyan (default), fla, 2static(compat), 1static1vllm, 3vllm, or 1paged2vllm"
-  echo "MASTER_PRESET (optional): when 3vllm, expect master-3vllm-vllm-1 instead of master-qwen3-32b-paged"
+  echo "  $0 <REGISTRY_IP> [SLAVE_IP]"
   echo ""
   echo "Examples:"
   echo "  $0 192.168.163.151"
   echo "  $0 192.168.163.151 192.168.163.152"
-  echo "  $0 192.168.163.151 192.168.163.152 xiyan"
-  echo "  $0 192.168.163.151 192.168.163.152 fla"
-  echo "  $0 192.168.163.151 192.168.163.152 1static1vllm"
-  echo "  $0 192.168.163.151 192.168.163.152 3vllm 3vllm"
 }
 
 if [ $# -lt 1 ]; then
@@ -26,8 +19,6 @@ fi
 
 REGISTRY_IP="${1:-localhost}"
 SLAVE_IP="${2:-}"
-SLAVE_PRESET="${3:-${SLAVE_PRESET:-xiyan}}"
-MASTER_PRESET="${4:-${MASTER_PRESET:-}}"
 
 REGISTRY_PORT="${REGISTRY_PORT:-18000}"
 ROUTER_PORT="${ROUTER_PORT:-8000}"
@@ -52,8 +43,6 @@ echo "InfiniOrchestrator infinilm-metax-deployment-opt-20260611 Validation"
 echo "=========================================="
 echo "Registry IP:  ${REGISTRY_IP}"
 echo "Slave IP:     ${SLAVE_IP:-none}"
-echo "Slave preset:  ${SLAVE_PRESET:-n/a}"
-echo "Master preset: ${MASTER_PRESET:-default}"
 echo "Registry:     ${REGISTRY_URL}"
 echo "Router:      ${ROUTER_URL}"
 echo ""
@@ -87,37 +76,9 @@ fi
 service_count="$(echo "${services_json}" | grep -o '"name"' | wc -l || echo "0")"
 echo "  Found ${service_count} services"
 
-# Expected master services: depend on MASTER_PRESET
-if [ "${MASTER_PRESET}" = "3vllm" ]; then
-  expected_services=("master-9g_8b_thinking" "master-3vllm-vllm-1")
-else
-  expected_services=("master-9g_8b_thinking" "master-qwen3-32b-paged" "master-embeddings")
-fi
-# Optional slave preset services
+expected_services=("master-9g_8b_thinking" "master-qwen3-32b-paged" "master-embeddings")
 if [ -n "${SLAVE_IP}" ]; then
-  case "${SLAVE_PRESET}" in
-    xiyan)
-      expected_services+=("slave-xiyan-qwencoder-32b")
-      ;;
-    fla)
-      expected_services+=("slave-fla-9g" "slave-fla-qwen-paged")
-      ;;
-    2static)
-      expected_services+=("slave-fla-9g" "slave-fla-qwen-paged")
-      ;;
-    1static1vllm)
-      expected_services+=("slave-1static1vllm-static-1" "slave-1static1vllm-vllm-1")
-      ;;
-    3vllm)
-      expected_services+=("slave-3vllm-vllm-1" "slave-3vllm-vllm-2")
-      ;;
-    1paged2vllm)
-      expected_services+=("slave-3vllm-vllm-1" "slave-3vllm-vllm-2")
-      ;;
-    *)
-      echo "  Warning: Unknown SLAVE_PRESET '${SLAVE_PRESET}'; expecting xiyan, fla, 2static, 1static1vllm, 3vllm, or 1paged2vllm"
-      ;;
-  esac
+  expected_services+=("slave-xiyan-qwencoder-32b")
 fi
 for svc in "${expected_services[@]}"; do
   if echo "${services_json}" | grep -q "\"name\":\"${svc}\""; then
@@ -128,31 +89,66 @@ for svc in "${expected_services[@]}"; do
 done
 echo ""
 
+expected_models=("9g_8b_thinking" "Qwen3-32B")
+if [ -n "${SLAVE_IP}" ]; then
+  expected_models+=("XiYanSQL-QwenCoder-32B-2504")
+fi
+
 echo -e "${BLUE}[3] Model aggregation${NC}"
 models_json="$(curl -s --noproxy "*" "${ROUTER_URL}/models" 2>/dev/null || echo '{}')"
 model_ids="$(echo "${models_json}" | grep -o '"id":"[^"]*"' | sed 's/"id":"\([^"]*\)"/\1/' | tr '\n' ' ' || echo '')"
+for model_id in "${expected_models[@]}"; do
+  if echo "${models_json}" | grep -q "\"id\":\"${model_id}\""; then
+    echo -e "  ${GREEN}OK${NC} model: ${model_id}"
+  else
+    echo -e "  ${RED}missing${NC} model: ${model_id}"
+    FAILED=$((FAILED + 1))
+  fi
+done
 if [ -z "${model_ids}" ] || [ "${model_ids}" = " " ]; then
-  echo -e "  ${RED}No models found${NC}"
+  if [ "${#expected_models[@]}" -eq 0 ]; then
+    echo -e "  ${RED}No models found${NC}"
+    FAILED=$((FAILED + 1))
+  fi
 else
   for model_id in ${model_ids}; do
-    echo "  Found model: ${model_id}"
+    found=0
+    for expected in "${expected_models[@]}"; do
+      if [ "${model_id}" = "${expected}" ]; then
+        found=1
+        break
+      fi
+    done
+    if [ "${found}" -eq 0 ]; then
+      echo "  Extra model: ${model_id}"
+    fi
   done
 fi
 echo ""
 
 echo -e "${BLUE}[4] Chat completions via router${NC}"
-# Test all models from step 3 (skip permission-style ids like modelperm-*)
-test_models="9g_8b_thinking"
-if [ -n "${model_ids}" ] && [ "${model_ids}" != " " ]; then
-  test_models=""
-  for model_id in ${model_ids}; do
-    case "${model_id}" in
-      modelperm-*) ;;
-      *) test_models="${test_models} ${model_id}" ;;
-    esac
+test_models=""
+append_test_model() {
+  local model_id="$1"
+  case "${model_id}" in
+    modelperm-*|"") return 0 ;;
+  esac
+  for existing in ${test_models}; do
+    if [ "${existing}" = "${model_id}" ]; then
+      return 0
+    fi
   done
-  test_models="${test_models# }"
+  test_models="${test_models} ${model_id}"
+}
+for model_id in "${expected_models[@]}"; do
+  append_test_model "${model_id}"
+done
+if [ -n "${model_ids}" ] && [ "${model_ids}" != " " ]; then
+  for model_id in ${model_ids}; do
+    append_test_model "${model_id}"
+  done
 fi
+test_models="${test_models# }"
 if [ -z "${test_models}" ]; then
   test_models="9g_8b_thinking"
 fi
@@ -160,11 +156,13 @@ for test_model in ${test_models}; do
   echo -n "  Testing model: ${test_model}... "
   if [ "${test_model}" = "XiYanSQL-QwenCoder-32B-2504" ]; then
     user_content="SELECT 1"
+    curl_max_time=120
   else
     user_content="Hello"
+    curl_max_time=60
   fi
   request_data="{\"model\": \"${test_model}\", \"messages\": [{\"role\": \"user\", \"content\": \"${user_content}\"}], \"stream\": false, \"max_tokens\": 32}"
-  resp="$(curl -s -X POST --noproxy "*" "${ROUTER_URL}/v1/chat/completions" -H "Content-Type: application/json" -d "${request_data}" 2>/dev/null || echo '{}')"
+  resp="$(curl -s --max-time "${curl_max_time}" -X POST --noproxy "*" "${ROUTER_URL}/v1/chat/completions" -H "Content-Type: application/json" -d "${request_data}" 2>/dev/null || echo '{}')"
   if echo "${resp}" | grep -q '"object"'; then
     echo -e "${GREEN}OK${NC}"
     PASSED=$((PASSED + 1))
