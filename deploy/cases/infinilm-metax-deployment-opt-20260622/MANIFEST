@@ -1,0 +1,7 @@
+IL_SHA=459ba3f
+IC_SHA=56ef9cad
+BUILD_TS=20260624
+SOURCE_IMAGE=infinilm-svc:metax-hpcc-ai3107-c73618c-56ef9cad-20260624
+IMAGE_TAG=infinilm-svc:metax-hpcc-ai3107-c73618c-56ef9cad-20260624-update-test
+DEPLOYMENT_CASE=infinilm-metax-deployment-opt-20260622
+PACK_DATE=2026-06-24T09:05:49Z

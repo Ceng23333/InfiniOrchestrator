@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate infinilm-metax-deployment-opt-20260611 (registry, router, master backends, optional slave)
+# Validate infinilm-metax-deployment-opt-20260622 (registry, router, master backends, optional slave)
 
 set -e
 
@@ -36,7 +36,7 @@ REGISTRY_URL="http://${REGISTRY_IP}:${REGISTRY_PORT}"
 ROUTER_URL="http://${REGISTRY_IP}:${ROUTER_PORT}"
 EMBEDDING_URL="http://${REGISTRY_IP}:${EMBEDDING_PORT}"
 
-CONTAINER_NAME="${CONTAINER_NAME:-infiniorch-master-opt-20260611}"
+CONTAINER_NAME="${CONTAINER_NAME:-infiniorch-master-opt-20260622}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -48,7 +48,7 @@ PASSED=0
 FAILED=0
 
 echo "=========================================="
-echo "InfiniOrchestrator infinilm-metax-deployment-opt-20260611 Validation"
+echo "InfiniOrchestrator infinilm-metax-deployment-opt-20260622 Validation"
 echo "=========================================="
 echo "Registry IP:  ${REGISTRY_IP}"
 echo "Slave IP:     ${SLAVE_IP:-none}"

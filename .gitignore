@@ -1,3 +1,22 @@
 # Line-delimited JSON (benchmark datasets, probes, etc.) — do not commit
 *.jsonl
 **/*.jsonl
+
+# Large offline bundles / docker saves
+*.tar
+*.tar.gz
+*.tgz
+**/offline-bundle-test/
+
+# Bench / deploy run artifacts
+deploy/cases/**/results/
+bench_results/
+
+# Local env (templates *.example are tracked)
+.env
+.env.slave-sim
+.image_tag
+
+# Rust / build
+rust/target/
+**/target/

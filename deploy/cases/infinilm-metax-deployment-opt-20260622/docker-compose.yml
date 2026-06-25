@@ -8,7 +8,7 @@ networks:
 services:
   master:
     image: ${IMAGE_TAG}
-    container_name: infiniorch-master-opt-20260611
+    container_name: infiniorch-master-opt-20260622
     restart: unless-stopped
     environment:
       LAUNCH_COMPONENTS: registry,router
@@ -19,12 +19,12 @@ services:
       # Optional: size-based routing threshold (bytes); default avoids empty-string parse issues
       CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
     ports:
-      - "${ROUTER_PORT:-8000}:${ROUTER_PORT:-8000}"
-      - "${REGISTRY_PORT:-18000}:${REGISTRY_PORT:-18000}"
+      - "${ROUTER_PORT:-8000}:8000"
+      - "${REGISTRY_PORT:-18000}:18000"
 
   worker-master-9g-8100:
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-master-9g-8100-20260611
+    container_name: infiniorch-worker-master-9g-8100-20260622
     restart: unless-stopped
     depends_on:
       - master
@@ -60,7 +60,7 @@ services:
 
   worker-master-qwen-paged-8200:
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-master-qwen-paged-8200-20260611
+    container_name: infiniorch-worker-master-qwen-paged-8200-20260622
     restart: unless-stopped
     depends_on:
       - master
@@ -95,7 +95,7 @@ services:
 
   worker-master-embeddings-20002:
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-master-embeddings-20002-20260611
+    container_name: infiniorch-worker-master-embeddings-20002-20260622
     restart: unless-stopped
     depends_on:
       - master
@@ -130,7 +130,7 @@ services:
   # Primary slave preset: XiYanSQL-QwenCoder-32B-2504 @ TP=4
   worker-slave-xiyan-qwencoder-8200:
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-slave-xiyan-qwencoder-8200-20260611
+    container_name: infiniorch-worker-slave-xiyan-qwencoder-8200-20260622
     restart: unless-stopped
     environment:
       LAUNCH_COMPONENTS: babysitter

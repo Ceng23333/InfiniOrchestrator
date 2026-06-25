@@ -3,179 +3,19 @@
 本文以 **零阶段（可选）+ 3 个阶段** 部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611`：
 
 0. **（离线交付）** 从 tar 包解压源码快照、预加载基础 Docker 镜像（无内网 / 无开发 worktree 时）。
-1. 从本地 `InfiniCore/InfiniLM` 源码构建部署/运行镜像（构建过程中不依赖外网）；slave 分机与 master 相同，见 **第二阶段 B-pre**。
+1. 从本地 `InfiniCore/InfiniLM` 源码构建部署/运行镜像（构建过程中不依赖外网）。
 2. 在使用 case 自带 `.env` 的前提下，用 `docker-compose` 启动 `master` 与模型 worker。
 3. 通过 `validate.sh` 验证：注册中心/路由健康性、模型聚合、经由路由的 `/v1/chat/completions`，以及 embedding `/v1/embeddings` 可用性（required）。
 
 若目标机可直接 rsync 开发 worktree，可跳过零阶段，从下文 **「从开发 worktree rsync」** 开始。
-
-## 示例配置速查
-
-本节汇总 case 目录下的**可复制示例**（metax-152 / `192.168.163.152` 已验证）。详细步骤见后文各阶段。
-
-### 配置文件一览
-
-| 文件 | 用途 |
-|------|------|
-| `.env` | compose 插值：镜像 tag、宿主机模型路径、端口、slave 注册地址 |
-| `.image_tag` | 第一阶段构建后写入，`.env` 的 `IMAGE_TAG` 应与其一致 |
-| `config/master-9g_8b_thinking.toml` | 9g worker（GPU 0，:8100） |
-| `config/master-qwen3-32b-paged.toml` | Qwen3-32B paged worker（GPU 4–7，:8200） |
-| `config/master-embeddings.toml` | Embeddings worker（:20002） |
-| `config/slave-xiyan-qwencoder-32b.toml` | XiYanSQL slave（GPU 4–7，容器 :8200；同机宿主机 remap 8300） |
-| `docker-compose.yml` | 服务编排；default 网络 `172.28.0.0/16` |
-| `validate.sh` | 第三阶段健康与 chat/embeddings 校验 |
-
-### 服务与端口（默认）
-
-| 服务 | 注册名 | 宿主机端口 | GPU | 模型 ID |
-|------|--------|-----------|-----|---------|
-| Registry | — | 18000 | — | — |
-| Router | — | 8000 | — | — |
-| 9g | `master-9g_8b_thinking` | 8100 | 0 | `9g_8b_thinking` |
-| Qwen3 | `master-qwen3-32b-paged` | 8200 | 4,5,6,7 | `Qwen3-32B` |
-| Embeddings | `master-embeddings` | 20002 | — | `text-embedding-ada-002` 等 |
-| XiYan slave | `slave-xiyan-qwencoder-32b` | 8300（同机 remap） | 4,5,6,7 | `XiYanSQL-QwenCoder-32B-2504` |
-
-同机跑 master Qwen 与 XiYan slave 时，XiYan 宿主机 API/babysitter 映射为 **8300/8301**（见 `.env` 中 `SLAVE_XIYAN_*`）。
-
-### 示例 `.env` — 同机全栈（master + XiYan slave）
-
-路径：`InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/.env`
-
-```bash
-IMAGE_TAG=infini-orchestrator-metax:ece9948-8c901136-20260612
-
-REGISTRY_PORT=18000
-ROUTER_PORT=8000
-EMBEDDING_PORT=20002
-CACHE_TYPE_ROUTING_THRESHOLD=51200
-
-# 同 compose 项目：slave 经 Docker DNS 连 master
-SLAVE_REGISTRY_URL=http://master:18000
-SLAVE_ROUTER_URL=http://master:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-
-# Qwen 占 8200；XiYan slave 宿主机 remap
-SLAVE_XIYAN_API_PORT=8300
-SLAVE_XIYAN_BABYSITTER_PORT=8301
-
-MODEL1_DIR=/root/zenghua/models/9g_8b_thinking_llama
-QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-EMBEDDING_MODEL_DIR=/root/zenghua/models
-```
-
-### 示例 `.env` — 仅 master（Phase 2A）
-
-与「同机全栈」使用**同一份完整 `.env`**（含 `SLAVE_*`、`XIYAN_QWENCODER_DIR`）。`docker-compose` 会解析全文件中的 slave 服务定义，缺项会告警；Phase 2A 仅**不启动** slave 容器即可。
-
-```bash
-IMAGE_TAG=infini-orchestrator-metax:ece9948-8c901136-20260612
-
-REGISTRY_PORT=18000
-ROUTER_PORT=8000
-EMBEDDING_PORT=20002
-CACHE_TYPE_ROUTING_THRESHOLD=51200
-
-SLAVE_REGISTRY_URL=http://master:18000
-SLAVE_ROUTER_URL=http://master:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-SLAVE_XIYAN_API_PORT=8300
-SLAVE_XIYAN_BABYSITTER_PORT=8301
-
-MODEL1_DIR=/root/zenghua/models/9g_8b_thinking_llama
-QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-EMBEDDING_MODEL_DIR=/root/zenghua/models
-```
-
-验证：`./validate.sh 192.168.163.152`
-
-### 示例 `.env` — 分机 slave（master=151，slave=152）
-
-```bash
-IMAGE_TAG=infini-orchestrator-metax:ece9948-8c901136-20260612
-
-SLAVE_REGISTRY_URL=http://192.168.163.151:18000
-SLAVE_ROUTER_URL=http://192.168.163.151:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-```
-
-验证：`./validate.sh 192.168.163.151 192.168.163.152 xiyan`
-
-### Worker TOML 关键项（PRD-03 native piecewise）
-
-各 LLM worker 的 `config/*.toml` 中 `[backend]` 与 `[backend.env]` 已预置，一般**无需改 TOML**，只需保证 `.env` 模型路径挂载正确。
-
-| Worker | `num-blocks` | `INFINI_COMPILE_MAX_SEQ` | `INFINI_NATIVE_CG_CAPTURE_BUCKETS` | `HPCC_VISIBLE_DEVICES` |
-|--------|-------------|---------------------------|-----------------------------------|-------------------------|
-| 9g | 1024 | 8192 | 4096,2048,1024,512 | 0 |
-| Qwen3-32B | 1024 | 8192 | 4096,2048,1024,512 | 4,5,6,7 |
-| XiYanSQL | 512 | 4096 | 4096,2048,1024,512 | 4,5,6,7 |
-
-共性：`--enable-paged-attn --attn flash-attn --enable-graph`，`INFINI_PREFILL_NATIVE_CG=1`。
-
-Qwen3 / XiYan 推理参数摘录（完整见 `config/*.toml`）：
-
-```toml
-# master-qwen3-32b-paged.toml — args 节选
-"--model", "/models/Qwen3-32B",
-"--num-blocks", "1024",
-"--tp", "4",
-"--enable-paged-attn", "--attn", "flash-attn", "--enable-graph",
-
-# [backend.env] 节选
-INFINI_PREFILL_NATIVE_CG = "1"
-INFINI_COMPILE_MAX_SEQ = "8192"
-INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096,2048,1024,512"
-HPCC_VISIBLE_DEVICES = "4,5,6,7"
-```
-
-```toml
-# slave-xiyan-qwencoder-32b.toml — 与 Qwen3 对齐，num-blocks=512，max_seq=4096
-"--model", "/models/XiYanSQL-QwenCoder-32B-2504",
-"--num-blocks", "512",
-"--tp", "4",
-INFINI_COMPILE_MAX_SEQ = "4096"
-```
-
-### 离线交付 `MANIFEST` 示例
-
-tar 解压后 `WORKSPACE/MANIFEST` 内容示例：
-
-```bash
-IL_SHA=ece9948
-IC_SHA=8c901136
-PACK_DATE=2026-06-15T10:01:00Z
-BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209
-```
-
-### 快速验证命令
-
-```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-cd "${CASE}"
-
-# 同机全栈
-./validate.sh 192.168.163.152 192.168.163.152 xiyan
-
-# 烟雾
-curl -s --max-time 5 http://192.168.163.152:8000/health && echo
-curl -s --max-time 5 http://192.168.163.152:8000/v1/models
-```
-
----
 
 ## 目标
 
 - 使用本地 InfiniCore + InfiniLM 源码（`prefill_profile` 分支）作为构建上下文
 - 主机上已存在基础镜像：`infinilm-svc:metax-hpcc-1004_218-202602281209`
 - 构建/运行过程不发生外网拉取（只使用本地 Docker layer + 本地模型挂载目录）
-- Master：registry + router + 9g + Qwen3-32B paged + embeddings
-- Slave（主预置）：XiYanSQL-QwenCoder-32B-2504 @ TP=4
+- Master：registry + router + 9g + Qwen3-32B paged + embeddings（[`.env.master.example`](.env.master.example)）
+- Slave（主预置）：XiYanSQL-QwenCoder-32B-2504 @ TP=4（[`.env.slave.example`](.env.slave.example)，仅 `<MASTER_IP>` / `<SLAVE_IP>` 占位）
 
 ## 工作区路径
 
@@ -183,8 +23,8 @@ curl -s --max-time 5 http://192.168.163.152:8000/v1/models
 
 monorepo 开发目录（同一 inode）：
 
-- `/home/zenghua/workspace/deployment_202606`
-- `/root/zenghua/workspace/deployment_202606`
+- `/home/zenghua/workspace/deployment_202606/deployment_202606`
+- `/root/zenghua/workspace/deployment_202606/deployment_202606`
 
 下文以 `DEV_WS` 代指上述路径，仅用于 **rsync 源码快照** 或核对 SHA。
 
@@ -243,8 +83,8 @@ ls -lh "${STAGING}/"
 
 ```bash
 OFFLINE_ROOT="/opt/offline/infinilm-metax-20260611"
-SRC_TAR="/data-aisoft/zenghua/staging/offline-bundle-20260615/deployment_20260611-src-ece9948-8c901136.tar.gz"
-BASE_TAR="/opt/offline/infinilm-svc-metax-hpcc-base.tar.gz"
+SRC_TAR="/path/to/deployment_20260611-src-ILSHA-ICSHA.tar.gz"   # 实际文件名
+BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
 
 rm -rf "${OFFLINE_ROOT}" && mkdir -p "${OFFLINE_ROOT}"
 tar -xzf "${SRC_TAR}" -C "${OFFLINE_ROOT}"
@@ -270,9 +110,9 @@ test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-
 **可选 — 跳过第一阶段**（已交付预构建 orchestrator 镜像 tar 时）：
 
 ```bash
-ORCH_TAR="/opt/offline/infini-orchestrator-metax-ece9948-8c901136-20260612.tar.gz"
+ORCH_TAR="/path/to/infini-orchestrator-metax-IL-IC-DATE.tar.gz"
 gunzip -c "${ORCH_TAR}" | docker load
-IMAGE_TAG="infini-orchestrator-metax:ece9948-8c901136-20260612"
+IMAGE_TAG="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^infini-orchestrator-metax:' | head -1)"
 echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag"
 # 直接进入第二阶段 A
 ```
@@ -280,7 +120,7 @@ echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-met
 #### 路径 B — 从开发 worktree rsync（同机 / 有 DEV_WS 时）
 
 ```bash
-DEV_WS="/home/zenghua/workspace/deployment_202606"   # 或 /root/zenghua/workspace/deployment_202606（同 inode）
+DEV_WS="/home/zenghua/workspace/deployment_202606/deployment_202606"   # 或 /root/zenghua/... 下同 inode
 WORKSPACE="/tmp/offline-deploy-verify-$(date -u +%Y%m%d)"
 rm -rf "${WORKSPACE}" && mkdir -p "${WORKSPACE}"
 
@@ -309,44 +149,19 @@ done
 
 ### 端口占用
 
-默认发布端口：`8000`（router）、`18000`（registry）、`20002`（embeddings）、`8100/8200`（master workers）、`8200`（slave XiYanSQL，与 master Qwen 冲突时需 remap）。
+默认发布端口（本 case 实测 remap）：`8800`（router）、`18000`（registry）、`20003`（embeddings）、`8102/8200`（master workers API）、`8200`（slave XiYanSQL inference）。
 
-**远程主机注意：** 本 case 的 `docker-compose.yml` 使用**固定 `container_name`**（如 `infiniorch-master-opt-20260611`）。无论从 `/opt/offline/...`、`/tmp/offline-deploy-verify-*` 还是开发 worktree 启动，容器名与宿主机端口相同。在离线 `WORKSPACE` 里执行 `docker-compose down` **只能清理该目录 compose 记录过的容器**；若栈是从**其他目录**起的，端口仍会被 `docker-proxy` 占用。
-
-部署前在**远程主机**执行以下清理（按顺序，直到 `ss` 无输出）：
+部署前确认上述端口未被占用：
 
 ```bash
-# 1) 看谁占着 18000/8000
-ss -tlnp | grep -E ':18000|:8000' || echo "ports free"
-docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep -E '18000|8000' || echo "no docker publish on 18000/8000"
-
-# 2) 按固定容器名停掉整套 orchestrator（与启动目录无关，远程主机必跑）
-docker ps -a --format '{{.Names}}' | grep '^infiniorch-' | xargs -r docker rm -f
-
-# 3) 若仍有占用，按发布端口逐个停
-for port in 18000 8000 8100 8200 8201 20002 8300 8301; do
-  for cid in $(docker ps -q --filter "publish=${port}"); do
-    docker rm -f "${cid}"
-  done
-done
-
-# 4) 再从当前 WORKSPACE case 目录 down 一次（清理网络/孤立资源）
-WORKSPACE="${WORKSPACE:-/opt/offline/infinilm-metax-20260611}"
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-cd "${CASE}" && docker-compose down 2>/dev/null || true
-
-# 5) 确认端口已释放后再 Phase 2A
-ss -tlnp | grep -E ':18000|:8000' && echo "FAIL: ports still in use — inspect step 1 output" || echo "OK: ports free"
+ss -tlnp | grep -E ':8800|:18000|:20003|:8102|:8200' || echo "default ports free"
 ```
 
-**单机同时跑 master Qwen（8200）与 slave XiYanSQL（默认 8200）时**，追加端口 remap（Phase 2B 同机 `.env` 已包含，也可单独执行）：
+**单机同时跑 master Qwen（8200）与 slave XiYanSQL（默认 8200）时**，在 `.env` 设置：
 
-```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-grep -q '^SLAVE_XIYAN_API_PORT=' "${CASE}/.env" 2>/dev/null || cat >> "${CASE}/.env" <<EOF
+```
 SLAVE_XIYAN_API_PORT=8300
 SLAVE_XIYAN_BABYSITTER_PORT=8301
-EOF
 ```
 
 `REGISTRY_PORT` / `ROUTER_PORT` 同时控制容器内监听端口与宿主机映射；若需 remap 宿主机端口，请保持容器内仍为 `18000`/`8000`（或同步修改 compose 端口映射逻辑）。
@@ -368,12 +183,12 @@ docker images | grep 'infinilm-svc.*metax-hpcc-1004_218-202602281209'
 | Repo | Branch | 预期 SHA |
 |------|--------|----------|
 | InfiniCore | `prefill_profile` | `8c901136` |
-| InfiniLM | `prefill_profile` | `ece9948`（含 `gc.collect()` per-shard + Qwen2 piecewise，XiYanSQL 必需） |
+| InfiniLM | `prefill_profile` | `8e8b492`（含 `gc.collect()` per-shard，XiYanSQL 必需） |
 
 ```bash
 cd "${DEV_WS:-${WORKSPACE}}"
 git -C InfiniCore rev-parse --short HEAD    # 应为 8c901136
-git -C InfiniLM rev-parse --short HEAD      # 应为 ece9948 或更新（含 gc + piecewise patch）
+git -C InfiniLM rev-parse --short HEAD      # 应为 8e8b492 或更新（含 gc patch）
 grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处命中
 ```
 
@@ -381,10 +196,10 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 
 ### 模型目录（宿主机只读挂载）
 
-在 `.env` 中配置以下路径，**部署前确认目录存在**：
+路径已写入 [`.env.master.example`](.env.master.example) / [`.env.slave.example`](.env.slave.example)，部署前确认目录存在：
 
-| 变量 | 示例路径 | 必需文件 |
-|------|----------|----------|
+| 变量 | 路径（站点默认） | 必需文件 |
+|------|------------------|----------|
 | `MODEL1_DIR` | `/data-aisoft/zenghua/models/9g_8b_thinking_llama` | `config.json` + 权重 |
 | `QWEN3_32B_DIR` | `/data-aisoft/zenghua/models/Qwen3-32B` | `config.json` + 权重分片 |
 | `XIYAN_QWENCODER_DIR` | `/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504` | 14 个 safetensors 分片 |
@@ -402,7 +217,7 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 
 ### XiYanSQL 特殊说明
 
-XiYanSQL 有 14 个 ~4.8 GB 分片。镜像内的 `/workspace/InfiniLM` 必须包含 `modeling_utils.py` 中每分片后的 `gc.collect()`，且 `qwen2_for_causal_lm.hpp` 使用 `PiecewiseTextCausalLM`（InfiniLM `ece9948` 已包含）。这是构建时 rsync 进镜像的源码补丁，**不是** pip 包，也**不是**运行时环境变量。
+XiYanSQL 有 14 个 ~4.8 GB 分片。镜像内的 `/workspace/InfiniLM` 必须包含 `modeling_utils.py` 中每分片后的 `gc.collect()`（InfiniLM `8e8b492` 已包含）。这是构建时 rsync 进镜像的 Python 源码补丁，**不是** pip 包，也**不是**运行时环境变量。
 
 ---
 
@@ -424,7 +239,7 @@ IMAGE_TAG="infini-orchestrator-metax:${IL_SHA}-${IC_SHA}-${BUILD_TS}"
 
 IMAGE_TAG="${IMAGE_TAG}" \
 BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209 \
-INFINI_RUNTIME_CONTAINER=__base__ \
+INFINI_RUNTIME_CONTAINER=infinilm-dev-20260622 \
 DOCKER_BUILD_NO_CACHE=1 \
 ./build-image.sh
 
@@ -437,7 +252,6 @@ echo "Built: ${IMAGE_TAG}"
 ### （可选）镜像构建后快速自检（jiuge.py）
 
 ```bash
-IMAGE_TAG="$(cat "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag")"
 docker run --rm --privileged --ipc=host --network=host \
   -v /data-aisoft/zenghua/models:/models:ro \
   --device /dev/dri:/dev/dri \
@@ -464,35 +278,142 @@ python $REPO/InfiniLM/examples/jiuge.py \
 
 ---
 
-## 第二阶段 A：Master 主机启动
+## 第二阶段：双机部署（Master + Slave，推荐）
+
+两台物理机：**Master** 跑 registry + router + 9g + Qwen3-32B + embeddings；**Slave** 仅跑 XiYanSQL @ TP=4。两台均需完成第一阶段镜像构建（或加载同一 `IMAGE_TAG` 的预构建镜像 tar）。
+
+**仅需替换的占位符：** `<MASTER_IP>`、`<SLAVE_IP>`（各自主机 `hostname -I | awk '{print $1}'`）。
+
+### 0) 两台主机共同变量（复制后改 IP）
 
 ```bash
-WORKSPACE="${WORKSPACE:-/opt/offline/infinilm-metax-20260611}"
+WORKSPACE=/opt/offline/infinilm-metax-20260611
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+```
+
+### 1) Master 主机
+
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+
 cd "${CASE}"
+cp .env.master.example .env
+sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
 
-# 远程主机：先停掉所有 infiniorch-*（可能由其他目录的 compose 启动）
-docker ps -a --format '{{.Names}}' | grep '^infiniorch-' | xargs -r docker rm -f
-ss -tlnp | grep -E ':18000|:8000' && echo "FAIL: stop containers above before continue" || echo "ports free"
-docker-compose down 2>/dev/null || true
+docker-compose up -d --force-recreate \
+  master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
+```
 
-IMAGE_TAG="$(cat .image_tag)"
-cat > .env <<EOF
-IMAGE_TAG=${IMAGE_TAG}
-REGISTRY_PORT=18000
-ROUTER_PORT=8000
-EMBEDDING_PORT=20002
-CACHE_TYPE_ROUTING_THRESHOLD=51200
-SLAVE_REGISTRY_URL=http://master:18000
-SLAVE_ROUTER_URL=http://master:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-SLAVE_XIYAN_API_PORT=8300
-SLAVE_XIYAN_BABYSITTER_PORT=8301
-MODEL1_DIR=/root/zenghua/models/9g_8b_thinking_llama
-QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-EMBEDDING_MODEL_DIR=/root/zenghua/models
-EOF
+Master 侧 `.env` 模板见 [`.env.master.example`](.env.master.example)（无 IP 占位符；模型路径已写死为站点 NFS 路径）。
+
+**Master 就绪检查：**
+
+```bash
+curl -sf --noproxy "*" "http://${MASTER_IP}:18000/health"
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/health"
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"
+```
+
+### 2) Slave 主机
+
+将 case 目录 rsync 到 slave（或 tar 解压同一 `WORKSPACE`），然后：
+
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+
+cd "${CASE}"
+cp .env.slave.example .env
+sed -i \
+  -e "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" \
+  -e "s|<MASTER_IP>|${MASTER_IP}|g" \
+  -e "s|<SLAVE_IP>|${SLAVE_IP}|g" \
+  .env
+
+docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
+```
+
+Slave 侧 `.env` 模板见 [`.env.slave.example`](.env.slave.example)（仅含 `<MASTER_IP>` / `<SLAVE_IP>` 占位符）。
+
+**Slave 就绪检查（在 Master 或 Slave 上执行）：**
+
+```bash
+curl -sf --noproxy "*" "http://${SLAVE_IP}:8200/v1/models"
+curl -sf --noproxy "*" "http://${MASTER_IP}:18000/services" | grep slave-xiyan-qwencoder-32b
+```
+
+### 3) 双机全栈验证（在 Master 或任一可访问两台 IP 的主机）
+
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+
+cd "${CASE}"
+ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
+  ./validate.sh "${MASTER_IP}" "${SLAVE_IP}" xiyan
+```
+
+**通过标准：**
+
+| 检查项 | 预期 |
+|--------|------|
+| Registry `/health` | OK |
+| Router `/health` | OK |
+| Master 服务 | `master-9g_8b_thinking`, `master-qwen3-32b-paged`, `master-embeddings` |
+| Slave 服务 | `slave-xiyan-qwencoder-32b`，registry 中 `host` = `<SLAVE_IP>`，`port` = 8200 |
+| 模型聚合 | `9g_8b_thinking`, `Qwen3-32B`, `XiYanSQL-QwenCoder-32B-2504` |
+| Chat | 各模型 `/v1/chat/completions` HTTP 200 |
+| Embeddings | `http://${MASTER_IP}:20003/v1/embeddings` 返回 `"object": "list"` |
+
+**快速烟雾（双机）：**
+
+```bash
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/health" && echo
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"
+curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-ada-002","input":"hello"}'
+curl -sf --noproxy "*" -X POST "http://${MASTER_IP}:8800/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"XiYanSQL-QwenCoder-32B-2504","messages":[{"role":"user","content":"Write SQL to select all users where age > 18."}],"stream":false,"max_tokens":128}'
+```
+
+说明：
+
+- `SLAVE_ADVERTISE_HOST` 必须是 **Master/router 能访问的 Slave LAN IP**（即 `<SLAVE_IP>`）。
+- `SLAVE_REGISTRY_URL` / `SLAVE_ROUTER_URL` 指向 **Master**（`http://<MASTER_IP>:18000` / `:8800`）。
+- XiYanSQL 使用 GPU `4,5,6,7`；Slave 主机 GPU 布局不同时改 `config/slave-xiyan-qwencoder-32b.toml`。
+- 首次加载 14 个分片 + CG capture 需数分钟；见排障 **D) XiYanSQL slave 未注册 / OOM**。
+
+---
+
+## 第二阶段 A：Master 主机启动（单节参考）
+
+与上文 **「1) Master 主机」** 相同；完整 copy-paste 见双机部署节。
+
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+
+cd "${CASE}"
+cp .env.master.example .env
+sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
 
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
@@ -500,124 +421,126 @@ docker-compose up -d --force-recreate \
 
 说明：
 
-- 必须设置 `WORKSPACE`（tar 解压路径，如 `/opt/offline/infinilm-metax-20260611`）。
-- **远程主机**：若 `ss` 在 cleanup 后仍显示 `docker-proxy` 占 18000/8000，说明还有其他目录起的 `infiniorch-*` 容器；执行 `docker ps | grep infiniorch` 后 `docker rm -f <name>`，不要只 `docker-compose down` 当前 `CASE`。
-- `.env` 需包含 `SLAVE_*` 与 `XIYAN_QWENCODER_DIR`（compose 解析全文件；Phase 2A 仅不启动 slave 服务）。
 - 不要用 `.env.example` 覆盖已有 `.env`。
 - Qwen3-32B 首次加载较慢（含 CG warmup），`validate.sh` 早期可能看到服务尚未注册，等待后重试。
 - Master GPU worker 在 compose 网络内用 Docker DNS 名注册（`BABYSITTER_HOST=worker-master-*`）。
 
 ---
 
-## 第二阶段 B-pre：Slave 主机镜像
-
-分机 slave（`192.168.163.152`）须与 master 使用**同一 `WORKSPACE`**（`/opt/offline/infinilm-metax-20260611`）和**同一 `IMAGE_TAG`**（`IL_SHA` ≥ `ece9948`，XiYan 须 `PiecewiseTextCausalLM`）。
-
-在 slave 上按 master 相同流程操作即可：
-
-1. **路径 A** — 解压 `SRC_TAR`、加载 `BASE_TAR`（slave 尚无 `WORKSPACE` 时）
-2. **第一阶段** — 构建 orchestrator 镜像；或路径 A **「可选 — 跳过第一阶段」** 加载预构建 tar；或从 master `docker save` → `scp` → slave `docker load`
-
-完成后 `${CASE}/.image_tag` 应与 master 一致，再进入第二阶段 B。
-
----
-
 ## 第二阶段 B：Slave 主机启动（XiYanSQL 主预置）
 
-在 slave 主机上使用同一 case 目录（或 rsync 整个 case 目录）：
+与上文 **「2) Slave 主机」** 相同；完整 copy-paste 见双机部署节。
 
-**同机 compose（master + slave 同一 `docker-compose` 项目，metax-152 示例）：**
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+
+cd "${CASE}"
+cp .env.slave.example .env
+sed -i \
+  -e "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" \
+  -e "s|<MASTER_IP>|${MASTER_IP}|g" \
+  -e "s|<SLAVE_IP>|${SLAVE_IP}|g" \
+  .env
+
+docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
+```
+
+### 单机 Slave 模拟（无分机）
+
+在没有第二台物理机时，可在**同一主机**上模拟生产注册路径：master 仅保留 registry + router（停止 9g / Qwen GPU worker），slave 用 **LAN IP**（`SLAVE_ADVERTISE_HOST`）注册，使 router 经 `http://<LAN_IP>:8200` 访问 slave（非 Docker DNS）。
+
+**前提：**
+
+- `XIYAN_QWENCODER_DIR` 已挂载（见 `.env`）
+- GPU `4,5,6,7` 空闲（脚本会停止 `worker-master-9g-8100` 与 `worker-master-qwen-paged-8200`）
+- `worker-master-embeddings-20002` 保持运行（供 `validate.sh` embedding 步骤）
+- 可选：复制 [`/.env.slave-sim.example`](.env.slave-sim.example) 为 `.env.slave-sim` 并设置 `SLAVE_SIM_IP`
+
+**命令：**
 
 ```bash
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
 cd "${CASE}"
 
-IMAGE_TAG="$(cat .image_tag)"
-cat > .env <<EOF
-IMAGE_TAG=${IMAGE_TAG}
-REGISTRY_PORT=18000
-ROUTER_PORT=8000
-EMBEDDING_PORT=20002
-CACHE_TYPE_ROUTING_THRESHOLD=51200
-SLAVE_REGISTRY_URL=http://master:18000
-SLAVE_ROUTER_URL=http://master:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-SLAVE_XIYAN_API_PORT=8300
-SLAVE_XIYAN_BABYSITTER_PORT=8301
-MODEL1_DIR=/root/zenghua/models/9g_8b_thinking_llama
-QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-EMBEDDING_MODEL_DIR=/root/zenghua/models
-EOF
+# 启动 slave 模拟（停 master GPU worker → 起 XiYan slave）
+./bench/simulate_slave_localhost.sh
 
-docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
+# 完整验证（含 validate.sh + registry 检查 + summary.md）
+./bench/validate_slave_localhost.sh
+
+# 若 slave 已由 simulate 启动，可跳过重复启动：
+SLAVE_SIM_SKIP_START=1 ./bench/validate_slave_localhost.sh
 ```
 
-**分机部署（slave 独立主机，master=192.168.163.151，slave=192.168.163.152）：**
+**通过标准：**
 
-先完成 **B-pre**（路径 A + 第一阶段，或加载与 master 相同镜像），再执行：
+| 检查项 | 预期 |
+|--------|------|
+| Registry `/services` | `slave-xiyan-qwencoder-32b`，`host` = 本机 LAN IP，`port` = 8200 |
+| Router `/models` | 含 `XiYanSQL-QwenCoder-32B-2504` |
+| Chat | `SELECT 1` prompt 经 router 返回 HTTP 200 |
+| Master → slave 连通 | master 容器内 `curl http://<LAN_IP>:8200/v1/models` 成功 |
+
+结果写入 `bench_results/slave_sim_<timestamp>/summary.md`。
+
+**恢复 master 全栈：**
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-cd "${CASE}"
-
-IMAGE_TAG="$(cat .image_tag)"
-cat > .env <<EOF
-IMAGE_TAG=${IMAGE_TAG}
-SLAVE_REGISTRY_URL=http://192.168.163.151:18000
-SLAVE_ROUTER_URL=http://192.168.163.151:8000
-SLAVE_ADVERTISE_HOST=192.168.163.152
-XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504
-EOF
-
-docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
+docker-compose stop worker-slave-xiyan-qwencoder-8200   # 释放 8200 端口
+docker-compose up -d worker-master-9g-8100 worker-master-qwen-paged-8200
 ```
 
-说明：
+**故障排查：**
 
-- `SLAVE_ADVERTISE_HOST` 必须是 master/router 能访问的 slave LAN IP。
-- XiYanSQL 使用 GPU `4,5,6,7`（`HPCC_VISIBLE_DEVICES`）；若 slave 主机 GPU 布局不同，修改 `config/slave-xiyan-qwencoder-32b.toml` 中 `HPCC_VISIBLE_DEVICES`。
-- 首次加载 14 个分片需数分钟；等待 `load weights over!` 后再验证。
-- **推荐**：slave 与 master 分机部署；单机验证时 Qwen（GPU 4–7）与 XiYanSQL（GPU 4–7）会争抢设备，仅适合 compose/注册冒烟，完整 chat 验证应在 slave 主机执行。
+- Router 无法访问 LAN IP：尝试 docker bridge 网关 `172.28.0.1`（见 compose `subnet: 172.28.0.0/16`），或检查防火墙
+- XiYan CG capture 慢（14 分片、TP=4）：默认 `CAPTURE_TIMEOUT_SEC=7200`；超时查看 slave babysitter 日志
+- 若需保留 master Qwen 占用 8200：在 `.env` 设置 `SLAVE_XIYAN_API_PORT=8300`（注册端口仍为容器内 8200）
 
 ### （可选）FLA slave 预置（bisect 用）
 
 ```bash
 docker-compose up -d --force-recreate worker-slave-fla-9g-8100 worker-slave-fla-qwen-8200
-./validate.sh 192.168.163.151 192.168.163.152 fla
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+./validate.sh "${MASTER_IP}" "${SLAVE_IP}" fla
 ```
 
 ---
 
 ## 第三阶段：执行验证
 
-在 **同一 `WORKSPACE`** 的 case 目录执行（非 `DEV_WS`）：
+在 **同一 `WORKSPACE`** 的 case 目录执行（非 `DEV_WS`）。
 
-**同机全栈（master + XiYan slave，metax-152）：**
-
-```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-cd "${CASE}"
-./validate.sh 192.168.163.152 192.168.163.152 xiyan
-```
-
-**分机部署（master=151，slave=152）：**
+**双机（Master + Slave）：**
 
 ```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+
 cd "${CASE}"
-./validate.sh 192.168.163.151 192.168.163.152 xiyan
+ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
+  ./validate.sh "${MASTER_IP}" "${SLAVE_IP}" xiyan
 ```
 
-仅验证 master（GPU 不足、单机无法同时跑 slave 时）：
+**仅 Master（无 Slave 或 GPU 不足）：**
 
 ```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP=<MASTER_IP>
+
 cd "${CASE}"
-./validate.sh 192.168.163.151
+ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
+  ./validate.sh "${MASTER_IP}"
 ```
 
-单机 GPU 不足时不要启动 `worker-slave-xiyan-qwencoder-8200`；仅 Phase 2A + `./validate.sh 192.168.163.152` 即可验证 master 全栈。
+单机 GPU 不足时不要启动 `worker-slave-xiyan-qwencoder-8200`；仅 Phase 2A + `./validate.sh <master_ip>` 即可验证 master 全栈。
 
 ### 预期结果
 
@@ -633,12 +556,51 @@ cd "${CASE}"
 
 脚本以 `exit code 0` 结束表示 PASS。
 
+### 验证阶梯（RC-7，master 全栈）
+
+`validate.sh` 通过后，可运行完整 bench 阶梯（**不重启**已部署的 orchestrator 栈）：
+
+```bash
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+cd "${CASE}"
+
+# 等待 worker 日志出现 LLMEngine initialized + C++ capture complete 后执行
+./bench/run_deploy_validation.sh
+```
+
+或分步执行：
+
+| 步骤 | 命令 | 模型 |
+|------|------|------|
+| A 烟雾 | `ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh ${MASTER_IP}` | 全部 |
+| B 前缀缓存 | `./bench/test_prefix_cache.sh http://localhost:8800 Qwen3-32B` | Qwen |
+| C 吞吐 | `MODEL=9g_8b_thinking ./bench/run_deploy_throughput.sh` | 9g |
+| C 吞吐 | `MODEL=Qwen3-32B ./bench/run_deploy_throughput.sh` | Qwen |
+| D C-Eval | `ROUTER_URL=http://localhost:8800 MODELS=9g_8b_thinking ./bench/run_deploy_ceval.sh` | 9g |
+| D C-Eval | `ROUTER_URL=http://localhost:8800 MODELS=Qwen3-32B MAX_GEN_TOKS=1024 ./bench/run_deploy_ceval.sh` | Qwen |
+
+结果目录：`bench_results/deploy_validation_<ts>/`、`deploy_throughput_*`、`deploy_ceval_*`。
+
+**注意：** CG 捕获仅在 worker 启动时发生一次；`INFINI_REQUEST_TIMEOUT_S=600` 仅约束推理计算时长，与启动捕获等待无关。Qwen TP=4 捕获可能需 30+ 分钟。
+
+### 生产环境变量（TOML `[backend.env]`）
+
+| 变量 | 9g | Qwen3-32B | XiYan slave |
+|------|-----|-----------|-------------|
+| `INFINI_COMPILE_MAX_SEQ` | 65536 | 40960 | 32768 |
+| `INFINI_DECODE_CG_TP` | 1 | 1 | 1 |
+| `INFINI_REQUEST_TIMEOUT_S` | 600 | 600 | 600 |
+
+前缀缓存默认开启（**不设置** `INFINI_PREFILL_DISABLE_PREFIX_CACHE`）。勿设置 `INFINI_PREFILL_COMPILE` / `INFINI_PREFILL_SHARE_WEIGHTS` / `INFINI_PREFILL_CUDAGRAPH`。
+
 ### 快速烟雾
 
 ```bash
-curl -s --max-time 5 http://192.168.163.152:8000/health && echo
-curl -s --max-time 5 http://192.168.163.152:8000/v1/models
-curl -s --max-time 5 http://192.168.163.152:20002/v1/embeddings \
+MASTER_IP=<MASTER_IP>
+
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/health" && echo
+curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"
+curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
   -H "Content-Type: application/json" \
   -d '{"model":"text-embedding-ada-002","input":"hello"}'
 ```
@@ -665,50 +627,16 @@ docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 bash -lc \
 - `Failed to fetch models ... 50 attempts`：inference server 仍在加载权重，等待完成。
 - XiYanSQL exit 137 在 shard 14 之前：确认镜像内 `modeling_utils.py` 含 `gc.collect()`（重建镜像）。
 
-### 0) Phase 2A：`SLAVE_* variable is not set` 或 `Bind for 0.0.0.0:18000 failed`
-
-**`SLAVE_REGISTRY_URL` / `SLAVE_ROUTER_URL` / `XIYAN_QWENCODER_DIR` 告警**
-
-`docker-compose` 解析 `docker-compose.yml` 时会校验**全部**服务（含未启动的 slave）。Phase 2A 的 `.env` 须包含完整 slave 变量（见第二阶段 A 示例），或确保 compose 文件已为 slave 变量配置默认值。
-
-**`port is already allocated`（常见 :18000，远程主机）**
-
-`ss` 显示 `docker-proxy` 占 18000/8000，但当前 `CASE` 的 `docker-compose down` 无效——栈往往是从**另一目录**（开发 worktree、`/tmp/offline-deploy-verify-*`）启动的；固定 `container_name` 导致端口冲突。
-
-在远程主机执行（**停整套 orchestrator，与目录无关**）：
-
-```bash
-ss -tlnp | grep -E ':18000|:8000'
-docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep -E '18000|8000'
-
-# 停掉所有 infiniorch-* 容器
-docker ps -a --format '{{.Names}}' | grep '^infiniorch-' | xargs -r docker rm -f
-
-# 兜底：按端口
-for port in 18000 8000; do
-  for cid in $(docker ps -q --filter "publish=${port}"); do docker rm -f "${cid}"; done
-done
-
-ss -tlnp | grep -E ':18000|:8000' || echo "ports free — retry Phase 2A"
-
-WORKSPACE="${WORKSPACE:-/opt/offline/infinilm-metax-20260611}"
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-cd "${CASE}" && docker-compose up -d --force-recreate \
-  master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
-```
-
-若 `WORKSPACE` 未设置，`cd "${CASE}"` 会落到错误目录；仅 `docker stop infiniorch-master-opt-20260611` 若容器由其他 compose 项目 `restart: unless-stopped` 拉起，也可能瞬间被重建——务必用 `docker rm -f` 并清掉同项目全部 worker。
-
 ### A) 9g worker：`invalid paged kv cache config type` / `--max-tokens` unrecognized
 
 现象：9g babysitter 日志在 `load weights over!` 后报 `invalid paged kv cache config type`，或 `Unrecognized arguments: --max-tokens`。
 
-原因：`--attn flash-attn` 在 C++ 侧走 paged KV 分配路径，**必须与 `--enable-paged-attn` 同时使用**；单独 static cache + flash-attn 会触发类型不匹配。case TOML 已统一为 **paged + flash-attn + graph**：`--enable-paged-attn --num-blocks 1024 --attn flash-attn --enable-graph`，并使用 `--max-new-tokens`（非 `--max-tokens`）。
+原因：`--attn flash-attn` 在 C++ 侧走 paged KV 分配路径，**必须与 `--enable-paged-attn` 同时使用**；单独 static cache + flash-attn 会触发类型不匹配。case TOML 已统一为 **paged + flash-attn + graph**：`--enable-paged-attn --attn flash-attn --enable-graph`，并使用 `--max-new-tokens`（非 `--max-tokens`）。`--num-blocks`：9g **1024**；Qwen3-32B / XiYan **512**（Qwen TP=4 在 64 GiB 卡上 1024 会顶满显存，见 `ht-smi`）。
 
 ### B) `No healthy services available for model 'Qwen3-32B'`
 
-1. `curl -s http://192.168.163.152:8000/v1/models`
-2. `curl -s http://192.168.163.152:18000/services`
+1. `curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"`
+2. `curl -sf --noproxy "*" "http://${MASTER_IP}:18000/services"`
 3. 查看 Qwen worker babysitter 日志（见上）
 4. 重建：`docker-compose up -d --force-recreate worker-master-qwen-paged-8200`
 
@@ -721,7 +649,7 @@ cd "${CASE}" && docker-compose up -d --force-recreate \
 1. 停止 compose，`docker-compose down`
 2. 清理 stale GPU 进程（宿主机上 kill 残留 inference/python 占卡进程）
 3. 仅启动 master 栈（GPU 不足时不要起 slave）：`docker-compose up -d --force-recreate master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002`
-4. 等待 Qwen CG capture 完成（数分钟）后再 `./validate.sh 192.168.163.152`
+4. 等待 Qwen CG capture 完成（数分钟）后再 `ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh "${MASTER_IP}"`
 
 ### D) XiYanSQL slave 未注册 / OOM
 
@@ -845,3 +773,109 @@ ip -4 route show | grep 172.28
 ```
 
 部署前仍建议优先使用 compose 内 **`172.28.0.0/16`**，避免整段 `/16` 与站点内网重叠。
+
+### J) Docker bridge 转发 / sysctl（容器 ↔ 宿主机 LAN IP）
+
+与 **I) 路由表冲突** 不同：本节解决内核**不允许 bridge 与物理网卡之间转发**、或 bridge 流量未走 iptables 导致双机/单机模拟注册路径不通。
+
+#### 适用场景
+
+| 流量路径 | 何时需要 |
+|----------|----------|
+| Master **router 容器** → `http://<SLAVE_IP>:8200` | 双机 Slave 用 LAN IP 注册（`SLAVE_ADVERTISE_HOST`） |
+| Slave **容器** → `http://<MASTER_IP>:18000` / `:8800` | 双机 Slave 向 Master registry/router 注册 |
+| Master 容器 → 本机 LAN IP（单机 Slave 模拟） | `./bench/simulate_slave_localhost.sh` hairpin 路径 |
+
+**不适用：** Master 栈内 worker 互访（Docker DNS `worker-master-*`）——不经过宿主机 LAN。
+
+#### 现象
+
+- 宿主机 `curl http://<SLAVE_IP>:8200/v1/models` **成功**，但 Master 容器内同样 curl **超时** / `No route to host`
+- Slave babysitter 日志：`Connection refused` / `tcp connect error` 访问 `http://<MASTER_IP>:18000/services`
+- `./validate.sh` 通过 health，但 XiYan chat 失败或 registry 无 slave 条目
+-  hardened 镜像默认 `net.ipv4.ip_forward = 0`（常见于 Kylin / RHEL 加固基线）
+
+#### 诊断（copy-paste）
+
+```bash
+MASTER_IP=<MASTER_IP>
+SLAVE_IP=<SLAVE_IP>
+
+# 1) 内核转发与 bridge netfilter
+sysctl net.ipv4.ip_forward \
+       net.bridge.bridge-nf-call-iptables \
+       net.bridge.bridge-nf-call-ip6tables
+lsmod | grep br_netfilter
+
+# 2) 宿主机 baseline（应成功）
+curl -sf --connect-timeout 5 --noproxy "*" "http://${SLAVE_IP}:8200/v1/models"
+curl -sf --connect-timeout 5 --noproxy "*" "http://${MASTER_IP}:18000/health"
+
+# 3) Master 容器 → Slave LAN IP（双机 / 单机模拟关键路径）
+docker exec infiniorch-master-opt-20260611 \
+  curl -sf --connect-timeout 5 --noproxy "*" "http://${SLAVE_IP}:8200/v1/models"
+
+# 4) Slave 容器 → Master registry（双机 Slave 注册路径）
+docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 \
+  curl -sf --connect-timeout 5 --noproxy "*" "http://${MASTER_IP}:18000/health"
+```
+
+| 步骤 2 | 步骤 3 | 步骤 4 | 可能原因 |
+|--------|--------|--------|----------|
+| FAIL | — | — | Slave 未启动、防火墙、错误 IP |
+| OK | FAIL | — | **本节**：sysctl / iptables FORWARD |
+| OK | OK | FAIL | Slave `.env` 中 `SLAVE_REGISTRY_URL` 错误或 Master 防火墙 |
+| OK | OK | OK | 检查 `SLAVE_ADVERTISE_HOST`、registry 日志（非内核） |
+
+#### 持久修复：sysctl（宿主机 root，Master 与 Slave 均需检查）
+
+```bash
+cat > /etc/sysctl.d/99-docker-bridge-forward.conf <<'EOF'
+net.ipv4.ip_forward=1
+net.bridge.bridge-nf-call-iptables=1
+net.bridge.bridge-nf-call-ip6tables=1
+EOF
+
+modprobe br_netfilter
+echo br_netfilter > /etc/modules-load.d/br_netfilter.conf
+
+sysctl -p /etc/sysctl.d/99-docker-bridge-forward.conf
+
+sysctl net.ipv4.ip_forward \
+       net.bridge.bridge-nf-call-iptables \
+       net.bridge.bridge-nf-call-ip6tables
+lsmod | grep br_netfilter
+```
+
+重启后再次执行诊断步骤 3、4 确认。
+
+#### 若 sysctl 已正确仍失败：iptables / firewalld
+
+部分站点 `FORWARD` 链默认 `DROP`（如 kube-router 共存环境）：
+
+```bash
+iptables -L FORWARD -n -v | head -15
+iptables -L DOCKER-USER -n -v
+```
+
+需由站点运维在 `DOCKER-USER` 或 firewalld 中放行 Docker bridge ↔ LAN 的转发；**不要**在生产环境盲目 `iptables -P FORWARD ACCEPT`。
+
+检查 firewalld 是否拦截 published 端口：
+
+```bash
+firewall-cmd --list-ports 2>/dev/null || true
+# 典型需开放：18000/tcp 8800/tcp 8200/tcp（按实际 remap 调整）
+```
+
+#### 与 I) 的关系
+
+| 章节 | 问题类型 | 典型 `ip route get` |
+|------|----------|---------------------|
+| **I)** | 路由指向错误 bridge | `dev br-...` 去往 NFS/LAN |
+| **J)** | 转发被禁用或 iptables 拦截 | 路由正确，但容器 curl 仍失败 |
+
+两节可同时需要：先确认 **I)** 路由正确，再按 **J)** 检查 sysctl 与 FORWARD。
+
+#### 备选（不推荐为本 case 默认）
+
+[`InfiniLM-SVC/integration-validation`](../../../../InfiniLM-SVC/deployment/cases/integration-validation/README.md) 使用 `--network host` 可绕过 bridge NAT，在 `ip_forward=0` 时仍可工作，但需占用宿主机端口且与本 compose 默认 bridge 模式不同。**双机生产部署优先 sysctl + 正确 `.env.slave.example`，而非改 network mode。**

@@ -21,7 +21,7 @@ args = [
   "--model", "/models/Qwen3-32B",
   "--dtype", "bfloat16",
   "--max-batch-size", "4",
-  "--num-blocks", "1024",
+  "--num-blocks", "512",
   "--tp", "4",
   "--temperature", "1.0",
   "--top-p", "0.8",
@@ -47,7 +47,9 @@ XMAKE_ROOT = "y"
 HPCC_VISIBLE_DEVICES = "4,5,6,7"
 FLASH_ATTN_2_CUDA_SO = "/opt/conda/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-aarch64-linux-gnu.so"
 INFINI_PREFILL_NATIVE_CG = "1"
-INFINI_COMPILE_MAX_SEQ = "8192"
+INFINI_COMPILE_MAX_SEQ = "40960"
+INFINI_DECODE_CG_TP = "1"
+INFINI_REQUEST_TIMEOUT_S = "600"
 INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096,2048,1024,512"
 INFINI_PREFILL_CHUNKED = "1"
 INFINI_PREFILL_CHUNK_SIZE = "4096"
