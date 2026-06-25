@@ -7,7 +7,7 @@
 2. 在使用 case 自带 `.env` 的前提下，用 `docker-compose` 启动 `master` 与模型 worker。
 3. 通过 `validate.sh` 验证：注册中心/路由健康性、模型聚合、经由路由的 `/v1/chat/completions`，以及 embedding `/v1/embeddings` 可用性（required）。
 
-若目标机可直接 rsync 开发 worktree，可跳过零阶段，从下文 **「从开发 worktree rsync」** 开始。
+若目标机可直接 rsync 开发 worktree（且已安装 `rsync`），可跳过零阶段，从下文 **「路径 B — 从开发 worktree rsync」** 开始。无 `rsync` 时一律使用 **路径 A** 打包脚本。
 
 ## 目标
 
@@ -34,78 +34,99 @@ monorepo 开发目录（同一 inode）：
 
 下文 **第一阶段至第三阶段** 的 `cd "${WORKSPACE}/..."` 均指该全新目录。镜像在 Phase 1 于 `WORKSPACE` 内首次构建；验证在 Phase 3 于同一 `WORKSPACE` 的 case 目录执行。
 
-#### 路径 A — 从 tar 包解压（离线交付，推荐无外网 / 无 DEV_WS 时）
+#### 路径 A — 从 tar 包解压（离线交付，推荐无外网 / 无 DEV_WS / 无 rsync 时）
 
 目标机**没有**开发 worktree、仅收到 U 盘 / 内网拷贝的 tar 时，用本节。典型交付物：
 
 | 文件 | 内容 | 必需 |
 |------|------|------|
-| `deployment_20260611-src-<IL>-<IC>.tar.gz` | `InfiniCore/`、`InfiniLM/`、`InfiniOrchestrator/` + 根目录 `MANIFEST` | 是 |
+| `deployment-src-<IL>-<IC>-<IO>.tar.gz` | `InfiniCore/`、`InfiniLM/`、`InfiniOrchestrator/` + 根目录 `MANIFEST` | 是 |
 | `infinilm-svc-metax-hpcc-base.tar.gz` | `docker save` 的基础镜像 `infinilm-svc:metax-hpcc-1004_218-202602281209` | 是（目标机尚无该镜像时） |
 | `infinilm-orchestrator-metax-<tag>.tar.gz` | 可选：源端已构建的 orchestrator 镜像（可跳过第一阶段） | 否 |
 
-**源端打包**（在有 git 的开发机上执行一次）：
+**源端打包**（在有 git 的开发机或 monorepo worktree 上执行一次）：
 
 ```bash
-DEV_WS="/home/zenghua/workspace/deployment_202606"
-STAGING="/data-aisoft/zenghua/staging/offline-bundle-$(date -u +%Y%m%d)"
-mkdir -p "${STAGING}"
+CASE="/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+STAGING="/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)"
+STAGING="${STAGING}" "${CASE}/bench/pack-offline-worktree.sh"
 
-IL_SHA="$(git -C "${DEV_WS}/InfiniLM" rev-parse --short HEAD)"
-IC_SHA="$(git -C "${DEV_WS}/InfiniCore" rev-parse --short HEAD)"
-SRC_TAR="${STAGING}/deployment_20260611-src-${IL_SHA}-${IC_SHA}.tar.gz"
+# 预览 tar 命令与排除项（不写文件）：
+# DRY_RUN=1 STAGING=/tmp/offline-pack-test "${CASE}/bench/pack-offline-worktree.sh"
 
-cat > "${DEV_WS}/MANIFEST" <<EOF
-IL_SHA=${IL_SHA}
-IC_SHA=${IC_SHA}
-PACK_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209
-EOF
-
-tar -C "${DEV_WS}" -czf "${SRC_TAR}" \
-  --exclude='InfiniCore/.git' --exclude='InfiniCore/.xmake' --exclude='InfiniCore/build' \
-  --exclude='InfiniLM/.git' --exclude='InfiniLM/.xmake' --exclude='InfiniLM/build' \
-  --exclude='InfiniOrchestrator/.git' \
-  --exclude='bench_results' --exclude='.env' --exclude='.image_tag' \
-  InfiniCore InfiniLM InfiniOrchestrator MANIFEST
-rm -f "${DEV_WS}/MANIFEST"
-
-# 基础镜像（约数十 GB，仅需打一次）
+# 基础镜像（约数十 GB，仅需打一次；与源码 tar 分开交付）
 docker save infinilm-svc:metax-hpcc-1004_218-202602281209 \
   | gzip > "${STAGING}/infinilm-svc-metax-hpcc-base.tar.gz"
 
 ls -lh "${STAGING}/"
 ```
 
-将 `${STAGING}/` 下 tar 拷贝至目标机（U 盘、scp、站点 NFS 等）。
+将 `${STAGING}/deployment-src-*.tar.gz`（及可选基础镜像 tar）拷贝至目标机（U 盘、scp、站点 NFS 等）。
+
+**打包排除项**（完整列表见 [`bench/pack-offline-excludes.txt`](bench/pack-offline-excludes.txt)）：
+
+| 类别 | 排除路径 / 模式 | 原因 |
+|------|-----------------|------|
+| VCS / 构建缓存 | `**/.git`、`**/.xmake`、`**/build`、`**/__pycache__` | 体积大；目标机离线构建不需要 |
+| 站点 bloat | `bench_results/`、`bisect/`、`benchmarks/`、`scripts/` | 基准结果与开发脚本非部署必需 |
+| 大文件 artifact | `**/*.tar`、`**/*.tar.gz`、`**/offline-bundle-test` | 避免把历史 bundle 再打进包 |
+| 运行时秘密 | `**/.env`、`**/.image_tag` | 模板 `*.example` 仍保留在包内 |
+
+完整 worktree 可达 40+ GiB；打包后源码 tar 通常约 **100–200 MiB**。
 
 **目标端：解压并设定 WORKSPACE**
 
+方式 1 — helper 脚本（需先从 tar 取出脚本，或随 U 盘拷贝 `bench/unpack-offline-worktree.sh`）：
+
 ```bash
 OFFLINE_ROOT="/opt/offline/infinilm-metax-20260611"
-SRC_TAR="/path/to/deployment_20260611-src-ILSHA-ICSHA.tar.gz"   # 实际文件名
+SRC_TAR="/path/to/deployment-src-ILSHA-ICSHA-IOSHA.tar.gz"
 BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
 
+# 从 tar 内取出 unpack helper（仅需一次）
+HELPER="$(mktemp)"
+tar -xzf "${SRC_TAR}" -O \
+  InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/bench/unpack-offline-worktree.sh \
+  > "${HELPER}" && chmod +x "${HELPER}"
+
+OFFLINE_ROOT="${OFFLINE_ROOT}" SRC_TAR="${SRC_TAR}" "${HELPER}"
+rm -f "${HELPER}"
+```
+
+方式 2 — 手动解压（无 helper 时）：
+
+```bash
 rm -rf "${OFFLINE_ROOT}" && mkdir -p "${OFFLINE_ROOT}"
 tar -xzf "${SRC_TAR}" -C "${OFFLINE_ROOT}"
-
 WORKSPACE="${OFFLINE_ROOT}"
-set -a
-# shellcheck source=/dev/null
-source "${WORKSPACE}/MANIFEST"
-set +a
-echo "WORKSPACE=${WORKSPACE} IL_SHA=${IL_SHA} IC_SHA=${IC_SHA}"
-
-if ! docker images | grep -q 'infinilm-svc.*metax-hpcc-1004_218-202602281209'; then
-  gunzip -c "${BASE_TAR}" | docker load
-fi
-docker images | grep 'infinilm-svc.*metax-hpcc-1004_218-202602281209'
-
+set -a && source "${WORKSPACE}/MANIFEST" && set +a
 grep -n 'gc.collect' "${WORKSPACE}/InfiniLM/python/infinilm/modeling_utils.py"
 test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/validate.sh"
 ```
 
-解压完成后 **从「第一阶段」继续**；构建时用 `MANIFEST` 的 `IL_SHA`/`IC_SHA`（见第一阶段注释）。
+加载基础镜像（目标机尚无 `infinilm-svc:metax-hpcc-1004_218-202602281209` 时）：
+
+```bash
+if ! docker images | grep -q 'infinilm-svc.*metax-hpcc-1004_218-202602281209'; then
+  gunzip -c "${BASE_TAR}" | docker load
+fi
+docker images | grep 'infinilm-svc.*metax-hpcc-1004_218-202602281209'
+```
+
+解压完成后 **从「第一阶段」继续**；构建时用 `MANIFEST` 的 `IL_SHA`/`IC_SHA`/`IO_SHA`（见第一阶段注释）。
+
+**更新部署（仅源码刷新）**
+
+收到新的 `deployment-src-*.tar.gz` 后，在现有 `WORKSPACE` 上覆盖解压（或解压到新目录后改 `WORKSPACE`），重新执行第一阶段 `build-image.sh`，更新 case `.env` 中的 `IMAGE_TAG`（或从 `.image_tag` 复制），再：
+
+```bash
+cd "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+docker-compose up -d --force-recreate \
+  master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
+# slave 主机同理 force-recreate worker-slave-xiyan-qwencoder-8200
+```
+
+无需 rsync 增量同步；每次全量 tar 即可。
 
 **可选 — 跳过第一阶段**（已交付预构建 orchestrator 镜像 tar 时）：
 
@@ -117,7 +138,15 @@ echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-met
 # 直接进入第二阶段 A
 ```
 
-#### 路径 B — 从开发 worktree rsync（同机 / 有 DEV_WS 时）
+#### 无 rsync 环境（离线目标机）
+
+Kylin / RHEL 最小化镜像常见仅有 `tar`、`gzip`、`docker`，**无 `rsync`**。此时：
+
+- **推荐：** 全程使用 **路径 A** — 源端 `pack-offline-worktree.sh`，目标端 `tar -xzf` / `unpack-offline-worktree.sh`；源端与目标端均不需要 rsync。
+- **第一阶段 `build-image.sh`**：若主机无 rsync，脚本自动改用 `cp -a`  staging（日志会打印 `offline fallback`）。
+- **勿用** `scp -r` 整棵 worktree（会带上 `build/`、`bench_results/` 等 bloat）；始终用打包脚本的排除列表。
+
+#### 路径 B — 从开发 worktree rsync（同机 / 有 DEV_WS 且已安装 rsync）
 
 ```bash
 DEV_WS="/home/zenghua/workspace/deployment_202606/deployment_202606"   # 或 /root/zenghua/... 下同 inode
@@ -139,13 +168,29 @@ done
 - `scripts/hpcc_env.sh`、`docker_exec_hpcc.sh` 等 dev 捷径（本指南步骤自洽，不依赖它们）
 - 任何已 `docker build` 的中间层或 worktree 内 `InfiniCore/build`、`.xmake` 缓存
 
+#### 路径 B′ — 无 rsync 同机 fallback（有 DEV_WS，无 rsync）
+
+同机验证时，用路径 A 打包脚本代替 rsync：
+
+```bash
+DEV_WS="/opt/offline/infinilm-metax-20260622"
+CASE="${DEV_WS}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+STAGING=/tmp/offline-src
+WORKSPACE="/tmp/offline-deploy-verify-$(date -u +%Y%m%d)"
+
+STAGING="${STAGING}" "${CASE}/bench/pack-offline-worktree.sh"
+mkdir -p "${WORKSPACE}"
+tar -xzf "${STAGING}"/deployment-src-*.tar.gz -C "${WORKSPACE}"
+```
+
 ## 部署前检查
 
 - `docker`（可加载/运行本地镜像）
 - `docker-compose` **v1.x**（legacy 二进制；本 case 的 compose 文件针对 v1.x 做了兼容，**不要用** `docker compose` 插件）
-- `git`（路径 B rsync 时用于核对 SHA；路径 A tar 解压可用 `MANIFEST` 代替）
+- `tar` / `gzip`（路径 A 打包/解压、`docker load` 预加载基础镜像）
 - `curl`（验证脚本）
-- `tar` / `gzip`（路径 A 解压交付包、`docker load` 预加载基础镜像）
+- `git`（可选；路径 B rsync 时用于核对 SHA；路径 A 用 `MANIFEST` 代替）
+- `rsync`（**非必需**；路径 B 同机 rsync 时需要；路径 A 与 `build-image.sh` cp fallback 均不需要）
 
 ### 端口占用
 

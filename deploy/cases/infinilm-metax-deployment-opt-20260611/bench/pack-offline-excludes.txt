@@ -1,0 +1,29 @@
+# VCS / build caches
+**/.git
+**/.xmake
+**/build
+**/target
+**/__pycache__
+**/*.pyc
+
+# Monorepo non-ship dirs (not needed for 20260611 deploy)
+bench_results
+bisect
+benchmarks
+evidence
+scripts
+InfiniLM-SVC
+
+# Large deploy artifacts
+**/*.tar
+**/*.tar.gz
+**/*.tgz
+**/*.jsonl
+**/offline-bundle-test
+**/offline-bundle-*
+deploy/cases/**/results
+
+# Local runtime secrets (templates *.example stay tracked)
+**/.env
+**/.env.slave-sim
+**/.image_tag

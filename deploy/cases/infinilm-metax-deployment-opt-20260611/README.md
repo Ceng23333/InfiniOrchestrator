@@ -27,7 +27,7 @@ After `build-image.sh`, copy the tag into `.env` from `.image_tag` (written at b
 
 ## Quick start
 
-Build and validate in a **fresh `WORKSPACE`** (rsync codebase only from dev worktree — no prebuilt image or `.image_tag`; see [`OFFLINE_DEPLOY_GUIDE_ZH_CN.md`](OFFLINE_DEPLOY_GUIDE_ZH_CN.md)):
+Build and validate in a **fresh `WORKSPACE`** (Path A: [`bench/pack-offline-worktree.sh`](bench/pack-offline-worktree.sh) → transfer tar → [`bench/unpack-offline-worktree.sh`](bench/unpack-offline-worktree.sh); or Path B rsync from dev worktree — no prebuilt image or `.image_tag`; see [`OFFLINE_DEPLOY_GUIDE_ZH_CN.md`](OFFLINE_DEPLOY_GUIDE_ZH_CN.md) §路径 A):
 
 Build the runtime image once:
 

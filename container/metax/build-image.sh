@@ -21,22 +21,41 @@ cleanup() { rm -rf "${STAGE}"; }
 trap cleanup EXIT
 
 cp "${SCRIPT_DIR}/Dockerfile.orchestrator-runtime" "${STAGE}/Dockerfile"
+
+stage_tree() {
+  local src_name="$1"
+  local src="${MONOREPO_ROOT}/${src_name}"
+  if command -v rsync >/dev/null 2>&1; then
+    echo "Staging ${src_name} via rsync..."
+    rsync -a \
+      --no-perms --no-owner --no-group \
+      --exclude='.git' \
+      --exclude='.xmake/**' \
+      --exclude='build/**' \
+      --exclude='.pytest_cache/' \
+      --exclude='*/.pytest_cache/' \
+      --exclude='__pycache__/' \
+      --exclude='*/__pycache__/' \
+      --exclude='*.pyc' \
+      --exclude='*.pyo' \
+      --exclude='InfiniCore/python/infinicore/lib/**' \
+      "${src}" "${STAGE}/"
+  else
+    echo "rsync not found; staging ${src_name} via cp -a (offline fallback)..."
+    cp -a "${src}" "${STAGE}/"
+    rm -rf "${STAGE}/${src_name}/.git" "${STAGE}/${src_name}/.xmake" "${STAGE}/${src_name}/build" 2>/dev/null || true
+    find "${STAGE}/${src_name}" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE}/${src_name}" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE}/${src_name}" \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
+  fi
+}
+
 # Exclude VCS metadata and build caches from context and image layers.
 # Some build-cache dirs (e.g. `.xmake/` and `build/`) may be root-owned after
 # in-container builds; excluding them avoids host-side permission failures.
-rsync -a \
-  --no-perms --no-owner --no-group \
-  --exclude='.git' \
-  --exclude='.xmake/**' \
-  --exclude='build/**' \
-  --exclude='.pytest_cache/' \
-  --exclude='*/.pytest_cache/' \
-  --exclude='__pycache__/' \
-  --exclude='*/__pycache__/' \
-  --exclude='*.pyc' \
-  --exclude='*.pyo' \
-  --exclude='InfiniCore/python/infinicore/lib/**' \
-  "${MONOREPO_ROOT}/InfiniCore" "${MONOREPO_ROOT}/InfiniLM" "${STAGE}/"
+for repo in InfiniCore InfiniLM; do
+  stage_tree "${repo}"
+done
 
 # Optional: copy prebuilt runtime artifacts into the image so vendored
 # Python extensions can resolve ABI symbols without recompiling.
