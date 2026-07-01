@@ -52,9 +52,11 @@ fi
 if git -C "${INFINILM_SRC}" rev-parse --short HEAD >/dev/null 2>&1; then
   IL_SHA="$(git -C "${INFINILM_SRC}" rev-parse --short HEAD)"
   IC_SHA="$(git -C "${INFINICORE_SRC}" rev-parse --short HEAD)"
+  IO_SHA="$(git -C "${MONOREPO_ROOT}/InfiniOrchestrator" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 else
   IL_SHA="${IL_SHA:-unknown}"
   IC_SHA="${IC_SHA:-unknown}"
+  IO_SHA="${IO_SHA:-unknown}"
 fi
 BUILD_TS="$(date -u +%Y%m%d)"
 NEW_TAG="${NEW_TAG:-infinilm-svc:metax-hpcc-ai3107-${IL_SHA}-${IC_SHA}-${BUILD_TS}}"
@@ -100,6 +102,11 @@ fi
 docker commit \
   --change 'WORKDIR /app' \
   --change 'ENTRYPOINT ["/bin/bash", "/app/docker_entrypoint.sh"]' \
+  --change "ENV IL_SHA=${IL_SHA}" \
+  --change "ENV IC_SHA=${IC_SHA}" \
+  --change "ENV IO_SHA=${IO_SHA}" \
+  --change "ENV BUILD_TS=${BUILD_TS}" \
+  --change "ENV IMAGE_TAG=${NEW_TAG}" \
   "${CONTAINER_NAME}" \
   "${NEW_TAG}"
 
@@ -109,6 +116,7 @@ echo "${NEW_TAG}" > "${SCRIPT_DIR}/.image_tag"
 cat > "${SCRIPT_DIR}/MANIFEST" <<EOF
 IL_SHA=${IL_SHA}
 IC_SHA=${IC_SHA}
+IO_SHA=${IO_SHA}
 BUILD_TS=${BUILD_TS}
 SOURCE_IMAGE=${SOURCE_IMAGE}
 IMAGE_TAG=${NEW_TAG}

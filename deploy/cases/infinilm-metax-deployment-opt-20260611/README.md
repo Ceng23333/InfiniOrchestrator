@@ -135,4 +135,18 @@ Results land under `bench_results/deploy_*_<timestamp>/`.
 
 ## XiYanSQL note
 
-XiYanSQL loads 14 × ~4.8 GB safetensors shards. The image must include `gc.collect()` call sites in `/workspace/InfiniLM/python/infinilm/modeling_utils.py` (landed in InfiniLM `8e8b492`). This ships via `build-image.sh` rsync — not a runtime env var or pip package.
+XiYanSQL loads 14 × ~4.8 GB safetensors shards. The image must include `gc.collect()` call sites in `/workspace/InfiniLM/python/infinilm/modeling_utils.py` (landed in InfiniLM `8e8b492`). This ships via `build-image.sh` staging — not a runtime env var or pip package.
+
+E2E doc validation (2026-06-25): see [`bench_results/offline_doc_validate_20260625_202455/summary.md`](../../../../bench_results/offline_doc_validate_20260625_202455/summary.md) and [`bench/wait_worker_capture.sh`](bench/wait_worker_capture.sh).
+
+## Unexpected-behavior bench (cancel / disconnect)
+
+Fault-injection regression for client cancel, TCP disconnect, and short-timeout probes — run from the **monorepo root** (full dev/HPC worktree; not included in offline src tar):
+
+```bash
+./scripts/run_unexpected_behavior_bench.sh
+SCENARIOS=cancel_mid_decode ./scripts/repro_cancel_token_mismatch.sh
+./scripts/run_unexpected_behavior_bench.sh --via-router
+```
+
+See [`scripts/unexpected_behavior/README.md`](../../../../scripts/unexpected_behavior/README.md) and [OFFLINE_DEPLOY_GUIDE_ZH_CN.md §M) cancel/disconnect](OFFLINE_DEPLOY_GUIDE_ZH_CN.md#m-canceldisconnect-后-sampled-token-count-mismatchworker-退出).

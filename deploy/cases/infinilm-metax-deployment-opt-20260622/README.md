@@ -31,6 +31,8 @@ docker-compose up -d
 
 See [OFFLINE_DEPLOY_GUIDE_ZH_CN.md](OFFLINE_DEPLOY_GUIDE_ZH_CN.md) and [BUILD_GUIDE.md](BUILD_GUIDE.md).
 
+Unexpected-behavior bench (cancel/disconnect regression): [`scripts/run_unexpected_behavior_bench.sh`](../../../../scripts/run_unexpected_behavior_bench.sh) — full worktree only; see [20260611 README §Unexpected-behavior](../infinilm-metax-deployment-opt-20260611/README.md#unexpected-behavior-bench-cancel--disconnect).
+
 ## Services
 
 **Master:** registry + router  

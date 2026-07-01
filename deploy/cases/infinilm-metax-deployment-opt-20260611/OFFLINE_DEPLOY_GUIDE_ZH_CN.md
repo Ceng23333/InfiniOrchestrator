@@ -91,14 +91,20 @@ tar -xzf "${SRC_TAR}" -O \
 
 OFFLINE_ROOT="${OFFLINE_ROOT}" SRC_TAR="${SRC_TAR}" "${HELPER}"
 rm -f "${HELPER}"
+export WORKSPACE="${OFFLINE_ROOT}"
+set -a && source "${WORKSPACE}/MANIFEST" && set +a
 ```
 
 方式 2 — 手动解压（无 helper 时）：
 
 ```bash
+OFFLINE_ROOT="/opt/offline/infinilm-metax-20260611"
+SRC_TAR="/path/to/deployment-src-ILSHA-ICSHA-IOSHA.tar.gz"
+BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
+
 rm -rf "${OFFLINE_ROOT}" && mkdir -p "${OFFLINE_ROOT}"
 tar -xzf "${SRC_TAR}" -C "${OFFLINE_ROOT}"
-WORKSPACE="${OFFLINE_ROOT}"
+export WORKSPACE="${OFFLINE_ROOT}"
 set -a && source "${WORKSPACE}/MANIFEST" && set +a
 grep -n 'gc.collect' "${WORKSPACE}/InfiniLM/python/infinilm/modeling_utils.py"
 test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/validate.sh"
@@ -239,6 +245,24 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 
 从 **tar 解压** 的 `WORKSPACE` 无 `.git` 时，用 `MANIFEST` 中的 `IL_SHA`/`IC_SHA` 核对，并用 `grep` 代替 `git rev-parse`。
 
+### 模型路径核对（compose 前必做）
+
+模板 [`.env.master.example`](.env.master.example) 中的 NFS 路径在部分站点可能为空目录。启动 compose **前**确认权重可读：
+
+```bash
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+# 读模板默认值或已有 .env
+QWEN3_32B_DIR="${QWEN3_32B_DIR:-/data-aisoft/zenghua/models/Qwen3-32B}"
+EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-/data-aisoft/zenghua/models/embedding-models}"
+
+test -f "${QWEN3_32B_DIR}/config.json" || echo "WARN: QWEN3_32B_DIR empty — set to actual path (e.g. /root/zenghua/models/Qwen3-32B)"
+for d in MiniCPM-Embedding-Light MiniCPM-Reranker-Light bce-reranker-base_v1; do
+  test -d "${EMBEDDING_MODEL_DIR}/${d}" || test -d "/data-aisoft/zenghua/models/${d}" || echo "WARN: missing embedding subdir ${d}"
+done
+```
+
+若 `embedding-models/` 为空但三个子目录在父级 `models/` 下，将 `EMBEDDING_MODEL_DIR` 设为父目录（实测 2026-06-25：`/data-aisoft/zenghua/models`）。若 `Qwen3-32B/` 为空，改用本机实际路径后再 `docker-compose up`。见排障 **L) 模型路径为空**。
+
 ### 模型目录（宿主机只读挂载）
 
 路径已写入 [`.env.master.example`](.env.master.example) / [`.env.slave.example`](.env.slave.example)，部署前确认目录存在：
@@ -262,7 +286,7 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 
 ### XiYanSQL 特殊说明
 
-XiYanSQL 有 14 个 ~4.8 GB 分片。镜像内的 `/workspace/InfiniLM` 必须包含 `modeling_utils.py` 中每分片后的 `gc.collect()`（InfiniLM `8e8b492` 已包含）。这是构建时 rsync 进镜像的 Python 源码补丁，**不是** pip 包，也**不是**运行时环境变量。
+XiYanSQL 有 14 个 ~4.8 GB 分片。镜像内的 `/workspace/InfiniLM` 必须包含 `modeling_utils.py` 中每分片后的 `gc.collect()`（InfiniLM `8e8b492` 已包含）。这是构建时 staging（rsync 或 `cp -a` fallback）进镜像的 Python 源码补丁，**不是** pip 包，也**不是**运行时环境变量。
 
 ---
 
@@ -284,13 +308,15 @@ IMAGE_TAG="infini-orchestrator-metax:${IL_SHA}-${IC_SHA}-${BUILD_TS}"
 
 IMAGE_TAG="${IMAGE_TAG}" \
 BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209 \
-INFINI_RUNTIME_CONTAINER=infinilm-dev-20260622 \
+INFINI_RUNTIME_CONTAINER=__base__ \
 DOCKER_BUILD_NO_CACHE=1 \
 ./build-image.sh
 
 echo "${IMAGE_TAG}" > ../../deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag
 echo "Built: ${IMAGE_TAG}"
 ```
+
+**离线目标机**请使用 `INFINI_RUNTIME_CONTAINER=__base__`（从基础镜像 staging `/root/.infini`）。`infinilm-dev-*` 仅开发机可选。重复构建可省略 `DOCKER_BUILD_NO_CACHE=1` 以加速。
 
 **不要使用** `IMAGE_TAG=...:local`。`BUILD_TS` 为 UTC 日期（`YYYYMMDD`）；同一天重建会覆盖同名 tag，跨日重建需更新 `.env` 中的 `IMAGE_TAG`（或从 `.image_tag` 复制）。
 
@@ -448,26 +474,53 @@ curl -sf --noproxy "*" -X POST "http://${MASTER_IP}:8800/v1/chat/completions" \
 
 ## 第二阶段 A：Master 主机启动（单节参考）
 
-与上文 **「1) Master 主机」** 相同；完整 copy-paste 见双机部署节。
+与上文 **「1) Master 主机」** 相同。以下块在 **全新 `WORKSPACE`** 上经 2026-06-25 E2E 验证（unpack → build → validate → slave sim）。
+
+**公共变量**（Phase 2–3 共用；Phase 1 完成后设置 `IMAGE_TAG`）：
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
+WORKSPACE=/opt/offline/infinilm-metax-20260611   # 或 Path A 解压目录
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-MASTER_IP=<MASTER_IP>
-IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
+MASTER_IP="$(hostname -I | awk '{print $1}')"
+IMAGE_TAG="$(cat "${CASE}/.image_tag")"          # Phase 1 写入
+```
 
+**启动 master 栈**（若端口被占用，先 `cd "${CASE}" && docker-compose down`）：
+
+```bash
 cd "${CASE}"
 cp .env.master.example .env
 sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
+
+# 站点路径修正（模板 NFS 路径为空时）
+test -f /data-aisoft/zenghua/models/Qwen3-32B/config.json || \
+  sed -i 's|^QWEN3_32B_DIR=.*|QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B|' .env
+test -d /data-aisoft/zenghua/models/embedding-models/MiniCPM-Embedding-Light || \
+  sed -i 's|^EMBEDDING_MODEL_DIR=.*|EMBEDDING_MODEL_DIR=/data-aisoft/zenghua/models|' .env
 
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 ```
 
+**Worker CG 就绪等待**（`validate.sh` 前必做；Qwen TP=4 可能 30+ 分钟）：
+
+```bash
+"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-qwen-paged-8200-20260611 "Qwen paged"
+"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-9g-8100-20260611 "9g"
+
+# Embeddings：Flask warmup 约 2–5 分钟，轮询直到 20003 可用
+until curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-embedding-ada-002","input":"hello"}' | grep -q '"object"'; do
+  echo "waiting embeddings..."
+  sleep 15
+done
+```
+
 说明：
 
 - 不要用 `.env.example` 覆盖已有 `.env`。
-- Qwen3-32B 首次加载较慢（含 CG warmup），`validate.sh` 早期可能看到服务尚未注册，等待后重试。
+- Qwen3-32B 首次加载较慢（含 CG warmup），未完成 capture 时 `validate.sh` 会报 missing service — 先跑 `wait_worker_capture.sh`。
 - Master GPU worker 在 compose 网络内用 Docker DNS 名注册（`BABYSITTER_HOST=worker-master-*`）。
 
 ---
@@ -503,7 +556,8 @@ docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
 - `XIYAN_QWENCODER_DIR` 已挂载（见 `.env`）
 - GPU `4,5,6,7` 空闲（脚本会停止 `worker-master-9g-8100` 与 `worker-master-qwen-paged-8200`）
 - `worker-master-embeddings-20002` 保持运行（供 `validate.sh` embedding 步骤）
-- 可选：复制 [`/.env.slave-sim.example`](.env.slave-sim.example) 为 `.env.slave-sim` 并设置 `SLAVE_SIM_IP`
+- 可选：复制 [`.env.slave-sim.example`](.env.slave-sim.example) 为 `.env.slave-sim` 并设置 `SLAVE_SIM_IP`
+- Slave 模拟需在 `.env` 中设置 `XIYAN_QWENCODER_DIR`（与双机 slave 相同路径）
 
 **命令：**
 
@@ -511,10 +565,11 @@ docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
 CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
 cd "${CASE}"
 
-# 启动 slave 模拟（停 master GPU worker → 起 XiYan slave）
-./bench/simulate_slave_localhost.sh
+# 若 master .env 尚无 XiYan 路径（仅 master 栈时）
+grep -q '^XIYAN_QWENCODER_DIR=' .env || \
+  echo 'XIYAN_QWENCODER_DIR=/data-aisoft/zenghua/models/XGenerationLab/XiYanSQL-QwenCoder-32B-2504' >> .env
 
-# 完整验证（含 validate.sh + registry 检查 + summary.md）
+./bench/simulate_slave_localhost.sh
 ./bench/validate_slave_localhost.sh
 
 # 若 slave 已由 simulate 启动，可跳过重复启动：
@@ -530,7 +585,7 @@ SLAVE_SIM_SKIP_START=1 ./bench/validate_slave_localhost.sh
 | Chat | `SELECT 1` prompt 经 router 返回 HTTP 200 |
 | Master → slave 连通 | master 容器内 `curl http://<LAN_IP>:8200/v1/models` 成功 |
 
-结果写入 `bench_results/slave_sim_<timestamp>/summary.md`。
+结果写入 `${WORKSPACE}/bench_results/slave_sim_<timestamp>/summary.md`（与 case 同级的 monorepo `bench_results/`）。
 
 **恢复 master 全栈：**
 
@@ -558,7 +613,19 @@ SLAVE_IP=<SLAVE_IP>
 
 ## 第三阶段：执行验证
 
-在 **同一 `WORKSPACE`** 的 case 目录执行（非 `DEV_WS`）。
+在 **同一 `WORKSPACE`** 的 case 目录执行（非 `DEV_WS`）。**须先完成** 第二阶段 A 的 CG / embeddings 就绪等待。
+
+**仅 Master（无 Slave 或 GPU 不足）：**
+
+```bash
+WORKSPACE=/opt/offline/infinilm-metax-20260611
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+MASTER_IP="$(hostname -I | awk '{print $1}')"
+
+cd "${CASE}"
+ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
+  ./validate.sh "${MASTER_IP}"
+```
 
 **双机（Master + Slave）：**
 
@@ -571,18 +638,6 @@ SLAVE_IP=<SLAVE_IP>
 cd "${CASE}"
 ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
   ./validate.sh "${MASTER_IP}" "${SLAVE_IP}" xiyan
-```
-
-**仅 Master（无 Slave 或 GPU 不足）：**
-
-```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
-MASTER_IP=<MASTER_IP>
-
-cd "${CASE}"
-ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
-  ./validate.sh "${MASTER_IP}"
 ```
 
 单机 GPU 不足时不要启动 `worker-slave-xiyan-qwencoder-8200`；仅 Phase 2A + `./validate.sh <master_ip>` 即可验证 master 全栈。
@@ -703,21 +758,33 @@ docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 bash -lc \
 3. 查看 slave babysitter 日志是否有 exit 137
 4. 重建：`docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200`
 
-### E) Embedding 校验失败
+### E) Embedding 校验失败 / `validate.sh` embeddings FAIL
 
-1. `docker-compose up -d --force-recreate worker-master-embeddings-20002`
-2. 确认 `EMBEDDING_MODEL_DIR` 下三个子目录存在
-3. `docker logs -f infiniorch-worker-master-embeddings-20002-20260611`
+现象：`validate.sh` 第 5 步 FAIL，或 `curl :20003/v1/embeddings` 连接被重置。
+
+原因：embeddings worker 仍在加载三个子模型并 **warmup**（约 2–5 分钟）；或 `EMBEDDING_MODEL_DIR` 指向空的 `embedding-models/` 导致 compose 挂载失败。
+
+处理：
+
+1. 确认子目录存在（见 **模型路径核对**）；若子目录在父级 `models/` 下，设 `EMBEDDING_MODEL_DIR=/data-aisoft/zenghua/models`
+2. 轮询直至就绪：
+   ```bash
+   until curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
+     -H 'Content-Type: application/json' \
+     -d '{"model":"text-embedding-ada-002","input":"hello"}' | grep -q '"object"'; do sleep 15; done
+   ```
+3. `docker-compose up -d --force-recreate worker-master-embeddings-20002`
+4. `docker exec infiniorch-worker-master-embeddings-20002-20260611 bash -lc 'tail -40 $(ls -t /app/logs/babysitter_*.log | head -1)'`
 
 ### F) docker-compose 兼容性
 
 - 使用 `docker-compose`（v1.x legacy），不要用 `docker compose` 插件。
 - compose 文件 `version: "2.4"` 针对 v1.x 调优。
 
-### G) 构建拉取镜像
+### G) 构建拉取镜像 / staging
 
 - 确认 `infinilm-svc:metax-hpcc-1004_218-202602281209` 已在本地。
-- 构建脚本只 rsync 本地 `InfiniCore/` + `InfiniLM/`，不需要网络。
+- 构建脚本 staging 使用本地 `InfiniCore/` + `InfiniLM/`：**有 rsync 时用 rsync，无 rsync 时自动 `cp -a` fallback**（日志见 `offline fallback`），不需要外网。
 
 ### H) 构建失败 `hcComplex.h: No such file or directory`
 
@@ -920,6 +987,80 @@ firewall-cmd --list-ports 2>/dev/null || true
 | **J)** | 转发被禁用或 iptables 拦截 | 路由正确，但容器 curl 仍失败 |
 
 两节可同时需要：先确认 **I)** 路由正确，再按 **J)** 检查 sysctl 与 FORWARD。
+
+### K) 端口冲突 / 旧栈未清理
+
+现象：`docker-compose up` 报 `port is already allocated`，或 `validate.sh` 连到旧 registry 数据。
+
+处理：
+
+```bash
+ss -tlnp | grep -E ':8800|:18000|:20003|:8102|:8200'
+cd "${CASE}" && docker-compose down
+# 若在其他目录曾部署同 case，对该 WORKSPACE 也 down
+docker ps --format '{{.Names}}' | grep infiniorch
+```
+
+E2E 验证前须停止所有 `infiniorch-*-opt-20260611` 容器。
+
+### L) 模型路径为空 / compose 挂载失败
+
+现象：`Cannot start service worker-master-embeddings-20002: chown ... embedding-models: operation not permitted`；或 Qwen worker 日志找不到权重。
+
+原因：`.env.master.example` 中 `QWEN3_32B_DIR` / `EMBEDDING_MODEL_DIR` 指向 **空目录**（NFS 上仅有占位路径）。
+
+处理（metax-151 实测 2026-06-25）：
+
+```bash
+# Qwen 权重在 /root/zenghua/models/Qwen3-32B
+sed -i 's|^QWEN3_32B_DIR=.*|QWEN3_32B_DIR=/root/zenghua/models/Qwen3-32B|' .env
+
+# embedding 三子目录在 models/ 父级而非 embedding-models/
+sed -i 's|^EMBEDDING_MODEL_DIR=.*|EMBEDDING_MODEL_DIR=/data-aisoft/zenghua/models|' .env
+
+docker-compose up -d --force-recreate worker-master-qwen-paged-8200 worker-master-embeddings-20002
+```
+
+部署前用 **模型路径核对** 节的 `test -f config.json` / `test -d` 检查。
+
+### M) cancel/disconnect 后 `sampled token count mismatch`（worker 退出）
+
+**现象：** 9g / Qwen babysitter 日志先出现 `Request … was cancelled`，随后 `Error in step loop: sampled token count mismatch: got 1 expected 0`，`_step_loop` 退出，worker 不再响应 `/health`。
+
+**原因：** 客户端断开、路由探活超时或 streaming 提前关闭，与 GPU forward 完成采样存在竞态。v1 row scheduler 的 `_update_requests_from_rows` 在 aborted 行上仍收到 GPU 采样 token，但旧逻辑将 `expected_tokens` 计为 0，触发 `RuntimeError` 并杀死整个 inference worker。
+
+**处理：**
+
+1. 升级含 cancel-fix 的镜像（InfiniLM `llm.py` 对 aborted 行丢弃 orphan sample，且 step loop 不因 recoverable mismatch 退出）。
+2. 临时规避：避免对 worker 使用极短 `curl --max-time`、并发 abort 探针；路由 health check 使用独立短 prompt 或非 streaming 请求。
+
+**复现 / 回归（完整 worktree，不在 offline src tar 内）：**
+
+```bash
+# 完整 worktree 根目录
+export INFINILM_PREFILL_WORK=/path/to/deployment_worktree
+
+# 全场景
+./scripts/run_unexpected_behavior_bench.sh
+
+# 仅 cancel 复现
+SCENARIOS=cancel_mid_decode ./scripts/repro_cancel_token_mismatch.sh
+
+# 经 router
+./scripts/run_unexpected_behavior_bench.sh --via-router
+```
+
+场景说明见 [`scripts/unexpected_behavior/README.md`](../../../../scripts/unexpected_behavior/README.md)。
+
+**日志核对：**
+
+```bash
+docker exec infiniorch-worker-master-9g-8100-20260611 bash -lc \
+  'grep -E "cancelled|sampled token count mismatch|Error in step loop" \
+   $(ls -t /app/logs/babysitter_*.log | head -1) | tail -20'
+```
+
+修复后应看到 `aborted by client, skipping update`，**不应**再出现 `Error in step loop`。
 
 #### 备选（不推荐为本 case 默认）
 

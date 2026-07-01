@@ -128,7 +128,9 @@ docker-compose up -d --force-recreate
 
 ## 排障
 
-与 20260611 相同（9g paged、Qwen CG、XiYan OOM、NFS 路由），容器名后缀改为 `20260622`。
+与 [20260611 指南](../infinilm-metax-deployment-opt-20260611/OFFLINE_DEPLOY_GUIDE_ZH_CN.md#排障troubleshooting) 相同（9g paged、Qwen CG、XiYan OOM、NFS 路由），容器名后缀改为 `20260622`。
+
+**cancel/disconnect 后 worker 退出：** 见 20260611 排障 **[M) sampled token count mismatch](../infinilm-metax-deployment-opt-20260611/OFFLINE_DEPLOY_GUIDE_ZH_CN.md#m-canceldisconnect-后-sampled-token-count-mismatchworker-退出)**；回归脚本 [`scripts/run_unexpected_behavior_bench.sh`](../../../../scripts/run_unexpected_behavior_bench.sh)（需完整 worktree）。
 
 查看 babysitter 日志：
 
