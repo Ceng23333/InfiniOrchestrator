@@ -35,11 +35,39 @@ def log_response_info(response):
     return response
 
 
-embedding_model_name = "/workspace/models/MiniCPM-Embedding-Light"
+embedding_model_name = "/workspace/models/bge-m3"
 logger.info(f"Loading embedding model: {embedding_model_name}")
-tokenizer = LlamaTokenizer.from_pretrained(embedding_model_name, trust_remote_code=True, local_files_only=True)
-embedding_model = AutoModel.from_pretrained(embedding_model_name, trust_remote_code=True, torch_dtype=torch.float16, local_files_only=True).to("cuda")
-embedding_model.eval()
+tokenizer = AutoTokenizer.from_pretrained(embedding_model_name, trust_remote_code=True, local_files_only=True)
+_bge_backbone = AutoModel.from_pretrained(
+    embedding_model_name, trust_remote_code=True, torch_dtype=torch.float16, local_files_only=True
+).to("cuda")
+_bge_backbone.eval()
+
+
+class BgeM3Encoder:
+    """Thin wrapper: BGE-M3 uses XLM-RoBERTa + CLS pooling, not MiniCPM-style encode_corpus."""
+
+    def __init__(self, model, tok, device="cuda"):
+        self.model = model
+        self.tokenizer = tok
+        self.device = device
+
+    def _encode(self, texts):
+        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            hidden = self.model(**inputs).last_hidden_state[:, 0]
+            return torch.nn.functional.normalize(hidden, p=2, dim=1)
+
+    def encode_corpus(self, texts, return_sparse_vectors=True):
+        dense = self._encode(texts)
+        sparse = {} if return_sparse_vectors else None
+        return dense, sparse
+
+    def encode_query(self, texts, return_sparse_vectors=True):
+        return self.encode_corpus(texts, return_sparse_vectors=return_sparse_vectors)
+
+
+embedding_model = BgeM3Encoder(_bge_backbone, tokenizer)
 logger.info("Embedding model loaded successfully")
 
 
