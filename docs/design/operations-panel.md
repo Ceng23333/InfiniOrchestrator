@@ -110,9 +110,10 @@ erDiagram
 | `healthy` | From `/health` or process liveness. |
 | `models` | Aggregated model list from `/models` or `/services`. |
 | `servers` | Ordered list of **Server** refs currently behind this router (`server_id` / `service_name`, healthy flag, weight). Inverse of Server.`router_id`; empty when no backends registered. |
+| `metadata` | Aggregated view of backends’ Server.`metadata` keyed by `server_id` / `service_name` (e.g. `cache_type`, build_info, runtime_env, frontend). Router-local fields (LB annotations) may sit alongside; refreshed when `servers` is rediscovered. |
 | `stats_snapshot` | Optional projection of `/status` / `/stats` (request/error counters). |
 
-**Maps to today:** `infini-router` binary; Dynamo Frontend analog. `servers` projects router `/services` (and registry poll) into `ServiceInstance` rows — no Router entity store yet, only process + env.
+**Maps to today:** `infini-router` binary; Dynamo Frontend analog. `servers` projects router `/services` (and registry poll) into `ServiceInstance` rows; `metadata` rolls up each instance’s `metadata` map — no Router entity store yet, only process + env.
 
 ### Server
 
@@ -158,11 +159,12 @@ Live instances mirror registry heartbeats. **Historical** servers are immutable 
 | `server_id` | FK to Server. |
 | `cluster_id` | Denormalized for filters. |
 | `host_id` | Observed host. |
-| `router_id` | **Optional** — set when traffic went via Router. |
+| `router_id` | **Traffic path discriminator.** Set to the Router used for bench `/v1/*` traffic (**via Router**). Null means bench ran **direct against Server** (Cluster→Server shortcut; `BENCH_TARGET_URL` only). `server_id` still records which backend was under test / scraped for `/metadata`+`/metrics` even when `router_id` is set. |
+| `model` | Model slug under test for this run (warehouse partition key; aligns with Server.`model` / harness `MODEL`). First-class filter for Benchmark views. |
 | `bench_args` | **Concrete args for this run** (not Bench defaults). Key/value map of harness knobs actually used: e.g. `MAX_CONCURRENCY`, `NUM_PROMPTS`, `input_len`/`output_len`, ceval `limit`, drain flags, `BENCH_TARGET_URL` / `ROUTER_URL`, and any Playground overrides. Required for reproducible compare/fork. |
 | `status` | Run outcome (`pass` / `fail` / …). |
 | `metrics` | Client columns (`ttft_*`, `ceval_em`, …) + `srv_*` from Prometheus scrape. |
-| Partition dims | `model`, `frontend`, `platform`, `arch`, `gpu_model`, `gpu_driver`, `date`. |
+| Partition dims | `frontend`, `platform`, `arch`, `gpu_model`, `gpu_driver`, `date` (plus `model` above). |
 
 **Maps to today:** one `raw/.../data.tsv` row → warehouse `facts` / rollups; `bench_args` projects emit-time env/CLI columns (and suite artifacts) rather than Bench.`default_params`. Live Dashboard scrapes are **not** BenchResults unless a harness emit persists them.
 
