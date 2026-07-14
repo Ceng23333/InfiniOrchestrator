@@ -36,6 +36,11 @@ If you prefer to build manually, use a context directory that contains `Dockerfi
 - `deploy/cases/infinilm-metax-deployment-opt-20260611/` — current case: offline Metax deploy with Phase 3 flags, master full stack + XiYanSQL slave preset.
 - `deploy/cases/infinilm-metax-deployment-opt-20260325/` — historical reference case (unchanged).
 
+## Design docs
+
+- [`docs/design/discovery-etcd.md`](docs/design/discovery-etcd.md) — proposed etcd discovery contract (later phase).
+- [`docs/design/operations-panel.md`](docs/design/operations-panel.md) — operations panel entity model (Cluster / Host / Router / Server / Bench / BenchResult) and Benchmark / Playground / Dashboard module IA.
+
 ## Future: etcd-backed discovery (proposal)
 
 Today’s first case targets the **existing HTTP registry** on the master (`REGISTRY_URL`, same protocol as `InfiniLM-SVC` babysitter code). A later phase can align with Dynamo-style discovery using **etcd** (lease-backed keys, `ETCD_ENDPOINTS`, key hierarchy similar to Dynamo’s discovery plane). See [`docs/design/discovery-etcd.md`](docs/design/discovery-etcd.md) for the proposed contract; implementation is **not** part of the initial skeleton.

@@ -99,8 +99,15 @@ def _load_embedding_models():
     }
     models = {}
     for key, path in EMBEDDING_MODEL_PATHS.items():
-        models[key] = loaders[key](path)
-        logger.info(f"Embedding model loaded successfully: {key}")
+        try:
+            models[key] = loaders[key](path)
+            logger.info(f"Embedding model loaded successfully: {key}")
+        except Exception as exc:
+            # MiniCPM remote code breaks on newer transformers (e.g. missing
+            # is_torch_fx_available). Keep serving whatever loaded (bge-m3).
+            logger.error("Failed to load embedding model %s from %s: %s", key, path, exc)
+    if not models:
+        raise RuntimeError("No embedding models could be loaded")
     return models
 
 
@@ -241,15 +248,30 @@ def emb():
 
 
 rerank_model_name = "/workspace/models/MiniCPM-Reranker-Light"
-logger.info(f"Loading reranking model: {rerank_model_name}")
-rerank_tokenizer = LlamaTokenizer.from_pretrained(rerank_model_name, trust_remote_code=True, local_files_only=True)
-rerank_model = AutoModelForSequenceClassification.from_pretrained(rerank_model_name, trust_remote_code=True, torch_dtype=torch.float16, local_files_only=True).to("cuda")
-rerank_model.eval()
-logger.info("Reranking model loaded successfully")
+rerank_tokenizer = None
+rerank_model = None
+try:
+    logger.info(f"Loading reranking model: {rerank_model_name}")
+    rerank_tokenizer = LlamaTokenizer.from_pretrained(
+        rerank_model_name, trust_remote_code=True, local_files_only=True
+    )
+    rerank_model = AutoModelForSequenceClassification.from_pretrained(
+        rerank_model_name,
+        trust_remote_code=True,
+        torch_dtype=torch.float16,
+        local_files_only=True,
+    ).to("cuda")
+    rerank_model.eval()
+    logger.info("Reranking model loaded successfully")
+except Exception as exc:
+    logger.error("MiniCPM reranker unavailable (non-fatal): %s", exc)
 
 
 def warmup_rerank_model():
     """Warmup the reranking model to avoid slow first requests."""
+    if rerank_model is None:
+        logger.warning("Skipping rerank warmup — model not loaded")
+        return
     logger.info("Warming up reranking model...")
     try:
         with torch.no_grad():
@@ -267,6 +289,8 @@ def warmup_rerank_model():
 def rerank():
     start_time = time.time()
     try:
+        if rerank_model is None:
+            return {"error": "MiniCPM reranker not loaded (transformers incompatible)"}, 503
         query: str = request.json["query"]
         passages: list[str] = request.json["passages"]
         logger.info(f"Rerank request - query length: {len(query)}, passages count: {len(passages)}")
@@ -285,13 +309,17 @@ def rerank():
 
 
 bcepath = "/workspace/models/bce-reranker-base_v1"
-logger.info(f"Loading BCE reranker model: {bcepath}")
-bce_tokenizer = AutoTokenizer.from_pretrained(bcepath, local_files_only=True)
-bce_model = AutoModelForSequenceClassification.from_pretrained(bcepath, local_files_only=True)
-
-device = "cuda"  # if no GPU, set "cpu"
-bce_model.to(device)
-logger.info("BCE reranker model loaded successfully")
+bce_tokenizer = None
+bce_model = None
+device = "cuda"
+try:
+    logger.info(f"Loading BCE reranker model: {bcepath}")
+    bce_tokenizer = AutoTokenizer.from_pretrained(bcepath, local_files_only=True)
+    bce_model = AutoModelForSequenceClassification.from_pretrained(bcepath, local_files_only=True)
+    bce_model.to(device)
+    logger.info("BCE reranker model loaded successfully")
+except Exception as exc:
+    logger.error("BCE reranker unavailable (non-fatal): %s", exc)
 
 
 def warmup_bce_model():
@@ -317,6 +345,8 @@ def warmup_bce_model():
 def rerankbce():
     start_time = time.time()
     try:
+        if bce_model is None or bce_tokenizer is None:
+            return {"error": "BCE reranker not loaded"}, 503
         query: str = request.json["query"]
         passages: list[str] = request.json["passages"]
         logger.info(f"BCE rerank request - query length: {len(query)}, passages count: {len(passages)}")

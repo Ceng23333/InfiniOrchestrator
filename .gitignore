@@ -12,6 +12,11 @@
 deploy/cases/**/results/
 bench_results/
 
+# Piecewise Inductor AOT seed products (keep README only)
+deploy/cases/**/piecewise_inductor_cache/**
+!deploy/cases/**/piecewise_inductor_cache/README.md
+!deploy/cases/**/piecewise_inductor_cache/.gitignore
+
 # Local env (templates *.example are tracked)
 .env
 .env.slave-sim
