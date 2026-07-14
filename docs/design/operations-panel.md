@@ -110,6 +110,7 @@ erDiagram
 | `healthy` | From `/health` or process liveness. |
 | `models` | Aggregated model list from `/models` or `/services`. |
 | `servers` | Ordered list of **Server** refs currently behind this router (`server_id` / `service_name`, healthy flag, weight). Inverse of Server.`router_id`; empty when no backends registered. |
+| `worktree` | Source identity for the **Router** binary/process itself: path (or label) of the checkout / image build context plus **git SHAs** of repos that built it (e.g. InfiniOrchestrator / vendored `rust/`). Distinct from per-backend Server.`worktree`; backends’ SHAs still surface via `metadata` / `servers`. |
 | `metadata` | Aggregated view of backends’ Server.`metadata` keyed by `server_id` / `service_name` (e.g. `cache_type`, build_info, runtime_env, frontend). Router-local fields (LB annotations) may sit alongside; refreshed when `servers` is rediscovered. |
 | `stats_snapshot` | Optional projection of `/status` / `/stats` (request/error counters). |
 
@@ -130,6 +131,7 @@ erDiagram
 | `model` | Model slug(s). |
 | `config_snapshot` | Immutable copy of launch args / TOML / env for Playground fork. |
 | `image_tag` / SHAs | Build identity (warehouse base columns). |
+| `worktree` | Source identity for the code this Server runs: path (or label) of the checkout / build context plus **git SHAs** of repos in use (e.g. InfiniLM, InfiniCore, InfiniOrchestrator, optional vLLM). Captured at launch from `GET /metadata` build_info / env probes; immutable on historical Server for Playground fork. |
 | `forked_from_server_id` | Optional lineage when launched from a past Server. |
 | `metadata` | Opaque key/value map (JSON). Carries registry/babysitter registration fields (e.g. `cache_type`) plus projection of inference `GET /metadata` (`server_id`, build_info, runtime_env, frontend, …). |
 

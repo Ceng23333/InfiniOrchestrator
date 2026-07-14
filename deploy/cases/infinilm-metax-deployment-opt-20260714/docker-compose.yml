@@ -96,7 +96,8 @@ services:
       - apparmor=unconfined
 
   worker-master-embeddings-20002:
-    image: ${IMAGE_TAG}
+    # MiniCPM remote code needs transformers~4.51 (0611 image); 0714 svc image is TF5 and yields NaNs.
+    image: ${EMBEDDING_IMAGE_TAG}
     container_name: infiniorch-worker-master-embeddings-20002-20260714
     restart: unless-stopped
     depends_on:
