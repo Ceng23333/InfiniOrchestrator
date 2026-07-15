@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>InfiniOrchestrator Operations</title>
+    <link rel="stylesheet" href="/panel/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">InfiniOrchestrator</p>
+          <h1>Operations</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="snapshot-status" class="status-pill">Loading</span>
+          <button id="refresh-button" type="button">Refresh</button>
+          <label class="switch">
+            <input id="auto-refresh" type="checkbox" checked>
+            <span>Auto</span>
+          </label>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Operations modules">
+        <button class="tab is-active" type="button" data-tab="dashboard">Dashboard</button>
+        <button class="tab" type="button" data-tab="benchmark">Benchmark</button>
+        <button class="tab" type="button" data-tab="playground">Playground</button>
+      </nav>
+
+      <main>
+        <section id="dashboard" class="view is-active" aria-labelledby="dashboard-tab">
+          <div class="toolbar">
+            <label>
+              Search
+              <input id="server-search" type="search" placeholder="service, host, model">
+            </label>
+            <label>
+              Health
+              <select id="health-filter">
+                <option value="all">All</option>
+                <option value="healthy">Healthy</option>
+                <option value="unhealthy">Unhealthy</option>
+              </select>
+            </label>
+            <label>
+              Host
+              <select id="host-filter">
+                <option value="all">All hosts</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="metrics-strip" id="dashboard-metrics"></div>
+
+          <div class="dashboard-grid">
+            <section class="surface topology-surface">
+              <div class="section-heading">
+                <h2>Topology</h2>
+                <span id="cluster-label" class="muted"></span>
+              </div>
+              <div id="topology-map" class="topology-map"></div>
+            </section>
+
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Router</h2>
+                <span id="router-health" class="status-dot">Unknown</span>
+              </div>
+              <dl id="router-details" class="key-values"></dl>
+            </section>
+          </div>
+
+          <section class="surface">
+            <div class="section-heading">
+              <h2>Servers</h2>
+              <span id="server-count" class="muted"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Service</th>
+                    <th>Host</th>
+                    <th>Models</th>
+                    <th>Status</th>
+                    <th>Weight</th>
+                    <th>Requests</th>
+                    <th>Errors</th>
+                    <th>Latency</th>
+                  </tr>
+                </thead>
+                <tbody id="server-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="benchmark" class="view" aria-labelledby="benchmark-tab">
+          <div class="toolbar">
+            <label>
+              Bench
+              <select id="bench-filter">
+                <option value="all">All benches</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <select id="model-filter">
+                <option value="all">All models</option>
+              </select>
+            </label>
+            <label>
+              Date
+              <input id="date-filter" type="date">
+            </label>
+          </div>
+
+          <div class="benchmark-grid">
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Bench Catalog</h2>
+                <span id="bench-count" class="muted"></span>
+              </div>
+              <div id="bench-catalog" class="catalog-list"></div>
+            </section>
+
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Results</h2>
+                <span id="result-count" class="muted"></span>
+              </div>
+              <div id="benchmark-results" class="empty-state"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="playground" class="view" aria-labelledby="playground-tab">
+          <div class="playground-grid">
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Launch Intent</h2>
+                <span id="playground-mode" class="status-pill">Fresh</span>
+              </div>
+
+              <div class="segmented" role="group" aria-label="Launch mode">
+                <button class="segment is-active" type="button" data-mode="fresh">Fresh</button>
+                <button class="segment" type="button" data-mode="fork">Fork</button>
+              </div>
+
+              <form id="playground-form" class="form-grid">
+                <label>
+                  Cluster
+                  <input id="pg-cluster" name="cluster" readonly>
+                </label>
+                <label>
+                  Host
+                  <select id="pg-host" name="host"></select>
+                </label>
+                <label>
+                  Traffic
+                  <select id="pg-traffic" name="traffic">
+                    <option value="router">Via router</option>
+                    <option value="direct">Direct server</option>
+                  </select>
+                </label>
+                <label>
+                  Model
+                  <select id="pg-model" name="model"></select>
+                </label>
+                <label>
+                  Template
+                  <input id="pg-template" name="template" value="default-server-template">
+                </label>
+                <label>
+                  Fork source
+                  <select id="pg-fork-source" name="fork_source"></select>
+                </label>
+                <label>
+                  Bench
+                  <select id="pg-bench" name="bench"></select>
+                </label>
+                <label>
+                  Max concurrency
+                  <input id="pg-concurrency" name="concurrency" type="number" min="1" value="16">
+                </label>
+                <label>
+                  Prompts
+                  <input id="pg-prompts" name="prompts" type="number" min="1" value="320">
+                </label>
+              </form>
+            </section>
+
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Plan</h2>
+                <button id="copy-plan" type="button">Copy</button>
+              </div>
+              <pre id="launch-plan" class="plan-output"></pre>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="metric-template">
+      <article class="metric-tile">
+        <span class="metric-label"></span>
+        <strong class="metric-value"></strong>
+        <span class="metric-sub"></span>
+      </article>
+    </template>
+
+    <script src="/panel/app.js" defer></script>
+  </body>
+</html>
