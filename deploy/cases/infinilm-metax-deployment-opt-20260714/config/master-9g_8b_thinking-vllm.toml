@@ -1,0 +1,27 @@
+# Standalone babysitter wrap: stock vLLM for 9g_8b_thinking (no registry/router)
+
+name = "master-9g_8b_thinking-vllm"
+host = "0.0.0.0"
+port = 18180
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "vllm"
+model = "/models/9g_8b_thinking"
+args = [
+  "--tensor-parallel-size", "1",
+  "--gpu-memory-utilization", "0.9",
+  "--max-model-len", "32768",
+  "--host", "0.0.0.0",
+]
+
+[backend.env]
+HPCC_VISIBLE_DEVICES = "0"
+
+[metadata]
+backend_type = "vllm"
+static = true
