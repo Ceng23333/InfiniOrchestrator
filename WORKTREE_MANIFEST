@@ -1,0 +1,10 @@
+IO_SHA=c35e72963de6f7099964cfccabeacf9bfbdf1804
+IC_SHA=75d18289f71aa3d5f2b07db8becc05c9edec779a
+IL_SHA=867cd2c27b3f4c6b322556470f71811832d4a229
+IM_SHA=4be8fdaa33ce3745b92755e98c930cb44ef6d96f
+BW_SHA=6b247226e3d9f50797e5ace5dba149fc45a6e8ee
+IC_URL=https://github.com/Ceng23333/InfiniCore.git
+IL_URL=https://github.com/Ceng23333/InfiniLM.git
+IM_URL=https://github.com/InfiniTensor/InfiniMetadata.git
+BW_URL=https://github.com/InfiniTensor/bench-warehouse.git
+PIN_DATE=2026-07-31T06:35:39Z

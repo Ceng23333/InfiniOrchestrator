@@ -20,12 +20,20 @@ mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:
 
 Tag prefixes: `infinilm-svc:metax-hpcc-ai370-runtime-base-<YYYYMMDD>` (Phase 1), `…-runtime-base-deps-…` (1.5), `…-<IL>-<IC>-<YYYYMMDD>` (Phase 2).
 
-Optional Phase 1 / Phase 2 seed: [`worktree-hpcc37`](../../../../bench_results/hpcc_migration_20260703_161241/worktree-hpcc37).
+**Source layout:** Phase 1 defaults `SOURCE_ROOT` to [`InfiniOrchestrator/worktree`](../../../worktree) (InfiniCore + InfiniLM submodules). `SVC_ROOT` defaults to sibling `../InfiniLM-SVC` (not a submodule). Override only if needed:
+
+```bash
+SOURCE_ROOT=/path/to/InfiniOrchestrator/worktree \
+SVC_ROOT=/path/to/InfiniLM-SVC \
+  ./build-image-phase1.sh
+```
 
 ## Quick start — Phase 1
 
 ```bash
-cd InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714
+# From InfiniOrchestrator root (submodules initialized):
+source scripts/worktree_env.sh
+cd deploy/cases/infinilm-metax-deployment-opt-20260714
 ./build-image-phase1.sh
 # writes .runtime_base_tag + MANIFEST
 
@@ -33,13 +41,13 @@ cd InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714
 ./export-bundle.sh   # optional offline transfer of runtime-base
 ```
 
-Recorded after Phase 1: `.runtime_base_tag`, `MANIFEST` (`BASE_DIGEST`, `CEVAL_CACHE_LAYOUT`, `INDUCTOR_CACHE`).
+Recorded after Phase 1: `.runtime_base_tag`, `MANIFEST` (`BASE_DIGEST`, `CEVAL_CACHE_LAYOUT`, `INDUCTOR_CACHE`, `WORKTREE_ROOT`, `SVC_ROOT`).
 
 Phase 1.5 / 2 (prepared, not required for this iteration):
 
 ```bash
 RUNTIME_BASE_TAG=$(cat .runtime_base_tag) OFFLINE_DEPS_ROOT=$PWD/offline-deps ./build-image-phase1_5.sh
-FROM_TAG=$(cat .runtime_base_tag) SOURCE_ROOT=/path/to/worktree ./build-image-phase2.sh
+FROM_TAG=$(cat .runtime_base_tag) SOURCE_ROOT="$(cd ../../.. && pwd)/worktree" ./build-image-phase2.sh
 # then: cp .env.master.example .env; set IMAGE_TAG from .image_tag; docker-compose up …
 ```
 

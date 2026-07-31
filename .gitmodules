@@ -1,0 +1,16 @@
+[submodule "worktree/InfiniCore"]
+	path = worktree/InfiniCore
+	url = https://github.com/Ceng23333/InfiniCore.git
+	branch = prefill_profile
+[submodule "worktree/InfiniLM"]
+	path = worktree/InfiniLM
+	url = https://github.com/Ceng23333/InfiniLM.git
+	branch = prefill_profile_dev2
+[submodule "worktree/InfiniMetadata"]
+	path = worktree/InfiniMetadata
+	url = https://github.com/InfiniTensor/InfiniMetadata.git
+	branch = master
+[submodule "worktree/bench-warehouse"]
+	path = worktree/bench-warehouse
+	url = https://github.com/InfiniTensor/bench-warehouse.git
+	branch = master

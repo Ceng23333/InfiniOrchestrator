@@ -1,20 +1,14 @@
 #!/usr/bin/env bash
-# Stage InfiniCore + InfiniLM from the workspace sibling of InfiniOrchestrator, then docker build.
+# Stage InfiniCore + InfiniLM from InfiniOrchestrator/worktree/, then docker build.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# metax -> container -> InfiniOrchestrator -> monorepo root (InfiniCore, InfiniLM, InfiniOrchestrator are siblings here).
-MONOREPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+# shellcheck source=../../scripts/worktree_env.sh
+source "${SCRIPT_DIR}/../../scripts/worktree_env.sh"
+require_worktree_repos InfiniCore InfiniLM
 
 IMAGE_TAG="${IMAGE_TAG:-infini-orchestrator-metax:local}"
 BASE_IMAGE="${BASE_IMAGE:-infinilm-svc:metax-hpcc-1004_218-202602281209}"
-
-for d in "${MONOREPO_ROOT}/InfiniCore" "${MONOREPO_ROOT}/InfiniLM"; do
-  if [[ ! -d "${d}" ]]; then
-    echo "error: expected directory ${d}" >&2
-    exit 1
-  fi
-done
 
 STAGE="$(mktemp -d)"
 cleanup() { rm -rf "${STAGE}"; }
@@ -24,9 +18,9 @@ cp "${SCRIPT_DIR}/Dockerfile.orchestrator-runtime" "${STAGE}/Dockerfile"
 
 stage_tree() {
   local src_name="$1"
-  local src="${MONOREPO_ROOT}/${src_name}"
+  local src="${WORKTREE_ROOT}/${src_name}"
   if command -v rsync >/dev/null 2>&1; then
-    echo "Staging ${src_name} via rsync..."
+    echo "Staging ${src_name} via rsync from ${src}..."
     rsync -a \
       --no-perms --no-owner --no-group \
       --exclude='.git' \

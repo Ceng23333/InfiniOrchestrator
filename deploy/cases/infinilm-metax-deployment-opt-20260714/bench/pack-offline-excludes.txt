@@ -1,4 +1,4 @@
-# VCS / build caches
+# VCS / build caches (including nested submodule .git dirs under worktree/)
 **/.git
 **/.xmake
 **/build
@@ -6,13 +6,10 @@
 **/__pycache__
 **/*.pyc
 
-# Monorepo non-ship dirs (not needed for 20260714 deploy)
-bench_results
-bisect
-benchmarks
-evidence
-scripts
-InfiniLM-SVC
+# Nested third_party clones not needed for offline image stage (optional weight)
+**/third_party/cutlass
+**/third_party/flash-attention
+**/third_party/mate
 
 # Large deploy artifacts
 **/*.tar
@@ -22,8 +19,14 @@ InfiniLM-SVC
 **/offline-bundle-test
 **/offline-bundle-*
 deploy/cases/**/results
+**/bench_results
+**/bisect
 
 # Local runtime secrets (templates *.example stay tracked)
 **/.env
 **/.env.slave-sim
 **/.image_tag
+
+# bench-warehouse warehouse/raw history (keep harness only via path filters if needed)
+worktree/bench-warehouse/raw
+worktree/bench-warehouse/warehouse

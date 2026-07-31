@@ -8,7 +8,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MONOREPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# shellcheck source=../../../scripts/worktree_env.sh
+source "${SCRIPT_DIR}/../../../scripts/worktree_env.sh"
+require_worktree_repos InfiniCore InfiniLM
+MONOREPO_ROOT="$(cd "${IO_ROOT}/.." && pwd)"
 
 BASE_IMAGE="${BASE_IMAGE:-mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:0.20.0-hpcc.ai3.7.0.102-torch2.8-py310-kylin2309a-arm64}"
 DEPLOYMENT_CASE="${DEPLOYMENT_CASE:-infinilm-metax-deployment-opt-20260714}"
@@ -17,16 +20,9 @@ RUNTIME_BASE_TAG="${RUNTIME_BASE_TAG:-infinilm-svc:metax-hpcc-ai370-runtime-base
 CONTAINER_NAME="${CONTAINER_NAME:-infinilm-build-ai370-p1-$(date +%s)}"
 PLATFORM="${PLATFORM:-hpcc37}"
 
-# Optional seed trees (accelerate; committed image must not depend on mounts).
-SOURCE_ROOT="${SOURCE_ROOT:-}"
-if [[ -z "${SOURCE_ROOT}" ]]; then
-  _wt="${MONOREPO_ROOT}/bench_results/hpcc_migration_20260703_161241/worktree-hpcc37"
-  if [[ -d "${_wt}/InfiniCore" && -d "${_wt}/InfiniLM" ]]; then
-    SOURCE_ROOT="${_wt}"
-  else
-    SOURCE_ROOT="${MONOREPO_ROOT}"
-  fi
-fi
+# Core/LM come from InfiniOrchestrator/worktree (hard cutover). InfiniLM-SVC stays outside.
+SOURCE_ROOT="${SOURCE_ROOT:-${WORKTREE_ROOT}}"
+SVC_ROOT="${SVC_ROOT:-$(cd "${IO_ROOT}/.." && pwd)/InfiniLM-SVC}"
 DEV_CONTAINER="${DEV_CONTAINER:-infinilm-dev-hpcc37}"
 BIN_SEED_IMAGE="${BIN_SEED_IMAGE:-infinilm-svc:metax-hpcc-ai3107-c73618c-56ef9cad-20260624}"
 
@@ -55,8 +51,10 @@ run_setup() {
 echo "=========================================="
 echo "Phase 1 runtime-base: ${DEPLOYMENT_CASE}"
 echo "=========================================="
-echo "Monorepo:         ${MONOREPO_ROOT}"
+echo "IO_ROOT:          ${IO_ROOT}"
+echo "WORKTREE_ROOT:    ${WORKTREE_ROOT}"
 echo "SOURCE_ROOT:      ${SOURCE_ROOT}"
+echo "SVC_ROOT:         ${SVC_ROOT}"
 echo "BASE_IMAGE:       ${BASE_IMAGE}"
 echo "RUNTIME_BASE_TAG: ${RUNTIME_BASE_TAG}"
 echo "PLATFORM:         ${PLATFORM}"
@@ -64,12 +62,16 @@ echo "Container:        ${CONTAINER_NAME}"
 echo "Design doc:       ${MONOREPO_ROOT}/docs/IMAGE_BUILD_PHASES.md"
 echo ""
 
-for d in InfiniCore InfiniLM InfiniLM-SVC; do
+for d in InfiniCore InfiniLM; do
   if [[ ! -d "${SOURCE_ROOT}/${d}" ]]; then
     echo "error: expected ${SOURCE_ROOT}/${d}" >&2
     exit 1
   fi
 done
+if [[ ! -d "${SVC_ROOT}" ]]; then
+  echo "error: expected InfiniLM-SVC at SVC_ROOT=${SVC_ROOT}" >&2
+  exit 1
+fi
 
 if ! docker image inspect "${BASE_IMAGE}" >/dev/null 2>&1; then
   echo "Pulling base image ${BASE_IMAGE}..."
@@ -85,8 +87,7 @@ fi
 
 IL_SHA="$(git -C "${SOURCE_ROOT}/InfiniLM" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 IC_SHA="$(git -C "${SOURCE_ROOT}/InfiniCore" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-IO_SHA="$(git -C "${SOURCE_ROOT}/InfiniOrchestrator" rev-parse --short HEAD 2>/dev/null || \
-  git -C "${MONOREPO_ROOT}/InfiniOrchestrator" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+IO_SHA="$(git -C "${IO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BASE_DIGEST="$(docker image inspect --format '{{index .RepoDigests 0}}' "${BASE_IMAGE}" 2>/dev/null || \
   docker image inspect --format '{{.Id}}' "${BASE_IMAGE}")"
 
@@ -137,7 +138,7 @@ stream_tree() {
 }
 
 echo "  Copying InfiniLM-SVC → /app ..."
-stream_tree "${SOURCE_ROOT}/InfiniLM-SVC" /app
+stream_tree "${SVC_ROOT}" /app
 stream_tree "${SOURCE_ROOT}/InfiniCore" /workspace/InfiniCore
 stream_tree "${SOURCE_ROOT}/InfiniLM" /workspace/InfiniLM
 
@@ -225,6 +226,8 @@ BASE_IMAGE=${BASE_IMAGE}
 BASE_DIGEST=${BASE_DIGEST}
 RUNTIME_BASE_TAG=${RUNTIME_BASE_TAG}
 SOURCE_ROOT=${SOURCE_ROOT}
+SVC_ROOT=${SVC_ROOT}
+WORKTREE_ROOT=${WORKTREE_ROOT}
 PACK_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 CEVAL_CACHE_LAYOUT=bench/ceval_cache
 INDUCTOR_CACHE=/workspace/piecewise_inductor_cache

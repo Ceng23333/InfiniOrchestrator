@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Pack InfiniCore + InfiniLM + InfiniOrchestrator for offline deploy (source-only tar).
+# Pack InfiniOrchestrator (including populated worktree/ submodules) for offline deploy.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MONOREPO_ROOT="$(cd "${CASE_DIR}/../../../.." && pwd)"
+# shellcheck source=../../../../scripts/worktree_env.sh
+source "${CASE_DIR}/../../../scripts/worktree_env.sh"
+require_worktree_repos InfiniCore InfiniLM InfiniMetadata bench-warehouse
 EXCLUDES_FILE="${SCRIPT_DIR}/pack-offline-excludes.txt"
 
 STAGING="${STAGING:-/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)}"
 BASE_IMAGE="${BASE_IMAGE:-infinilm-svc:metax-hpcc-1004_218-202602281209}"
 CASE_NAME="infinilm-metax-deployment-opt-20260611"
+MONOREPO_ROOT="$(cd "${IO_ROOT}/.." && pwd)"
 
 git_short_sha() {
   local repo="$1"
@@ -20,9 +23,11 @@ git_short_sha() {
   fi
 }
 
-IL_SHA="$(git_short_sha "${MONOREPO_ROOT}/InfiniLM")"
-IC_SHA="$(git_short_sha "${MONOREPO_ROOT}/InfiniCore")"
-IO_SHA="$(git_short_sha "${MONOREPO_ROOT}/InfiniOrchestrator")"
+IL_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniLM")"
+IC_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniCore")"
+IM_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniMetadata")"
+BW_SHA="$(git_short_sha "${WORKTREE_ROOT}/bench-warehouse")"
+IO_SHA="$(git_short_sha "${IO_ROOT}")"
 
 if [[ -z "${SRC_TAR:-}" ]]; then
   SRC_TAR="deployment-src-${IL_SHA}-${IC_SHA}-${IO_SHA}.tar.gz"
@@ -31,43 +36,37 @@ if [[ "${SRC_TAR}" != /* ]]; then
   SRC_TAR="${STAGING}/${SRC_TAR}"
 fi
 
-for d in InfiniCore InfiniLM InfiniOrchestrator; do
-  if [[ ! -d "${MONOREPO_ROOT}/${d}" ]]; then
-    echo "error: expected directory ${MONOREPO_ROOT}/${d}" >&2
-    exit 1
-  fi
-done
-
 if [[ ! -f "${EXCLUDES_FILE}" ]]; then
   echo "error: exclude file not found: ${EXCLUDES_FILE}" >&2
   exit 1
 fi
 
-MANIFEST="${MONOREPO_ROOT}/MANIFEST"
+MANIFEST="${IO_ROOT}/MANIFEST"
 PACK_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 cat > "${MANIFEST}" <<EOF
 IL_SHA=${IL_SHA}
 IC_SHA=${IC_SHA}
+IM_SHA=${IM_SHA}
+BW_SHA=${BW_SHA}
 IO_SHA=${IO_SHA}
+WORKTREE_ROOT=InfiniOrchestrator/worktree
 PACK_DATE=${PACK_DATE}
 BASE_IMAGE=${BASE_IMAGE}
 CASE=${CASE_NAME}
 EOF
 
-cleanup_manifest() {
-  rm -f "${MANIFEST}"
-}
-trap cleanup_manifest EXIT
-
+# Pack from parent of IO_ROOT so archive has InfiniOrchestrator/… prefix.
+PACK_PARENT="$(cd "${IO_ROOT}/.." && pwd)"
 tar_args=(
-  -C "${MONOREPO_ROOT}"
+  -C "${PACK_PARENT}"
   -czf "${SRC_TAR}"
   --exclude-from="${EXCLUDES_FILE}"
-  InfiniCore InfiniLM InfiniOrchestrator MANIFEST
+  InfiniOrchestrator
 )
 
-echo "MONOREPO_ROOT=${MONOREPO_ROOT}"
+echo "IO_ROOT=${IO_ROOT}"
+echo "WORKTREE_ROOT=${WORKTREE_ROOT}"
 echo "STAGING output: ${SRC_TAR}"
 echo "MANIFEST:"
 cat "${MANIFEST}"
@@ -83,17 +82,20 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   echo ""
   echo "Exclude patterns (${EXCLUDES_FILE}):"
   grep -v '^#' "${EXCLUDES_FILE}" | grep -v '^[[:space:]]*$' || true
+  rm -f "${MANIFEST}"
   exit 0
 fi
 
 mkdir -p "${STAGING}"
 tar "${tar_args[@]}"
+# Keep MANIFEST in the archive only; drop the host-side copy so the IO tree stays clean.
+rm -f "${MANIFEST}"
 
 echo ""
 echo "Post-pack gates:"
-grep -n 'gc.collect' "${MONOREPO_ROOT}/InfiniLM/python/infinilm/modeling_utils.py"
-test -f "${MONOREPO_ROOT}/InfiniOrchestrator/deploy/cases/${CASE_NAME}/validate.sh"
-test -f "${MONOREPO_ROOT}/InfiniOrchestrator/container/metax/build-image.sh"
+grep -n 'gc.collect' "${WORKTREE_ROOT}/InfiniLM/python/infinilm/modeling_utils.py"
+test -f "${IO_ROOT}/deploy/cases/${CASE_NAME}/validate.sh"
+test -f "${IO_ROOT}/container/metax/build-image.sh"
 
 echo ""
 echo "Packed: ${SRC_TAR}"

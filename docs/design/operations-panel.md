@@ -6,7 +6,7 @@ Related:
 
 - Discovery (later etcd): [`discovery-etcd.md`](discovery-etcd.md)
 - Bench client / orchestrator / server split: monorepo `.cursor/rules/bench-warehouse-client-server.mdc`
-- Historical metrics: sibling `bench-warehouse/` (`raw/` → `warehouse/`, `bench-query`)
+- Historical metrics: `InfiniOrchestrator/worktree/bench-warehouse/` (or `BENCH_WAREHOUSE_REPO`; `raw/` → `warehouse/`, `bench-query`)
 
 ## Goals
 

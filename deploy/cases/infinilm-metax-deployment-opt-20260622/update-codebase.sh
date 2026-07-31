@@ -3,14 +3,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MONOREPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# shellcheck source=../../../scripts/worktree_env.sh
+source "${SCRIPT_DIR}/../../../scripts/worktree_env.sh"
+require_worktree_repos InfiniCore InfiniLM
 # shellcheck source=proxy-env.sh
 source "${SCRIPT_DIR}/proxy-env.sh"
 
 SOURCE_IMAGE=""
 NEW_TAG=""
-INFINICORE_SRC="${INFINICORE_SRC:-${MONOREPO_ROOT}/InfiniCore}"
-INFINILM_SRC="${INFINILM_SRC:-${MONOREPO_ROOT}/InfiniLM}"
+INFINICORE_SRC="${INFINICORE_SRC:-${WORKTREE_ROOT}/InfiniCore}"
+INFINILM_SRC="${INFINILM_SRC:-${WORKTREE_ROOT}/InfiniLM}"
 CONTAINER_NAME="${CONTAINER_NAME:-infinilm-update-ai3107-$(date +%s)}"
 DEPLOYMENT_CASE="${DEPLOYMENT_CASE:-infinilm-metax-deployment-opt-20260622}"
 
@@ -52,7 +54,7 @@ fi
 if git -C "${INFINILM_SRC}" rev-parse --short HEAD >/dev/null 2>&1; then
   IL_SHA="$(git -C "${INFINILM_SRC}" rev-parse --short HEAD)"
   IC_SHA="$(git -C "${INFINICORE_SRC}" rev-parse --short HEAD)"
-  IO_SHA="$(git -C "${MONOREPO_ROOT}/InfiniOrchestrator" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  IO_SHA="$(git -C "${IO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 else
   IL_SHA="${IL_SHA:-unknown}"
   IC_SHA="${IC_SHA:-unknown}"

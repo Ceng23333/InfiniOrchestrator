@@ -4,7 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MONOREPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# shellcheck source=../../../scripts/worktree_env.sh
+source "${SCRIPT_DIR}/../../../scripts/worktree_env.sh"
+require_worktree_repos InfiniCore InfiniLM
 
 if [[ -f "${SCRIPT_DIR}/.runtime_base_deps_tag" ]]; then
   FROM_TAG="${FROM_TAG:-$(cat "${SCRIPT_DIR}/.runtime_base_deps_tag")}"
@@ -13,7 +15,7 @@ elif [[ -f "${SCRIPT_DIR}/.runtime_base_tag" ]]; then
 fi
 FROM_TAG="${FROM_TAG:?set FROM_TAG / RUNTIME_BASE_TAG or run Phase 1 first}"
 
-SOURCE_ROOT="${SOURCE_ROOT:-${MONOREPO_ROOT}}"
+SOURCE_ROOT="${SOURCE_ROOT:-${WORKTREE_ROOT}}"
 BUILD_TS="$(date -u +%Y%m%d)"
 IL_SHA="$(git -C "${SOURCE_ROOT}/InfiniLM" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 IC_SHA="$(git -C "${SOURCE_ROOT}/InfiniCore" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -24,9 +26,10 @@ DEPLOYMENT_CASE="${DEPLOYMENT_CASE:-infinilm-metax-deployment-opt-20260714}"
 echo "=========================================="
 echo "Phase 2 product image (STUB — not fully implemented)"
 echo "=========================================="
-echo "FROM_TAG:   ${FROM_TAG}"
-echo "SOURCE_ROOT:${SOURCE_ROOT}"
-echo "IMAGE_TAG:  ${IMAGE_TAG}"
+echo "FROM_TAG:      ${FROM_TAG}"
+echo "SOURCE_ROOT:   ${SOURCE_ROOT}"
+echo "WORKTREE_ROOT: ${WORKTREE_ROOT}"
+echo "IMAGE_TAG:     ${IMAGE_TAG}"
 echo ""
 echo "Would: docker run from ${FROM_TAG},"
 echo "  sync worktree via setup-phase2-worktree.sh,"
