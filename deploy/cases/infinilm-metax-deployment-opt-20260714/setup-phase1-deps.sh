@@ -149,7 +149,7 @@ if [[ "${SEED_INDUCTOR_CACHE}" == "1" ]]; then
     cat > /workspace/piecewise_inductor_cache/README <<'EOF'
 Piecewise inductor cache (image-local).
 Qwen TOML: INFINI_PIECEWISE_INDUCTOR_CACHE=/workspace/piecewise_inductor_cache
-COMPILE_ON_MISS=1 allows cold-start compile into this directory.
+Cold kickoff: python -m infinilm.server.entry --phase all (COMPILE_ON_MISS deprecated).
 EOF
   fi
 fi

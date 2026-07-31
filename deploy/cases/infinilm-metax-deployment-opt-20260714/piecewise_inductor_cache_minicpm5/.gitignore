@@ -1,0 +1,4 @@
+# AOT / Triton MoE artifacts — seed offline; do not commit binaries
+*
+!.gitignore
+!README.md

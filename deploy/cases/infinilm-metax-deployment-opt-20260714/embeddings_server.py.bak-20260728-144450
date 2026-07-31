@@ -46,8 +46,6 @@ EMBEDDING_MODEL_ALIASES = {
     "openbmb/MiniCPM-Embedding-Light": "minicpm-embedding",
     # OpenAI-compatible default used by validate.sh; keep routing to bge-m3.
     "text-embedding-ada-002": "bge-m3",
-    # UltraRAG development configurations use this legacy model name.
-    "qwen-embedding": "bge-m3",
 }
 
 
@@ -269,13 +267,8 @@ def warmup_rerank_model():
 def rerank():
     start_time = time.time()
     try:
-        payload = request.get_json(silent=True) or {}
-        query = payload.get("query")
-        passages = payload.get("passages")
-        if passages is None:
-            passages = payload.get("documents")
-        if not isinstance(query, str) or not isinstance(passages, list):
-            return {"error": "query and passages/documents are required"}, 400
+        query: str = request.json["query"]
+        passages: list[str] = request.json["passages"]
         logger.info(f"Rerank request - query length: {len(query)}, passages count: {len(passages)}")
 
         rerank_score = rerank_model.rerank(query, passages, query_instruction="Query:", batch_size=32, max_length=8000)

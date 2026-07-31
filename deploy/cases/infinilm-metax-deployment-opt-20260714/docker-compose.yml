@@ -77,8 +77,8 @@ services:
     volumes:
       - ./config:/config:ro
       - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
-      # Offline AOT seed (Qwen3-32B_*). Seed via piecewise_inductor_cache/README.md
-      - ${PIECEWISE_INDUCTOR_CACHE_DIR:-./piecewise_inductor_cache}:/workspace/piecewise_inductor_cache:ro
+      # AOT cache (Qwen3-32B_*). rw so entry --phase all can cold-compile missing pkgs.
+      - ${PIECEWISE_INDUCTOR_CACHE_DIR:-./piecewise_inductor_cache}:/workspace/piecewise_inductor_cache:rw
     ipc: host
     shm_size: 100gb
     ulimits:

@@ -16,8 +16,7 @@ heartbeat_interval = 30
 type = "command"
 command = "/opt/conda/bin/python"
 args = [
-  "-m", "infinilm.server.entry",
-  "--phase", "all",
+  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
   "--device", "metax",
   "--model", "/models/Qwen3-32B",
   "--dtype", "bfloat16",
@@ -52,17 +51,17 @@ INFINI_PREFILL_NATIVE_CG = "1"
 INFINI_COMPILE_MAX_SEQ = "40960"
 INFINI_DECODE_CG_TP = "1"
 INFINI_REQUEST_TIMEOUT_S = "7200"
-# Fair 8192-only align to Case A (tj-container): single bucket, no chunked prefill.
-INFINI_NATIVE_CG_CAPTURE_BUCKETS = "8192"
-# INFINI_PREFILL_CHUNKED / INFINI_PREFILL_CHUNK_SIZE unset (Case A N/A)
+INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096,2048,1024,512"
+INFINI_PREFILL_CHUNKED = "1"
+INFINI_PREFILL_CHUNK_SIZE = "4096"
 INFINI_V1_SCHEDULER = "1"
 INFINI_SCHEDULE_HOMOGENEOUS = "1"
 INFINI_DECODE_LIGHT_SYNC = "1"
-# Offline AOT under /workspace/piecewise_inductor_cache (compose volume, rw for cold compile).
+# Offline AOT seed under /workspace/piecewise_inductor_cache (compose volume).
+# Bootstrap buckets follow INFINI_NATIVE_CG_CAPTURE_BUCKETS (no auto B8192).
 INFINI_PIECEWISE_INDUCTOR_SEGMENT = "1"
 INFINI_PIECEWISE_LAYER_AGNOSTIC = "1"
-# COM deprecated/ignored; entry --phase all compiles missing pkgs before serve.
-INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS = "0"
+INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS = "1"
 INFINI_PIECEWISE_INDUCTOR_CACHE = "/workspace/piecewise_inductor_cache"
 
 [metadata]

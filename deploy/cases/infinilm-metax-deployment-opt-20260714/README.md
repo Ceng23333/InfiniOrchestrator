@@ -55,17 +55,24 @@ GPU map (unchanged vs prod): 9g `0`, Qwen `4,5,6,7`, embeddings on free GPU / re
 
 ## Qwen cold-start inductor + CG
 
-[`config/master-qwen3-32b-paged.toml`](config/master-qwen3-32b-paged.toml): Phase-3 native CG (`INFINI_PREFILL_NATIVE_CG`, buckets `4096,2048,1024,512`, chunk `4096`, decode CG TP) plus:
+[`config/master-qwen3-32b-paged.toml`](config/master-qwen3-32b-paged.toml) launches
+`python -m infinilm.server.entry --phase all` (not bare `inference_server`):
 
 | Key | Value |
 |-----|-------|
+| Backend | `infinilm.server.entry --phase all` |
 | `INFINI_PIECEWISE_INDUCTOR_SEGMENT` | `1` |
 | `INFINI_PIECEWISE_LAYER_AGNOSTIC` | `1` |
-| `INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS` | `0` (seeded AOT; miss≠compile) |
-| `INFINI_PIECEWISE_INDUCTOR_CACHE` | `/workspace/piecewise_inductor_cache` |
+| `INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS` | `0` (deprecated; InferEngine never compiles) |
+| `INFINI_PIECEWISE_INDUCTOR_CACHE` | `/workspace/piecewise_inductor_cache` (compose **rw**) |
+| `INFINI_NATIVE_CG_CAPTURE_BUCKETS` | `8192` |
 | `INFINI_REQUEST_TIMEOUT_S` | `7200` |
 
-Seed AOT under [`piecewise_inductor_cache/`](piecewise_inductor_cache/) (compose mount; see README there). Do **not** use `COMPILE_ON_MISS=1` on a loaded TP4 32B — empty-cache compile OOMs on 64 GiB.
+**Cold path:** if planned `segment.pt2` files are missing, `--phase all` compiles them into the cache volume, then serves. **Warm path:** full cache hit → skip compile → serve only.
+
+Prefer seeding under [`piecewise_inductor_cache/`](piecewise_inductor_cache/) for faster first boot. Do **not** rely on InferEngine compile-on-miss (`COMPILE_ON_MISS=1` is ignored) — that path OOMs on a loaded TP4 32B.
+
+Non-AOT workers (9g, XiYan, embeddings) stay on direct `inference_server`.
 
 ## Offline validation
 
