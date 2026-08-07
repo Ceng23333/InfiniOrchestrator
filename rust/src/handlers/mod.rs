@@ -4,7 +4,7 @@ use axum::{Router, routing::get};
 use std::sync::Arc;
 
 use crate::proxy::handler::proxy_handler;
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 
 mod health;
 mod models;

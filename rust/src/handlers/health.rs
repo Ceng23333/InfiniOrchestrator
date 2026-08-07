@@ -4,7 +4,7 @@ use axum::{extract::State, response::Json};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 
 /// Health check endpoint
 pub async fn health_handler(
@@ -21,9 +21,10 @@ pub async fn health_handler(
 
     Json(json!({
         "status": if healthy_count > 0 { "healthy" } else { "running" },
-        "router": "running",
+        "load_balancer": "running",
         "healthy_services": format!("{}/{}", healthy_count, total_count),
-        "registry_url": load_balancer.registry_url,
+        "discovery_prefix": load_balancer.discovery_prefix,
+        "etcd_endpoints": load_balancer.etcd_endpoints,
         "message": if healthy_count == 0 { Some("No healthy services available") } else { None },
         "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
     }))

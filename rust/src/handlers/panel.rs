@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use crate::models::aggregator::ModelAggregator;
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 
 const INDEX_HTML: &str = include_str!("../../panel/index.html");
 const APP_JS: &str = include_str!("../../panel/app.js");
@@ -43,7 +43,8 @@ pub async fn panel_snapshot_handler(
     let models = ModelAggregator::aggregate_models(&load_balancer).await;
 
     let router_url = request_origin(&headers);
-    let registry_url = load_balancer.registry_url.clone();
+    let discovery_prefix = load_balancer.discovery_prefix.clone();
+    let etcd_endpoints = load_balancer.etcd_endpoints.clone();
     let cluster_id = first_metadata_string(&services_info, &["cluster_id", "cluster"])
         .unwrap_or_else(|| "default".to_string());
     let cluster_name = first_metadata_string(&services_info, &["cluster_name", "deploy_case"])
@@ -51,10 +52,7 @@ pub async fn panel_snapshot_handler(
     let env = first_metadata_string(&services_info, &["env", "deploy_tier"])
         .unwrap_or_else(|| "dev".to_string());
     let deploy_case = first_metadata_string(&services_info, &["deploy_case"]);
-    let router_id = registry_url
-        .as_deref()
-        .map(|url| format!("router-{}", slugify(url)))
-        .unwrap_or_else(|| "router-local".to_string());
+    let router_id = format!("loadbalancer-{}", slugify(&discovery_prefix));
 
     let mut hosts = BTreeMap::new();
     let servers: Vec<Value> = services_info
@@ -90,7 +88,7 @@ pub async fn panel_snapshot_handler(
                 "host_id": metadata_string(&service.metadata, &["host_id", "hostname"]).unwrap_or_else(|| service.host.clone()),
                 "router_id": router_id.clone(),
                 "url": service.url.clone(),
-                "babysitter_url": service.babysitter_url.clone(),
+                "entrypoint_url": service.entrypoint_url.clone(),
                 "status": if service.healthy { "healthy" } else { "unhealthy" },
                 "healthy": service.healthy,
                 "model": service.models.clone(),
@@ -122,9 +120,9 @@ pub async fn panel_snapshot_handler(
             "cluster_id": cluster_id.clone(),
             "name": cluster_name.clone(),
             "env": env.clone(),
-            "registry_url": registry_url.clone(),
+            "discovery_prefix": discovery_prefix.clone(),
+            "etcd_endpoints": etcd_endpoints.clone(),
             "deploy_case": deploy_case.clone(),
-            "discovery_prefix": null,
         },
         "hosts": hosts.into_values().collect::<Vec<_>>(),
         "routers": [{
@@ -144,8 +142,9 @@ pub async fn panel_snapshot_handler(
                 })
             }).collect::<Vec<_>>(),
             "metadata": {
-                "registry_url": registry_url.clone(),
-                "projection": "live-router"
+                "discovery_prefix": discovery_prefix.clone(),
+                "etcd_endpoints": etcd_endpoints.clone(),
+                "projection": "live-loadbalancer"
             },
             "stats_snapshot": {
                 "total_services": servers.len(),
@@ -193,7 +192,7 @@ trait AsServiceMetadata {
     fn metadata(&self) -> &HashMap<String, Value>;
 }
 
-impl AsServiceMetadata for crate::router::service_instance::ServiceInfo {
+impl AsServiceMetadata for crate::load_balancer::service_instance::ServiceInfo {
     fn metadata(&self) -> &HashMap<String, Value> {
         &self.metadata
     }

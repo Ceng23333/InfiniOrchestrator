@@ -1,6 +1,6 @@
 //! Model aggregation logic
 
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;

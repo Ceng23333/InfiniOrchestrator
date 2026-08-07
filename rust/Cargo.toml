@@ -1,10 +1,14 @@
 [package]
-name = "infini-router"
+name = "infini-loadbalancer"
 version = "0.1.0"
 edition = "2024"
 authors = ["InfiniLM Team"]
-description = "High-performance distributed router for InfiniLM services"
+description = "High-performance distributed load balancer for InfiniLM services"
 license = "MIT"
+
+[lib]
+name = "infini_loadbalancer"
+path = "src/lib.rs"
 
 [dependencies]
 # Web framework
@@ -31,8 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
-
-# Time utilities - using std::time for now
+async-trait = "0.1"
 
 # Async utilities
 futures = "0.3"
@@ -45,13 +48,24 @@ chrono = { version = "0.4", features = ["serde"] }
 # Hashing
 sha2 = "0.10"
 
+# Base64 encoding for etcd HTTP API
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4"
 mockito = "1.2"
 
 [[bin]]
-name = "infini-babysitter"
-path = "src/bin/babysitter.rs"
+name = "infini-loadbalancer"
+path = "src/main.rs"
+
+[[bin]]
+name = "infini-entrypoint"
+path = "src/bin/entrypoint.rs"
+
+[[bin]]
+name = "infini-sharepool"
+path = "src/bin/sharepool.rs"
 
 [[bin]]
 name = "infini-registry"

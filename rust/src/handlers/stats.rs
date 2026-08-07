@@ -4,7 +4,7 @@ use axum::{extract::State, response::Json};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 
 /// Statistics endpoint
 pub async fn stats_handler(
@@ -24,7 +24,8 @@ pub async fn stats_handler(
     Json(json!({
         "total_services": services.len(),
         "healthy_services": healthy_count,
-        "registry_url": load_balancer.registry_url,
+        "discovery_prefix": load_balancer.discovery_prefix,
+        "etcd_endpoints": load_balancer.etcd_endpoints,
         "services": services_info
     }))
 }

@@ -17,7 +17,7 @@ use tracing::{error, info};
 
 use crate::proxy::session_extractor::generate_session_from_ip;
 use crate::proxy::streaming::handle_streaming_response;
-use crate::router::load_balancer::LoadBalancer;
+use crate::load_balancer::load_balancer::LoadBalancer;
 
 /// Get proxy timeout from environment variable or use default (30 minutes)
 fn get_proxy_timeout() -> Duration {

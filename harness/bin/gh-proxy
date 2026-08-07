@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# gh wrapper: route GitHub HTTPS API through local SOCKS proxy (default 57890).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+GITHUB_PROXY_ENV_QUIET=1 source "${ROOT}/scripts/github_proxy_env.sh"
+
+GH_BIN="${GH_BIN:-gh-real}"
+if ! command -v "${GH_BIN}" >/dev/null 2>&1; then
+  GH_BIN="${GH_BIN:-/usr/local/bin/gh-real}"
+fi
+if ! command -v "${GH_BIN}" >/dev/null 2>&1; then
+  echo "[gh-proxy] gh-real not found; install GitHub CLI or set GH_BIN" >&2
+  exit 1
+fi
+
+exec "${GH_BIN}" "$@"

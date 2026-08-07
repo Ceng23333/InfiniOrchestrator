@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Freeze worktree submodule SHAs into an InfiniOrchestrator release commit + annotated tag.
+# Freeze InfiniTensorWorktree submodule SHAs into an InfiniOrchestrator release commit + annotated tag.
 #
 # Examples:
 #   TAG=v2026.07.31 ./scripts/release.sh --from-current
-#   IC_SHA=... IL_SHA=... IM_SHA=... BW_SHA=... TAG=v2026.07.31 ./scripts/release.sh
+#   IC_SHA=... IL_SHA=... IM_SHA=... TAG=v2026.07.31 ./scripts/release.sh
 #
 # Does not push. Prints push commands when done.
 set -euo pipefail
@@ -20,7 +20,7 @@ if [[ "${1:-}" == "--from-current" ]]; then
   PIN_ARGS=(--from-current)
 elif [[ $# -gt 0 ]]; then
   echo "usage: TAG=vYYYY.MM.DD $0 [--from-current]" >&2
-  echo "  or set IC_SHA IL_SHA IM_SHA BW_SHA" >&2
+  echo "  or set IC_SHA IL_SHA IM_SHA" >&2
   exit 1
 fi
 
@@ -29,13 +29,11 @@ if git rev-parse "${TAG}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Allow dirty only for intentional pin staging; refuse other untracked clutter
-# outside worktree pins / known release files.
 mapfile -t dirty < <(git status --porcelain | awk '{print $2}')
 for path in "${dirty[@]:-}"; do
   [[ -z "${path}" ]] && continue
   case "${path}" in
-    worktree/*|.gitmodules|WORKTREE_MANIFEST|scripts/*|README.md|deploy/*|container/*|docs/*|.cursor/*) ;;
+    InfiniTensorWorktree/*|.gitmodules|scripts/*|README.md|deploy/*|container/*|docs/*|harness/*|playground/*|.cursor/*) ;;
     *)
       echo "error: unexpected dirty path before release: ${path}" >&2
       echo "  commit or stash unrelated changes first" >&2
@@ -47,29 +45,26 @@ done
 "${SCRIPT_DIR}/pin_worktree.sh" ${PIN_ARGS[@]+"${PIN_ARGS[@]}"}
 
 # shellcheck source=/dev/null
-source "${IO_ROOT}/WORKTREE_MANIFEST"
+source "${INFINI_TENSOR_WORKTREE}/MANIFEST"
 
-MSG="release: freeze worktree ${TAG}
+MSG="release: freeze InfiniTensorWorktree ${TAG}
 
 IC_SHA=${IC_SHA}
 IL_SHA=${IL_SHA}
 IM_SHA=${IM_SHA}
-BW_SHA=${BW_SHA}
 "
 
-git add WORKTREE_MANIFEST \
-  worktree/InfiniCore \
-  worktree/InfiniLM \
-  worktree/InfiniMetadata \
-  worktree/bench-warehouse \
+git add InfiniTensorWorktree/MANIFEST \
+  InfiniTensorWorktree/InfiniCore \
+  InfiniTensorWorktree/InfiniLM \
+  InfiniTensorWorktree/InfiniMetadata \
   .gitmodules \
   scripts/worktree_env.sh \
   scripts/pin_worktree.sh \
   scripts/release.sh \
   2>/dev/null || true
 
-# Stage any other release-related tracked edits already present
-git add -u -- scripts README.md deploy container docs 2>/dev/null || true
+git add -u -- scripts README.md deploy container docs harness playground 2>/dev/null || true
 
 if git diff --cached --quiet; then
   echo "error: nothing staged for release commit" >&2
@@ -80,11 +75,10 @@ git commit -m "${MSG}"
 git tag -a "${TAG}" -m "${MSG}"
 
 IO_SHA="$(git rev-parse HEAD)"
-# Refresh manifest with post-commit IO_SHA
-sed -i "s/^IO_SHA=.*/IO_SHA=${IO_SHA}/" "${IO_ROOT}/WORKTREE_MANIFEST"
-git add WORKTREE_MANIFEST
+sed -i "s/^IO_SHA=.*/IO_SHA=${IO_SHA}/" "${INFINI_TENSOR_WORKTREE}/MANIFEST"
+git add InfiniTensorWorktree/MANIFEST
 if ! git diff --cached --quiet; then
-  git commit -m "release: record IO_SHA ${IO_SHA} in WORKTREE_MANIFEST"
+  git commit -m "release: record IO_SHA ${IO_SHA} in InfiniTensorWorktree/MANIFEST"
   git tag -d "${TAG}" >/dev/null
   git tag -a "${TAG}" -m "${MSG}"
 fi

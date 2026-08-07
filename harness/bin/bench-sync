@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+# Stage raw/ partitions and commit (optionally push) ingest branch.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BENCH_WAREHOUSE_REPO="${BENCH_WAREHOUSE_REPO:-${REPO_ROOT}}"
+
+INGEST_FILE_RE='^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/data\.tsv$'
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bench-sync push [--message MSG] [--no-push]
+  bench-sync merge-ingests [--target BRANCH]
+  bench-sync verify-ingest-branch [--server-id ID]
+
+push:
+  Stage raw/<YYYY-MM-DD>/data.tsv on ingest/<server_id>.
+  Auto-pushes to origin when a new commit is created (unless --no-push).
+
+merge-ingests:
+  Fetch origin/ingest/* and merge into the integration branch (default: master).
+  On data.tsv conflicts: union rows and dedupe by (server_id, started_at).
+  Used by scheduled-compact before compact.
+
+verify-ingest-branch:
+  Assert ingest/<server_id> differs from master only in allowed raw/ paths.
+EOF
+}
+
+ingest_file_ok() {
+  local path="$1"
+  [[ "${path}" =~ ${INGEST_FILE_RE} ]]
+}
+
+verify_ingest_paths() {
+  local label="$1"
+  shift
+  local bad=0 path
+  for path in "$@"; do
+    [[ -n "${path}" ]] || continue
+    if ! ingest_file_ok "${path}"; then
+      echo "[bench-sync] ${label}: disallowed path: ${path}" >&2
+      bad=1
+    fi
+  done
+  return "${bad}"
+}
+
+verify_ingest_staged() {
+  local paths=()
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && paths+=("${line}")
+  done < <(git diff --cached --name-only)
+  if [[ ${#paths[@]} -eq 0 ]]; then
+    echo "[bench-sync] verify-ingest-staged: nothing staged" >&2
+    return 1
+  fi
+  verify_ingest_paths "verify-ingest-staged" "${paths[@]}"
+}
+
+restore_compact_from_master() {
+  if ! git rev-parse --verify master >/dev/null 2>&1; then
+    return 0
+  fi
+  if git diff --name-only master -- compact/ 2>/dev/null | grep -q .; then
+    echo "[bench-sync] WARN: compact/ differs from master on ingest branch; restoring from master"
+    git checkout master -- compact/ 2>/dev/null || true
+  fi
+}
+
+stage_raw_ingest_files() {
+  git add -- ':(glob)raw/*/data.tsv'
+}
+
+cmd_push() {
+  local message="ingest"
+  local do_push=0
+  local explicit_no_push=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --message) message="$2"; shift 2 ;;
+      --no-push) explicit_no_push=1; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  cd "${BENCH_WAREHOUSE_REPO}"
+  export INFERENCE_SERVER_ID="${INFERENCE_SERVER_ID:-unknown}"
+  local branch="ingest/${INFERENCE_SERVER_ID}"
+
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    if [[ "$(git branch --show-current)" != "${branch}" ]]; then
+      git checkout -B "${branch}" 2>/dev/null || git checkout "${branch}"
+    fi
+  else
+    git init -q
+    git checkout -B main
+    git add -A
+    git commit -m "init bench-warehouse" -q || true
+    git checkout -B "${branch}"
+  fi
+
+  restore_compact_from_master
+  stage_raw_ingest_files
+  if git diff --cached --quiet; then
+    echo "[bench-sync] nothing to commit in raw/"
+    return 0
+  fi
+
+  verify_ingest_staged
+  git commit -m "${message}"
+  echo "[bench-sync] committed on ${branch}"
+
+  if [[ "${explicit_no_push}" -eq 0 ]]; then
+    do_push=1
+  fi
+
+  if [[ "${do_push}" -eq 1 ]]; then
+    cmd_verify_ingest_branch --server-id "${INFERENCE_SERVER_ID}"
+    if git remote get-url origin >/dev/null 2>&1; then
+      git push -u origin "${branch}"
+      echo "[bench-sync] pushed ${branch}"
+    else
+      echo "[bench-sync] no remote; skip push"
+    fi
+  fi
+}
+
+cmd_verify_ingest_branch() {
+  local server_id="${INFERENCE_SERVER_ID:-}"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --server-id) server_id="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  cd "${BENCH_WAREHOUSE_REPO}"
+  server_id="${server_id:-${INFERENCE_SERVER_ID:-unknown}}"
+  local branch="ingest/${server_id}"
+
+  if ! git rev-parse --verify master >/dev/null 2>&1; then
+    echo "[bench-sync] verify-ingest-branch: no master branch" >&2
+    return 1
+  fi
+  if ! git rev-parse --verify "${branch}" >/dev/null 2>&1; then
+    echo "[bench-sync] verify-ingest-branch: branch ${branch} not found" >&2
+    return 1
+  fi
+
+  local base paths=() path
+  base="$(git merge-base master "${branch}")"
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] && paths+=("${path}")
+  done < <(git diff --name-only "${base}" "${branch}")
+
+  if [[ ${#paths[@]} -eq 0 ]]; then
+    echo "[bench-sync] verify-ingest-branch: ${branch} has no diff from merge-base"
+    return 0
+  fi
+
+  if verify_ingest_paths "verify-ingest-branch" "${paths[@]}"; then
+    echo "[bench-sync] verify-ingest-branch: PASS (${branch}, ${#paths[@]} file(s))"
+    return 0
+  fi
+  echo "[bench-sync] verify-ingest-branch: FAIL (${branch})" >&2
+  return 1
+}
+
+cmd_merge_ingests() {
+  local target="${BENCH_SYNC_TARGET:-master}"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  cd "${BENCH_WAREHOUSE_REPO}"
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "[bench-sync] not a git repo" >&2
+    return 1
+  fi
+
+  if git remote get-url origin >/dev/null 2>&1; then
+    git fetch origin --prune
+  fi
+
+  if [[ "$(git branch --show-current)" != "${target}" ]]; then
+    git checkout "${target}"
+  fi
+
+  if git remote get-url origin >/dev/null 2>&1; then
+    git pull --ff-only origin "${target}" || true
+  fi
+
+  local merged=0 skipped=0 refs ref branch
+  refs="$(git branch -r --list 'origin/ingest/*' | sed 's/^[* ]*//' | sort -u || true)"
+  if [[ -z "${refs}" ]]; then
+    echo "[bench-sync] no origin/ingest/* branches to merge"
+    return 0
+  fi
+
+  while IFS= read -r ref; do
+    [[ -n "${ref}" ]] || continue
+    branch="${ref#origin/}"
+    if git merge-base --is-ancestor "${ref}" HEAD 2>/dev/null; then
+      echo "[bench-sync] skip ${branch} (already on ${target})"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    echo "[bench-sync] merging ${branch} → ${target}"
+    if git merge --no-edit "${ref}" -m "Merge ${branch} into ${target}"; then
+      merged=$((merged + 1))
+    else
+      echo "[bench-sync] merge conflict on ${branch}; applying ingest TSV merge strategy"
+      if ! python3 -m bench_harness.merge_ingest resolve-conflicts; then
+        echo "[bench-sync] FAIL: could not auto-resolve conflicts on ${branch}" >&2
+        git merge --abort 2>/dev/null || true
+        return 1
+      fi
+      if git diff --name-only --diff-filter=U | grep -q .; then
+        echo "[bench-sync] FAIL: unresolved conflicts after TSV merge on ${branch}" >&2
+        git diff --name-only --diff-filter=U >&2 || true
+        git merge --abort 2>/dev/null || true
+        return 1
+      fi
+      git commit --no-edit
+      merged=$((merged + 1))
+      echo "[bench-sync] merged ${branch} after TSV union/dedupe"
+    fi
+  done <<< "${refs}"
+
+  echo "[bench-sync] merge-ingests done: ${merged} merged, ${skipped} skipped"
+}
+
+main() {
+  case "${1:-}" in
+    push) shift; cmd_push "$@" ;;
+    merge-ingests) shift; cmd_merge_ingests "$@" ;;
+    verify-ingest-branch) shift; cmd_verify_ingest_branch "$@" ;;
+    -h|--help|help|"") usage ;;
+    *)
+      echo "Unknown command: ${1}" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

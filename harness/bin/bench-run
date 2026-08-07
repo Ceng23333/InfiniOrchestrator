@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Placeholder for future bench orchestration CLI.
+set -euo pipefail
+echo "bench-run: use harness scripts directly in v0" >&2
+exit 2

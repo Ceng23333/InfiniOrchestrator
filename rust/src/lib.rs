@@ -1,17 +1,18 @@
 //! InfiniLM-SVC Library
-//! Shared modules for router, registry, and babysitter binaries
+//! Shared modules for load balancer, discovery, entrypoint, and share pool binaries
 
-// Router modules (used by infini-router binary)
 pub mod config;
+pub mod discovery;
+pub mod entrypoint;
 pub mod handlers;
+pub mod load_balancer;
 pub mod models;
 pub mod proxy;
 pub mod registry;
-pub mod router;
+pub mod share_pool;
 pub mod utils;
 
-// Babysitter module (used by infini-babysitter binary)
-pub mod babysitter;
+pub use entrypoint::EntrypointState;
 
-// Re-export commonly used babysitter types for convenience
-pub use babysitter::BabysitterState;
+// Backward-compatible re-exports
+pub use entrypoint::BabysitterState;

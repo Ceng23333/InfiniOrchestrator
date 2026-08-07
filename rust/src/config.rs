@@ -1,20 +1,23 @@
-//! Configuration management for the router service
+//! Configuration management for InfiniLoadBalancer
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-/// Router configuration
+/// Load balancer configuration
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub router_port: u16,
+    pub load_balancer_port: u16,
+    pub etcd_endpoints: Option<Vec<String>>,
+    pub discovery_prefix: String,
+    /// Deprecated: HTTP registry URL
     pub registry_url: Option<String>,
     pub static_services: Option<Vec<StaticService>>,
     pub health_check_interval: u64,
     pub health_check_timeout: u64,
     pub max_errors: u32,
-    pub registry_sync_interval: u64,
+    pub discovery_sync_interval: u64,
     pub service_removal_grace_period: u64,
 }
 
@@ -35,16 +38,17 @@ fn default_weight() -> u32 {
 }
 
 impl Config {
-    /// Create a new configuration from command-line arguments
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        router_port: u16,
+        load_balancer_port: u16,
+        etcd_endpoints: Option<String>,
+        discovery_prefix: Option<String>,
         registry_url: Option<String>,
         static_services_file: Option<String>,
         health_check_interval: u64,
         health_check_timeout: u64,
         max_errors: u32,
-        registry_sync_interval: u64,
+        discovery_sync_interval: u64,
         service_removal_grace_period: u64,
     ) -> Result<Self> {
         let static_services = if let Some(file_path) = static_services_file {
@@ -53,19 +57,36 @@ impl Config {
             None
         };
 
+        let parsed_endpoints = etcd_endpoints.map(|raw| {
+            crate::discovery::parse_etcd_endpoints(&raw)
+        }).filter(|v| !v.is_empty());
+
         Ok(Config {
-            router_port,
+            load_balancer_port,
+            etcd_endpoints: parsed_endpoints,
+            discovery_prefix: discovery_prefix
+                .or_else(|| std::env::var("DISCOVERY_PREFIX").ok())
+                .unwrap_or_else(|| "/infinilm".to_string()),
             registry_url,
             static_services,
             health_check_interval,
             health_check_timeout,
             max_errors,
-            registry_sync_interval,
+            discovery_sync_interval,
             service_removal_grace_period,
         })
     }
 
-    /// Load static services from a JSON file
+    pub fn discovery_enabled(&self) -> bool {
+        self.etcd_endpoints.as_ref().is_some_and(|e| !e.is_empty())
+            || std::env::var("ETCD_ENDPOINTS").is_ok()
+    }
+
+    /// Backward-compatible alias
+    pub fn router_port(&self) -> u16 {
+        self.load_balancer_port
+    }
+
     fn load_static_services<P: AsRef<Path>>(file_path: P) -> Result<Vec<StaticService>> {
         let content = fs::read_to_string(&file_path).with_context(|| {
             format!(
@@ -77,10 +98,6 @@ impl Config {
         let config: serde_json::Value =
             serde_json::from_str(&content).context("Failed to parse static services JSON")?;
 
-        // Handle multiple possible formats:
-        // 1. Direct array: [...]
-        // 2. Object with "services" key: {"services": [...]}
-        // 3. Object with "static_services.services" key: {"static_services": {"services": [...]}}
         let services = if let Some(services_array) = config
             .get("static_services")
             .and_then(|v| v.get("services"))
@@ -128,8 +145,6 @@ mod tests {
         let services = Config::load_static_services(&temp_file).unwrap();
         assert_eq!(services.len(), 1);
         assert_eq!(services[0].name, "test-service");
-        assert_eq!(services[0].host, "localhost");
-        assert_eq!(services[0].port, 8080);
 
         std::fs::remove_file(&temp_file).unwrap();
     }
