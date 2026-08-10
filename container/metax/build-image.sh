@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Stage InfiniCore + InfiniLM from InfiniOrchestrator/InfiniTensorWorktree/, then docker build.
+# Stage InfiniCore + InfiniLM from sibling InfiniTensorWorktree/, then docker build.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../scripts/InfiniTensorWorktree_env.sh
-source "${SCRIPT_DIR}/../../scripts/InfiniTensorWorktree_env.sh"
+# shellcheck source=../../scripts/worktree_env.sh
+source "${SCRIPT_DIR}/../../scripts/worktree_env.sh"
 require_worktree_repos InfiniCore InfiniLM
 
 IMAGE_TAG="${IMAGE_TAG:-infini-orchestrator-metax:local}"

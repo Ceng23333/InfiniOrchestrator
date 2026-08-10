@@ -1,7 +1,0 @@
-case_id = "minicpm5-mxc500-vllm"
-category = "Standalone"
-n = 1
-model_id = "minicpm5"
-hw_profile_id = "metax-c500-hpcc"
-hw_abbr = "mxc500"
-be_abbr = "vllm"

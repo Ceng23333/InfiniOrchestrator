@@ -1,4 +1,4 @@
-"""Correctness family ingest (deploy_validation__)."""
+"""Correctness family ingest (validation__)."""
 
 from __future__ import annotations
 

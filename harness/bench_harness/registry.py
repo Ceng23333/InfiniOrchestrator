@@ -89,11 +89,11 @@ _LATENCY_METRIC_COLUMNS = [
 
 FAMILY_PREFIXES: dict[str, str] = {
     "unexpected_behavior": "resilience",
-    "deploy_validation": "correctness",
-    "deploy_throughput": "latency",
+    "validation": "correctness",
+    "random-fixed-length": "latency",
     "mctracer_throughput": "latency",
-    "deploy_ceval": "accuracy",
-    "deploy_longbench_v2": "quality_dyn",
+    "ceval": "accuracy",
+    "longbench_v2": "quality_dyn",
 }
 
 FAMILY_METRIC_COLUMNS: dict[str, list[str]] = {
@@ -258,8 +258,29 @@ def all_family_metric_columns() -> list[str]:
     return cols
 
 
+def harness_raw_columns(bench_id: str) -> list[str]:
+    """Column contract for one harness raw file ``raw/<date>/<suite_prefix>.tsv``.
+
+    Shared meta + **that family's** metrics only (not the union of all families).
+    Compact facts keep the wider ``warehouse_facts_columns()`` union.
+    """
+    family = bench_family(bench_id)
+    metrics = FAMILY_METRIC_COLUMNS.get(family, [])
+    return _ordered_unique(
+        CASE_META_COLUMNS
+        + PARTITION_META_COLUMNS
+        + SERVER_META_COLUMNS
+        + BENCH_RUN_META_COLUMNS
+        + list(metrics)
+        + SERVER_METRIC_COLUMNS
+    )
+
+
 def warehouse_facts_columns() -> list[str]:
-    """Stable column order for raw rows and compact facts.tsv."""
+    """Stable column order for compact ``facts.tsv`` (union of all family metrics).
+
+    Raw per-harness files use ``harness_raw_columns(bench_id)`` instead.
+    """
     return _ordered_unique(
         CASE_META_COLUMNS
         + PARTITION_META_COLUMNS

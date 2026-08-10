@@ -56,7 +56,7 @@ run_throughput() {
   [[ -n "${model}" ]] || { echo "[bench_client] MODEL required for throughput" >&2; return 1; }
   export MODEL="${model}"
   export ROUTER_URL
-  export OUT_DIR="${SUITE_DIR}/deploy_throughput"
+  export OUT_DIR="${SUITE_DIR}/random-fixed-length"
   mkdir -p "${OUT_DIR}"
   cp -f "${SUITE_DIR}/metadata.json" "${OUT_DIR}/metadata.json" 2>/dev/null || true
   "${HARNESS_ROOT}/deploy/run_deploy_throughput.sh"
@@ -67,7 +67,7 @@ run_ceval() {
   [[ -n "${model}" ]] || { echo "[bench_client] MODEL or MODELS required for ceval" >&2; return 1; }
   export MODELS="${model}"
   export ROUTER_URL
-  export OUT_DIR="${SUITE_DIR}/deploy_ceval"
+  export OUT_DIR="${SUITE_DIR}/ceval"
   mkdir -p "${OUT_DIR}"
   cp -f "${SUITE_DIR}/metadata.json" "${OUT_DIR}/metadata.json" 2>/dev/null || true
   CEVAL_SKIP_BASELINE="${CEVAL_SKIP_BASELINE:-1}" \
@@ -80,7 +80,7 @@ run_longbench() {
   export MODEL="${model}"
   export MODELS="${model}"
   export ROUTER_URL
-  export OUT_DIR="${SUITE_DIR}/deploy_longbench_v2"
+  export OUT_DIR="${SUITE_DIR}/longbench_v2"
   mkdir -p "${OUT_DIR}"
   cp -f "${SUITE_DIR}/metadata.json" "${OUT_DIR}/metadata.json" 2>/dev/null || true
   "${HARNESS_ROOT}/deploy/run_deploy_longbench_v2.sh"
@@ -90,7 +90,7 @@ case "${BENCH}" in
   unexpected|ub)
     run_unexpected "$@"
     ;;
-  throughput|tp)
+  throughput|tp|random-fixed-length|rfl)
     run_throughput
     ;;
   ceval)

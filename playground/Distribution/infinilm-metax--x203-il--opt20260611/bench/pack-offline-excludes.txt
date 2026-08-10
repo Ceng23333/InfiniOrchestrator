@@ -1,4 +1,4 @@
-# VCS / build caches (including nested submodule .git dirs under worktree/)
+# VCS / build caches (including submodule .git dirs under InfiniTensorWorktree/)
 **/.git
 **/.xmake
 **/build
@@ -26,7 +26,3 @@ deploy/cases/**/results
 **/.env
 **/.env.slave-sim
 **/.image_tag
-
-# bench-warehouse warehouse/raw history (keep harness only via path filters if needed)
-worktree/bench-warehouse/raw
-worktree/bench-warehouse/warehouse

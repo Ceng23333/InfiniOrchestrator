@@ -7,7 +7,6 @@ import csv
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 
 from bench_harness.deploy_tier import backfill_deploy_tier
 from bench_harness.ingest.parsers import parse_raw_rows_for_date
@@ -15,12 +14,14 @@ from bench_harness.partition import (
     compact_facts_path,
     glob_compact_model_ids,
     glob_raw_date_dirs,
+    glob_raw_harness_files,
     model_id_from_row,
     processed_keys_path,
     raw_ingest_key,
     slugify_segment,
 )
 from bench_harness.registry import warehouse_facts_columns
+from bench_harness.report_markdown import write_model_compact_reports
 
 PROCESSED_FILE = "processed_raw_dates.jsonl"
 
@@ -43,6 +44,13 @@ def _append_processed(repo_root: Path, keys: list[str]) -> None:
     with path.open("a", encoding="utf-8") as fh:
         for key in keys:
             fh.write(key + "\n")
+
+
+def reset_processed_keys(repo_root: Path, keys: list[str]) -> None:
+    """Overwrite processed-keys bookkeeping (used after full recompact)."""
+    path = processed_keys_path(repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"{k}\n" for k in keys), encoding="utf-8")
 
 
 def _read_tsv(path: Path) -> list[dict[str, str]]:
@@ -90,6 +98,10 @@ def _collect_raw_rows(repo_root: Path, date: str | None = None) -> list[dict[str
     return rows
 
 
+def ingest_keys_for_date(repo_root: Path, date: str) -> list[str]:
+    return [raw_ingest_key(date, path.stem) for path in glob_raw_harness_files(repo_root, date)]
+
+
 def compact_model(repo_root: Path, model_id: str) -> Path:
     """Idempotent rewrite of compact facts from all raw dates for ``model_id``."""
     target = slugify_segment(model_id)
@@ -98,6 +110,8 @@ def compact_model(repo_root: Path, model_id: str) -> Path:
     facts_path = compact_facts_path(repo_root, model_id)
     _write_tsv(facts_path, model_rows, warehouse_facts_columns())
     print(f"[compact] {facts_path} ({len(model_rows)} row(s))")
+    for report_path in write_model_compact_reports(repo_root, target, model_rows):
+        print(f"[compact] report → {report_path}")
     return facts_path
 
 
@@ -115,10 +129,15 @@ def compact_all_models(repo_root: Path, *, date: str | None = None) -> list[Path
 
 
 def compact_date(repo_root: Path, date: str, force: bool = False) -> int:
-    ingest_key = raw_ingest_key(date)
+    ingest_keys = ingest_keys_for_date(repo_root, date)
     processed = _load_processed(repo_root) if not force else set()
-    if ingest_key in processed and not force:
-        print(f"[compact] skip {ingest_key} (already processed)")
+    pending_keys = [k for k in ingest_keys if k not in processed]
+
+    if not pending_keys and not force:
+        if ingest_keys:
+            print(f"[compact] skip {date} (all harness files already processed)")
+        else:
+            print(f"[compact] no harness files for {date}")
         return 0
 
     rows = parse_raw_rows_for_date(repo_root, date)
@@ -132,8 +151,11 @@ def compact_date(repo_root: Path, date: str, force: bool = False) -> int:
         for mid in model_ids:
             compact_model(repo_root, mid)
         if not force:
-            _append_processed(repo_root, [ingest_key])
-        print(f"[compact] ingested {len(rows)} row(s) for {date} across {len(model_ids)} model(s)")
+            _append_processed(repo_root, pending_keys)
+        print(
+            f"[compact] ingested {len(rows)} row(s) for {date} "
+            f"across {len(model_ids)} model(s) ({len(pending_keys or ingest_keys)} file(s))"
+        )
         return len(rows)
 
     if force:
@@ -161,7 +183,9 @@ def resolve_date_range(anchor: str, days: int = 1) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Compact raw/<date>/data.tsv into compact/<model_id>/facts.tsv")
+    parser = argparse.ArgumentParser(
+        description="Compact raw/<date>/<harness>.tsv into compact/<model_id>/facts.tsv"
+    )
     parser.add_argument("--date", default="yesterday", help="YYYY-MM-DD, today, or yesterday")
     parser.add_argument(
         "--days",
@@ -189,6 +213,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.all_models:
         compact_all_models(repo)
+        # Refresh processed keys to current harness files after full rewrite.
+        keys: list[str] = []
+        for date_dir in glob_raw_date_dirs(repo):
+            keys.extend(ingest_keys_for_date(repo, date_dir.name))
+        reset_processed_keys(repo, keys)
         return 0
 
     dates = resolve_date_range(args.date, args.days)

@@ -1,4 +1,4 @@
-"""Path builders for flat raw/ and compact/ warehouse layout."""
+"""Path builders for flat raw/<date>/<harness>.tsv and compact/ warehouse layout."""
 
 from __future__ import annotations
 
@@ -18,25 +18,20 @@ _HARNESS_FRONTEND_EXTRA = frozenset({"vLLM", "OpenAI"})
 
 MODEL_IN_BENCH_ID_PREFIXES = frozenset(
     {
-        "deploy_throughput",
-        "deploy_ceval",
-        "deploy_longbench_v2",
+        "random-fixed-length",
+        "ceval",
+        "longbench_v2",
         "mctracer_throughput",
-        "deploy_validation",
+        "validation",
     }
 )
 
 RAW_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
-# raw/<YYYY-MM-DD>/data.tsv
-INGEST_FILE_RE = re.compile(r"^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/data\.tsv$")
-
-# Legacy deep layout (migration only).
-LEGACY_INGEST_FILE_RE = re.compile(
-    r"^raw/[^/]+/[^/]+/[^/]+/[^/]+/[^/]+/[^/]+/[^/]+/"
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}/(manifest\.json|data\.tsv)$"
+# raw/<YYYY-MM-DD>/<harness>.tsv  (harness = suite_prefix / slug; not data.tsv)
+INGEST_FILE_RE = re.compile(
+    r"^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/(?!data\.tsv$)[A-Za-z0-9][A-Za-z0-9._-]*\.tsv$"
 )
-LEGACY_RAW_DEPTH = 8
 
 
 def slugify_segment(value: str) -> str:
@@ -94,8 +89,9 @@ def raw_dir(repo_root: Path, date: str) -> Path:
     return repo_root / "raw" / date
 
 
-def raw_data_path(repo_root: Path, date: str) -> Path:
-    return raw_dir(repo_root, date) / "data.tsv"
+def raw_data_path(repo_root: Path, date: str, harness: str) -> Path:
+    """``raw/<YYYY-MM-DD>/<harness>.tsv`` for one suite_prefix family file."""
+    return raw_dir(repo_root, date) / f"{slugify_segment(harness)}.tsv"
 
 
 def compact_dir(repo_root: Path, model_id: str) -> Path:
@@ -128,64 +124,17 @@ def model_id_from_row(row: dict[str, Any]) -> str:
     return mid
 
 
-def raw_ingest_key(date: str) -> str:
-    return f"raw/{date}/data.tsv"
+def raw_ingest_key(date: str, harness: str) -> str:
+    return f"raw/{date}/{slugify_segment(harness)}.tsv"
 
 
-# --- Legacy deep-path adapters (migration / back-compat reads) ---
+def harness_from_bench_id(bench_id: str) -> str:
+    """Filesystem harness slug = ``suite_prefix(bench_id)``."""
+    return slugify_segment(suite_prefix(bench_id))
 
 
-def legacy_raw_dir(
-    repo_root: Path,
-    bench: str,
-    model: str,
-    fe: str,
-    hw_parts: list[str],
-    date: str,
-) -> Path:
-    if len(hw_parts) != len(HW_PROFILE_COLUMNS):
-        raise ValueError(f"expected {len(HW_PROFILE_COLUMNS)} hw parts, got {len(hw_parts)}")
-    return (
-        repo_root
-        / "raw"
-        / slugify_segment(bench)
-        / slugify_segment(model)
-        / frontend_path_part(fe)
-        / hw_parts[0]
-        / hw_parts[1]
-        / hw_parts[2]
-        / hw_parts[3]
-        / date
-    )
-
-
-def legacy_raw_dir_from_row(repo_root: Path, bench: str, model: str, row: dict[str, Any]) -> Path:
-    date = date_from_row(row)
-    fe = frontend_path_part_from_row(row)
-    return legacy_raw_dir(repo_root, bench, model, fe, hw_profile_path_parts(row), date)
-
-
-def parse_legacy_raw_relpath(rel: str) -> dict[str, str] | None:
-    """Parse legacy ``raw/<bench>/.../<date>/`` relative path into components."""
-    parts = rel.split("/")
-    if len(parts) != LEGACY_RAW_DEPTH + 1 or parts[0] != "raw":
-        return None
-    if not RAW_DATE_RE.match(parts[-1]):
-        return None
-    return {
-        "bench": parts[1],
-        "model": parts[2],
-        "frontend": parts[3],
-        "platform": parts[4],
-        "arch": parts[5],
-        "gpu_model": parts[6],
-        "gpu_driver": parts[7],
-        "date": parts[8],
-    }
-
-
-def glob_raw_date_dirs(repo_root: Path, date: str | None = None) -> list[Path]:
-    """Return flat ``raw/<YYYY-MM-DD>/`` dirs that contain ``data.tsv``."""
+def glob_raw_harness_files(repo_root: Path, date: str | None = None) -> list[Path]:
+    """Return ``raw/<YYYY-MM-DD>/<harness>.tsv`` paths (not ``data.tsv``)."""
     raw_root = repo_root / "raw"
     if not raw_root.is_dir():
         return []
@@ -197,38 +146,18 @@ def glob_raw_date_dirs(repo_root: Path, date: str | None = None) -> list[Path]:
             continue
         if date is not None and child.name != date:
             continue
-        if (child / "data.tsv").is_file():
-            found.append(child)
+        for tsv in sorted(child.glob("*.tsv")):
+            if tsv.name == "data.tsv":
+                continue
+            if INGEST_FILE_RE.match(f"raw/{child.name}/{tsv.name}"):
+                found.append(tsv)
     return found
 
 
-def glob_legacy_raw_partitions(repo_root: Path, date: str | None = None) -> list[Path]:
-    """Return legacy deep raw dirs containing ``manifest.json`` + ``data.tsv``."""
-    raw_root = repo_root / "raw"
-    if not raw_root.is_dir():
-        return []
-    found: list[Path] = []
-    for manifest in sorted(raw_root.rglob("manifest.json")):
-        part_dir = manifest.parent
-        if not (part_dir / "data.tsv").is_file():
-            continue
-        if date is not None and part_dir.name != date:
-            continue
-        try:
-            rel = part_dir.relative_to(raw_root)
-        except ValueError:
-            continue
-        if len(rel.parts) != LEGACY_RAW_DEPTH:
-            continue
-        found.append(part_dir)
-    return found
-
-
-def glob_raw_partitions(repo_root: Path, date: str | None = None) -> list[Path]:
-    """All raw sources for a date: flat date dirs plus legacy deep partitions."""
-    flat = glob_raw_date_dirs(repo_root, date)
-    legacy = glob_legacy_raw_partitions(repo_root, date)
-    return flat + legacy
+def glob_raw_date_dirs(repo_root: Path, date: str | None = None) -> list[Path]:
+    """Return flat ``raw/<YYYY-MM-DD>/`` dirs that contain at least one harness ``*.tsv``."""
+    dates = {p.parent for p in glob_raw_harness_files(repo_root, date)}
+    return sorted(dates, key=lambda p: p.name)
 
 
 def glob_compact_facts(

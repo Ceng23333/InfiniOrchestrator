@@ -40,27 +40,36 @@ def raw_data_relpath(
     date: str,
     *,
     fe: str = "",
+    bench_id: str = "",
 ) -> str:
-    """Relative link from a warehouse markdown file to raw ``data.tsv``."""
-    from bench_harness.partition import raw_data_path
+    """Relative link from a warehouse markdown file to raw ``<harness>.tsv``."""
+    from bench_harness.partition import harness_from_bench_id, raw_data_path
 
-    warehouse_root = from_path.resolve()
-    while warehouse_root.name != "warehouse" and warehouse_root.parent != warehouse_root:
-        warehouse_root = warehouse_root.parent
-    if warehouse_root.name != "warehouse":
-        repo_root = from_path.resolve()
-        while repo_root.name not in ("bench-warehouse", "raw") and repo_root.parent != repo_root:
-            repo_root = repo_root.parent
-        if (repo_root / "raw").is_dir():
-            pass
-        else:
-            raise ValueError(f"cannot locate warehouse root from {from_path}")
-    else:
-        repo_root = warehouse_root.parent
-    raw_target = raw_data_path(repo_root, date)
+    def _find_repo_root(start: Path) -> Path:
+        cur = start.resolve()
+        if cur.is_file():
+            cur = cur.parent
+        while True:
+            if (cur / "raw").is_dir() and (cur / "compact").is_dir():
+                return cur
+            if cur.name == "warehouse" and (cur.parent / "raw").is_dir():
+                return cur.parent
+            if cur.parent == cur:
+                break
+            cur = cur.parent
+        raise ValueError(f"cannot locate warehouse root from {from_path}")
+
+    repo_root = _find_repo_root(from_path)
+
+    harness = harness_from_bench_id(bench_id or bench)
+
+    raw_target = raw_data_path(repo_root, date, harness)
     if not raw_target.is_file():
-        for candidate in (repo_root / "raw").rglob("data.tsv"):
-            if candidate.parent.name == date:
+        date_dir = repo_root / "raw" / date
+        if date_dir.is_dir():
+            for candidate in sorted(date_dir.glob("*.tsv")):
+                if candidate.name == "data.tsv":
+                    continue
                 raw_target = candidate
                 break
     link_dir = from_path.resolve().parent
@@ -87,8 +96,10 @@ def _raw_link(
         model or bench_id.split("__")[-1],
         date,
         fe=fe,
+        bench_id=bench_id,
     )
-    return f"[data.tsv]({rel})"
+    label = Path(rel).name
+    return f"[{label}]({rel})"
 
 
 def group_best_rows_by_server(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
@@ -313,3 +324,138 @@ def write_platform_markdown_index(
     out_path = rollup_dir / f"report_{platform}.md"
     out_path.write_text(content, encoding="utf-8")
     return out_path
+
+
+def _render_server_sections(
+    grouped: dict[str, list[dict[str, str]]],
+    md_path: Path,
+) -> list[str]:
+    lines: list[str] = []
+    for server_id, win_rows in grouped.items():
+        anchor = win_rows[0]
+        platform = anchor.get("platform", "")
+        lines.append(f"## Server `{server_id}`")
+        lines.append("")
+        lines.extend(_field_table("Deployment", anchor, _DEPLOYMENT_FIELDS))
+        lines.extend(_field_table("Software", anchor, _SOFTWARE_FIELDS))
+        lines.extend(_field_table("Environment", anchor, _ENVIRONMENT_FIELDS))
+        lines.extend(_config_section(anchor))
+        lines.append("### Best-on wins")
+        lines.append("")
+        lines.append("| best_on | value | bench_id | date |")
+        lines.append("|---------|-------|----------|------|")
+        raw_keys: list[tuple[str, str]] = []
+        seen_raw: set[tuple[str, str]] = set()
+        for row in win_rows:
+            bid = row.get("bench_id", "")
+            dt = row.get("date", "")
+            key = (bid, dt)
+            if key not in seen_raw:
+                seen_raw.add(key)
+                raw_keys.append(key)
+            cells = [
+                _escape_md_cell(row.get("best_on", "")),
+                _escape_md_cell(row.get("value", "")),
+                _escape_md_cell(bid),
+                _escape_md_cell(dt),
+            ]
+            lines.append("| " + " | ".join(cells) + " |")
+        if raw_keys:
+            lines.append("")
+            lines.append("**Raw data**")
+            for bid, dt in raw_keys:
+                model_name = anchor.get("model", "") or anchor.get("model_id", "")
+                bench_seg = anchor.get("bench", "") or bid
+                raw = _raw_link(
+                    md_path,
+                    platform,
+                    bench_seg,
+                    model_name,
+                    bid,
+                    dt,
+                    fe=anchor.get(FRONTEND_METADATA_KEY, ""),
+                )
+                lines.append(f"- `{bid}` / {dt}: {raw}")
+        lines.append("")
+    return lines
+
+
+def render_compact_model_markdown(
+    model_id: str,
+    best_rows: list[dict[str, str]],
+    md_path: Path,
+) -> str:
+    """Render flat ``compact/<model_id>/report.md`` best-on markdown."""
+    from bench_harness.deploy_tier import classify_deploy_tier
+
+    lines: list[str] = [
+        f"# {model_id} — best-on",
+        "",
+        "Latest per `(server_id, bench_id)` across compact facts; winners by metric direction.",
+        "",
+        "[TSV](report_best.tsv)",
+        "",
+    ]
+
+    by_tier: dict[str, list[dict[str, str]]] = {}
+    for row in best_rows:
+        tier = row.get("deploy_tier") or classify_deploy_tier(row)
+        by_tier.setdefault(tier or "dev", []).append(row)
+
+    tiers = [t for t in DEPLOY_TIERS if t in by_tier] + [
+        t for t in sorted(by_tier) if t not in DEPLOY_TIERS
+    ]
+    multi = len(tiers) > 1
+    for tier in tiers:
+        if multi:
+            lines.append(f"# Tier: {tier}")
+            lines.append("")
+        grouped = group_best_rows_by_server(by_tier[tier])
+        lines.extend(_render_server_sections(grouped, md_path))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_model_compact_reports(
+    repo_root: Path,
+    model_id: str,
+    rows: list[dict[str, str]],
+) -> list[Path]:
+    """Write ``compact/<model_id>/report.md`` + ``report_best.tsv`` from model facts rows."""
+    import csv
+
+    from bench_harness.partition import compact_dir
+    from bench_harness.reports import (
+        BEST_ON_REPORT_COLUMNS,
+        build_best_metric_rows,
+        project_report_row,
+    )
+
+    if not rows:
+        return []
+
+    best_rows = build_best_metric_rows(rows)
+    if not best_rows:
+        return []
+
+    out_dir = compact_dir(repo_root, model_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    ordered = [project_report_row(row, BEST_ON_REPORT_COLUMNS) for row in best_rows]
+    tsv_path = out_dir / "report_best.tsv"
+    with tsv_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(
+            fh, fieldnames=BEST_ON_REPORT_COLUMNS, delimiter="\t", extrasaction="ignore"
+        )
+        writer.writeheader()
+        for row in ordered:
+            writer.writerow({c: row.get(c, "") for c in BEST_ON_REPORT_COLUMNS})
+    written.append(tsv_path)
+
+    md_path = out_dir / "report.md"
+    md_path.write_text(
+        render_compact_model_markdown(model_id, best_rows, md_path),
+        encoding="utf-8",
+    )
+    written.append(md_path)
+    return written

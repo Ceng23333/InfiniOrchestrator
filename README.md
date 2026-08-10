@@ -1,24 +1,28 @@
 # InfiniOrchestrator
 
-Deployment-focused repo for InfiniLM / vLLM / SGLang stacks with **InfiniEntrypoint** (pid=1), **InfiniLoadBalancer**, etcd discovery, frozen **InfiniTensorWorktree**, playground cases, and harness.
+Deployment-focused repo for InfiniLM / vLLM / SGLang stacks with **InfiniEntrypoint** (pid=1), **InfiniLoadBalancer**, etcd discovery, playground cases, and harness.
+
+Frozen InfiniCore / InfiniLM / InfiniMetadata pins live in the sibling **[InfiniTensorWorktree](https://github.com/Ceng23333/InfiniTensorWorktree)** repo (release tags `vYYYY.MM.DD`).
 
 ## Layout
 
 ```text
-InfiniOrchestrator/
-  InfiniTensorWorktree/   # InfiniCore, InfiniLM, InfiniMetadata + MANIFEST
-  rust/                   # infini-entrypoint, infini-loadbalancer, infini-sharepool
-  harness/                # bench runners + emit/compact/query
-  playground/
-    Standalone/           # n=1 cases: {model}-{hw_abbr}-{be_abbr}
-    Distribution/         # n>=2 / deploy recipes
-  deploy/                 # packaging overlay (not a second case tree)
+workspace/
+  InfiniOrchestrator/
+    rust/                   # infini-entrypoint, infini-loadbalancer, infini-sharepool
+    harness/                # bench runners + emit/compact/query
+    playground/
+      Standalone/           # n=1 cases: {model}-{hw_abbr}-{be_abbr}
+      Distribution/         # n>=2 / deploy recipes
+    deploy/                 # packaging overlay (not a second case tree)
+  InfiniTensorWorktree/     # sibling: InfiniCore, InfiniLM, InfiniMetadata + MANIFEST
 ```
 
 External private catalogs (env):
 
 | Env | Role |
 |-----|------|
+| `INFINI_TENSOR_WORKTREE` | Pin umbrella (default `../InfiniTensorWorktree`) |
 | `BENCH_WAREHOUSE_REPO` | Data-only metrics: `raw/<date>/`, `compact/<model_id>/` |
 | `HARDWARE_PROFILE_REPO` | GPU-primary HW catalog (`abbr`, profiles) |
 
@@ -31,18 +35,26 @@ source scripts/worktree_env.sh
 ## InfiniTensorWorktree
 
 ```bash
-git clone --recurse-submodules <url>
-git submodule update --init --recursive
-source scripts/worktree_env.sh
+# Sibling of InfiniOrchestrator:
+git clone --recurse-submodules https://github.com/Ceng23333/InfiniTensorWorktree.git
+cd InfiniTensorWorktree
+git checkout vYYYY.MM.DD && git submodule update --init --recursive
 ```
 
-Release pin:
+From InfiniOrchestrator:
+
+```bash
+source scripts/worktree_env.sh
+require_worktree_repos InfiniCore InfiniLM InfiniMetadata
+```
+
+Release pin (in InfiniTensorWorktree):
 
 ```bash
 TAG=vYYYY.MM.DD ./scripts/release.sh --from-current
 ```
 
-Manifest: `InfiniTensorWorktree/MANIFEST` (`IO_SHA`, `IC_SHA`, `IL_SHA`, `IM_SHA`).
+Manifest: `InfiniTensorWorktree/MANIFEST` (`ITW_SHA`, `IC_SHA`, `IL_SHA`, `IM_SHA`).
 
 ## Control plane
 

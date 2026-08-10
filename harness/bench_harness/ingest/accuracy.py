@@ -1,4 +1,4 @@
-"""Accuracy family ingest (deploy_ceval__)."""
+"""Accuracy family ingest (ceval__)."""
 
 from __future__ import annotations
 

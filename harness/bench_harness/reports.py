@@ -61,9 +61,9 @@ METRIC_COLS = [
 ]
 
 LATENCY_BENCH_PREFIXES = (
-    "deploy_throughput__",
+    "random-fixed-length__",
     "mctracer_throughput__",
-    "deploy_longbench_v2__",
+    "longbench_v2__",
 )
 
 BEST_ON_CLIENT_METRICS = [
@@ -202,24 +202,29 @@ def comparable_metrics_for_row(row: dict[str, str]) -> list[str]:
 _REMOVED = "removed in refactor"
 
 
-def write_model_best_reports(*args: Any, **kwargs: Any) -> list[Path]:
-    raise NotImplementedError(_REMOVED)
+def build_historical_best_index(
+    rows: list[dict[str, str]],
+    tier: str,
+) -> dict[tuple[str, str, str, str], tuple[str, str, str]]:
+    """Map (platform, model, bench_id, metric) → (value, server_id, date) for one tier."""
+    from bench_harness.deploy_tier import filter_by_deploy_tier
 
+    tier_rows = filter_by_deploy_tier(rows, tier)
+    index: dict[tuple[str, str, str, str], tuple[str, str, str]] = {}
 
-def write_partition_reports(*args: Any, **kwargs: Any) -> list[Path]:
-    raise NotImplementedError(_REMOVED)
-
-
-def write_platform_reports(*args: Any, **kwargs: Any) -> tuple[Path | None, Path | None]:
-    raise NotImplementedError(_REMOVED)
-
-
-def build_best_metric_rows(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
-    raise NotImplementedError(_REMOVED)
-
-
-def build_historical_best_index(*args: Any, **kwargs: Any) -> dict[tuple[str, str, str, str], tuple[str, str, str]]:
-    raise NotImplementedError(_REMOVED)
+    for best_row in build_best_metric_rows(tier_rows):
+        key = (
+            best_row.get("platform", ""),
+            best_row.get("model", ""),
+            best_row.get("bench_id", ""),
+            best_row.get("best_on", ""),
+        )
+        index[key] = (
+            best_row.get("value", ""),
+            best_row.get("server_id", ""),
+            best_row.get("date", ""),
+        )
+    return index
 
 
 def _pick_winner(
@@ -249,6 +254,148 @@ def _pick_winner(
                 if cand_sid > win_sid:
                     winner, winner_val = row, val
     return winner
+
+
+def build_best_metric_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """One row per (platform, model, bench_id, best_on) across all bench families."""
+    latest = latest_per_server_bench(rows)
+
+    buckets: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    for row in latest:
+        key = (
+            row.get("platform", ""),
+            row.get("model", "") or row.get("model_id", ""),
+            row.get("bench_id", ""),
+        )
+        if not key[2]:
+            continue
+        buckets.setdefault(key, []).append(row)
+
+    out: list[dict[str, str]] = []
+    for (platform, model, bench_id), bucket_rows in sorted(buckets.items()):
+        # Union of comparable metrics across rows in the bucket (family-aware).
+        metrics: list[str] = []
+        seen_m: set[str] = set()
+        for brow in bucket_rows:
+            for metric in comparable_metrics_for_row(brow):
+                if metric not in seen_m:
+                    seen_m.add(metric)
+                    metrics.append(metric)
+        for metric in metrics:
+            winner = _pick_winner(bucket_rows, metric)
+            if winner is None:
+                continue
+            val = winner.get(metric, "")
+            parsed = _parse_metric_value(val)
+            if parsed is None or not is_valid_best_on_value(metric, parsed):
+                continue
+            row: dict[str, str] = {
+                "platform": platform,
+                "model": model,
+                "best_on": metric,
+                "value": val,
+                "server_id": winner.get("server_id", ""),
+                "bench_id": bench_id,
+            }
+            for col in IDENTITY_COLS + list(BENCH_META_COLS):
+                if col in winner and col not in row:
+                    row[col] = winner.get(col, "")
+            for col in METRIC_COLS:
+                if col in winner:
+                    row[col] = winner.get(col, "")
+            for col in BEST_ON_METRICS:
+                if col in winner:
+                    row[col] = winner.get(col, "")
+            out.append(row)
+    return out
+
+
+def write_model_best_reports(
+    out_dir: Path,
+    platform: str,
+    rows: list[dict[str, str]],
+    write_tsv: Any,
+    *,
+    nested_platform: bool = True,
+) -> list[Path]:
+    """Write ``report_<model>.tsv`` best-on files under ``out_dir`` (or ``out_dir/<platform>/``)."""
+    plat_rows = [r for r in rows if r.get("platform") == platform]
+    if not plat_rows:
+        return []
+
+    best_rows = build_best_metric_rows(plat_rows)
+    if not best_rows:
+        return []
+
+    by_model: dict[str, list[dict[str, str]]] = {}
+    for row in best_rows:
+        model = row.get("model", "")
+        by_model.setdefault(model, []).append(row)
+
+    written: list[Path] = []
+    plat_dir = out_dir / platform if nested_platform else out_dir
+    for model in sorted(by_model):
+        model_rows = by_model[model]
+        ordered: list[dict[str, str]] = []
+        for row in model_rows:
+            ordered.append(project_report_row(row, BEST_ON_REPORT_COLUMNS))
+        path = plat_dir / f"report_{model}.tsv"
+        write_tsv(path, ordered, BEST_ON_REPORT_COLUMNS)
+        written.append(path)
+    return written
+
+
+def write_partition_reports(
+    out_dir: Path,
+    rows: list[dict[str, str]],
+    write_tsv: Any,
+) -> list[Path]:
+    """Write ``report.tsv``, ``report_by_server.tsv``, ``report_best.tsv`` in ``out_dir``."""
+    if not rows:
+        return []
+
+    written: list[Path] = []
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    long_rows = latest_per_server_bench(rows)
+    long_path = out_dir / "report.tsv"
+    write_tsv(long_path, long_rows, warehouse_facts_columns())
+    written.append(long_path)
+
+    wide_rows = build_wide_by_server(rows)
+    wide_path = out_dir / "report_by_server.tsv"
+    write_tsv(wide_path, wide_rows)
+    written.append(wide_path)
+
+    best_rows = build_best_metric_rows(rows)
+    if best_rows:
+        ordered = [project_report_row(row, BEST_ON_REPORT_COLUMNS) for row in best_rows]
+        best_path = out_dir / "report_best.tsv"
+        write_tsv(best_path, ordered, BEST_ON_REPORT_COLUMNS)
+        written.append(best_path)
+
+    return written
+
+
+def write_platform_reports(
+    daily_dir: Path,
+    platform: str,
+    rows: list[dict[str, str]],
+    write_tsv: Any,
+) -> tuple[Path | None, Path | None]:
+    """Write long + wide daily reports for one platform (legacy helper)."""
+    plat_rows = [r for r in rows if r.get("platform") == platform]
+    if not plat_rows:
+        return None, None
+
+    long_rows = latest_per_server_bench(plat_rows)
+    long_path = daily_dir / f"report_{platform}.tsv"
+    write_tsv(long_path, long_rows, warehouse_facts_columns())
+
+    wide_rows = build_wide_by_server(plat_rows)
+    wide_path = daily_dir / f"report_{platform}_by_server.tsv"
+    write_tsv(wide_path, wide_rows)
+    return long_path, wide_path
 
 
 def latest_per_server_bench(rows: list[dict[str, str]]) -> list[dict[str, str]]:

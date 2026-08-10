@@ -15,7 +15,7 @@ fi
 export HARNESS_ROOT IO_ROOT BENCH_WAREHOUSE_REPO
 export HARDWARE_PROFILE_REPO="${HARDWARE_PROFILE_REPO:-$(cd "${IO_ROOT}/.." && pwd)/hardware-profile}"
 export MONOREPO_WORK="${MONOREPO_WORK:-${IO_ROOT}}"
-export INFINI_TENSOR_WORKTREE="${INFINI_TENSOR_WORKTREE:-${IO_ROOT}/InfiniTensorWorktree}"
+export INFINI_TENSOR_WORKTREE="${INFINI_TENSOR_WORKTREE:-$(cd "${IO_ROOT}/.." && pwd)/InfiniTensorWorktree}"
 _IM_SRC="${INFINI_TENSOR_WORKTREE}/InfiniMetadata/src"
 # Harness + InfiniMetadata must be importable for emit/compact/query.
 _py_parts=("${HARNESS_ROOT}")

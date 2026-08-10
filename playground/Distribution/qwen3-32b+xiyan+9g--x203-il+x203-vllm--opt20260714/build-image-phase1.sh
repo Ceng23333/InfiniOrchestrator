@@ -20,7 +20,7 @@ RUNTIME_BASE_TAG="${RUNTIME_BASE_TAG:-infinilm-svc:metax-hpcc-ai370-runtime-base
 CONTAINER_NAME="${CONTAINER_NAME:-infinilm-build-ai370-p1-$(date +%s)}"
 PLATFORM="${PLATFORM:-hpcc37}"
 
-# Core/LM come from InfiniOrchestrator/InfiniTensorWorktree (hard cutover). InfiniLM-SVC stays outside.
+# Core/LM come from sibling InfiniTensorWorktree. InfiniLM-SVC stays outside.
 SOURCE_ROOT="${SOURCE_ROOT:-${WORKTREE_ROOT}}"
 SVC_ROOT="${SVC_ROOT:-$(cd "${IO_ROOT}/.." && pwd)/InfiniLM-SVC}"
 DEV_CONTAINER="${DEV_CONTAINER:-infinilm-dev-hpcc37}"

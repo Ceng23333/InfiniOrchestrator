@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BENCH_WAREHOUSE_REPO="${BENCH_WAREHOUSE_REPO:-${REPO_ROOT}}"
 
-INGEST_FILE_RE='^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/data\.tsv$'
+INGEST_FILE_RE='^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]*\.tsv$'
 
 usage() {
   cat <<'EOF'
@@ -16,12 +16,12 @@ Usage:
   bench-sync verify-ingest-branch [--server-id ID]
 
 push:
-  Stage raw/<YYYY-MM-DD>/data.tsv on ingest/<server_id>.
+  Stage raw/<YYYY-MM-DD>/<harness>.tsv on ingest/<server_id>.
   Auto-pushes to origin when a new commit is created (unless --no-push).
 
 merge-ingests:
   Fetch origin/ingest/* and merge into the integration branch (default: master).
-  On data.tsv conflicts: union rows and dedupe by (server_id, started_at).
+  On harness .tsv conflicts: union rows and dedupe by (server_id, started_at).
   Used by scheduled-compact before compact.
 
 verify-ingest-branch:
@@ -31,6 +31,8 @@ EOF
 
 ingest_file_ok() {
   local path="$1"
+  # Reject legacy flat data.tsv; allow per-harness files only.
+  [[ "${path}" == */data.tsv ]] && return 1
   [[ "${path}" =~ ${INGEST_FILE_RE} ]]
 }
 
@@ -71,7 +73,9 @@ restore_compact_from_master() {
 }
 
 stage_raw_ingest_files() {
-  git add -- ':(glob)raw/*/data.tsv'
+  git add -- ':(glob)raw/*/*.tsv'
+  # Never stage legacy flat data.tsv if present
+  git reset -- ':(glob)raw/*/data.tsv' 2>/dev/null || true
 }
 
 cmd_push() {

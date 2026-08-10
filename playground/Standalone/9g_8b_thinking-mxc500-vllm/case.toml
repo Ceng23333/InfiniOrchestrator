@@ -1,7 +1,0 @@
-case_id = "9g_8b_thinking-mxc500-vllm"
-category = "Standalone"
-n = 1
-model_id = "9g_8b_thinking"
-hw_profile_id = "metax-c500-hpcc"
-hw_abbr = "mxc500"
-be_abbr = "vllm"

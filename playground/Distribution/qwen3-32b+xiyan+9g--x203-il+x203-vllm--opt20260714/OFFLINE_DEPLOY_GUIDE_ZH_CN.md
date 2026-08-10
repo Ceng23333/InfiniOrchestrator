@@ -1,6 +1,6 @@
-# Metax 离线友好部署指南 — infinilm-metax-deployment-opt-20260611
+# Metax 离线友好部署指南 — infinilm-metax-deployment-opt-20260714
 
-本文以 **零阶段（可选）+ 3 个阶段** 部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611`：
+本文以 **零阶段（可选）+ 3 个阶段** 部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714`：
 
 0. **（离线交付）** 从 tar 包解压源码快照、预加载基础 Docker 镜像（无内网 / 无开发 worktree 时）。
 1. 从本地 `InfiniCore/InfiniLM` 源码构建部署/运行镜像（构建过程中不依赖外网）。
@@ -40,14 +40,14 @@ monorepo 开发目录（同一 inode）：
 
 | 文件 | 内容 | 必需 |
 |------|------|------|
-| `deployment-src-<IL>-<IC>-<IO>.tar.gz` | `InfiniCore/`、`InfiniLM/`、`InfiniOrchestrator/` + 根目录 `MANIFEST` | 是 |
+| `deployment-src-<IL>-<IC>-<IO>.tar.gz` | `InfiniOrchestrator/` + sibling `InfiniTensorWorktree/{InfiniCore,InfiniLM,...}` + `InfiniOrchestrator/MANIFEST` | 是 |
 | `infinilm-svc-metax-hpcc-base.tar.gz` | `docker save` 的基础镜像 `infinilm-svc:metax-hpcc-1004_218-202602281209` | 是（目标机尚无该镜像时） |
 | `infinilm-orchestrator-metax-<tag>.tar.gz` | 可选：源端已构建的 orchestrator 镜像（可跳过第一阶段） | 否 |
 
 **源端打包**（在有 git 的开发机或 monorepo worktree 上执行一次）：
 
 ```bash
-CASE="/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 STAGING="/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)"
 STAGING="${STAGING}" "${CASE}/bench/pack-offline-worktree.sh"
 
@@ -79,14 +79,14 @@ ls -lh "${STAGING}/"
 方式 1 — helper 脚本（需先从 tar 取出脚本，或随 U 盘拷贝 `bench/unpack-offline-worktree.sh`）：
 
 ```bash
-OFFLINE_ROOT="/opt/offline/infinilm-metax-20260611"
+OFFLINE_ROOT="/opt/offline/infinilm-metax-20260714"
 SRC_TAR="/path/to/deployment-src-ILSHA-ICSHA-IOSHA.tar.gz"
 BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
 
 # 从 tar 内取出 unpack helper（仅需一次）
 HELPER="$(mktemp)"
 tar -xzf "${SRC_TAR}" -O \
-  InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/bench/unpack-offline-worktree.sh \
+  InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714/bench/unpack-offline-worktree.sh \
   > "${HELPER}" && chmod +x "${HELPER}"
 
 OFFLINE_ROOT="${OFFLINE_ROOT}" SRC_TAR="${SRC_TAR}" "${HELPER}"
@@ -98,7 +98,7 @@ set -a && source "${WORKSPACE}/MANIFEST" && set +a
 方式 2 — 手动解压（无 helper 时）：
 
 ```bash
-OFFLINE_ROOT="/opt/offline/infinilm-metax-20260611"
+OFFLINE_ROOT="/opt/offline/infinilm-metax-20260714"
 SRC_TAR="/path/to/deployment-src-ILSHA-ICSHA-IOSHA.tar.gz"
 BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
 
@@ -107,7 +107,7 @@ tar -xzf "${SRC_TAR}" -C "${OFFLINE_ROOT}"
 export WORKSPACE="${OFFLINE_ROOT}"
 set -a && source "${WORKSPACE}/MANIFEST" && set +a
 grep -n 'gc.collect' "${WORKSPACE}/InfiniLM/python/infinilm/modeling_utils.py"
-test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/validate.sh"
+test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714/validate.sh"
 ```
 
 加载基础镜像（目标机尚无 `infinilm-svc:metax-hpcc-1004_218-202602281209` 时）：
@@ -126,7 +126,7 @@ docker images | grep 'infinilm-svc.*metax-hpcc-1004_218-202602281209'
 收到新的 `deployment-src-*.tar.gz` 后，在现有 `WORKSPACE` 上覆盖解压（或解压到新目录后改 `WORKSPACE`），重新执行第一阶段 `build-image.sh`，更新 case `.env` 中的 `IMAGE_TAG`（或从 `.image_tag` 复制），再：
 
 ```bash
-cd "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+cd "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 # slave 主机同理 force-recreate worker-slave-xiyan-qwencoder-8200
@@ -140,7 +140,7 @@ docker-compose up -d --force-recreate \
 ORCH_TAR="/path/to/infini-orchestrator-metax-IL-IC-DATE.tar.gz"
 gunzip -c "${ORCH_TAR}" | docker load
 IMAGE_TAG="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^infini-orchestrator-metax:' | head -1)"
-echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag"
+echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714/.image_tag"
 # 直接进入第二阶段 A
 ```
 
@@ -180,7 +180,7 @@ done
 
 ```bash
 DEV_WS="/opt/offline/infinilm-metax-20260622"
-CASE="${DEV_WS}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${DEV_WS}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 STAGING=/tmp/offline-src
 WORKSPACE="/tmp/offline-deploy-verify-$(date -u +%Y%m%d)"
 
@@ -250,7 +250,7 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 模板 [`.env.master.example`](.env.master.example) 中的 NFS 路径在部分站点可能为空目录。启动 compose **前**确认权重可读：
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 # 读模板默认值或已有 .env
 QWEN3_32B_DIR="${QWEN3_32B_DIR:-/data-aisoft/zenghua/models/Qwen3-32B}"
 EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-/data-aisoft/zenghua/models/embedding-models}"
@@ -312,7 +312,7 @@ INFINI_RUNTIME_CONTAINER=__base__ \
 DOCKER_BUILD_NO_CACHE=1 \
 ./build-image.sh
 
-echo "${IMAGE_TAG}" > ../../deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag
+echo "${IMAGE_TAG}" > ../../deploy/cases/infinilm-metax-deployment-opt-20260714/.image_tag
 echo "Built: ${IMAGE_TAG}"
 ```
 
@@ -358,8 +358,8 @@ python $REPO/InfiniLM/examples/jiuge.py \
 ### 0) 两台主机共同变量（复制后改 IP）
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -368,8 +368,8 @@ IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
 ### 1) Master 主机
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
 
@@ -396,8 +396,8 @@ curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"
 将 case 目录 rsync 到 slave（或 tar 解压同一 `WORKSPACE`），然后：
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -425,8 +425,8 @@ curl -sf --noproxy "*" "http://${MASTER_IP}:18000/services" | grep slave-xiyan-q
 ### 3) 双机全栈验证（在 Master 或任一可访问两台 IP 的主机）
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 
@@ -479,8 +479,8 @@ curl -sf --noproxy "*" -X POST "http://${MASTER_IP}:8800/v1/chat/completions" \
 **公共变量**（Phase 2–3 共用；Phase 1 完成后设置 `IMAGE_TAG`）：
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611   # 或 Path A 解压目录
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714   # 或 Path A 解压目录
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP="$(hostname -I | awk '{print $1}')"
 IMAGE_TAG="$(cat "${CASE}/.image_tag")"          # Phase 1 写入
 ```
@@ -505,8 +505,8 @@ docker-compose up -d --force-recreate \
 **Worker CG 就绪等待**（`validate.sh` 前必做；Qwen TP=4 可能 30+ 分钟）：
 
 ```bash
-"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-qwen-paged-8200-20260611 "Qwen paged"
-"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-9g-8100-20260611 "9g"
+"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-qwen-paged-8200-20260714 "Qwen paged"
+"${CASE}/bench/wait_worker_capture.sh" infiniorch-worker-master-9g-8100-20260714 "9g"
 
 # Embeddings：Flask warmup 约 2–5 分钟，轮询直到 20003 可用
 until curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
@@ -530,8 +530,8 @@ done
 与上文 **「2) Slave 主机」** 相同；完整 copy-paste 见双机部署节。
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -562,7 +562,7 @@ docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
 **命令：**
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 cd "${CASE}"
 
 # 若 master .env 尚无 XiYan 路径（仅 master 栈时）
@@ -618,8 +618,8 @@ SLAVE_IP=<SLAVE_IP>
 **仅 Master（无 Slave 或 GPU 不足）：**
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP="$(hostname -I | awk '{print $1}')"
 
 cd "${CASE}"
@@ -630,8 +630,8 @@ ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
 **双机（Master + Slave）：**
 
 ```bash
-WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+WORKSPACE=/opt/offline/infinilm-metax-20260714
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 
@@ -661,7 +661,7 @@ ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
 `validate.sh` 通过后，可运行完整 bench 阶梯（**不重启**已部署的 orchestrator 栈）：
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714"
 cd "${CASE}"
 
 # 等待 worker 日志出现 LLMEngine initialized + C++ capture complete 后执行
@@ -713,11 +713,11 @@ curl -sf --noproxy "*" "http://${MASTER_IP}:20003/v1/embeddings" \
 
 ```bash
 # Qwen paged worker（8200）
-docker exec infiniorch-worker-master-qwen-paged-8200-20260611 bash -lc \
+docker exec infiniorch-worker-master-qwen-paged-8200-20260714 bash -lc \
   'f=$(ls -t /app/logs/babysitter_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
 
 # XiYanSQL slave（8200）
-docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 bash -lc \
+docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260714 bash -lc \
   'f=$(ls -t /app/logs/babysitter_*.log | head -n1); echo "LOG=$f"; tail -n 80 "$f"'
 ```
 
@@ -774,7 +774,7 @@ docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 bash -lc \
      -d '{"model":"text-embedding-ada-002","input":"hello"}' | grep -q '"object"'; do sleep 15; done
    ```
 3. `docker-compose up -d --force-recreate worker-master-embeddings-20002`
-4. `docker exec infiniorch-worker-master-embeddings-20002-20260611 bash -lc 'tail -40 $(ls -t /app/logs/babysitter_*.log | head -1)'`
+4. `docker exec infiniorch-worker-master-embeddings-20002-20260714 bash -lc 'tail -40 $(ls -t /app/logs/babysitter_*.log | head -1)'`
 
 ### F) docker-compose 兼容性
 
@@ -817,8 +817,8 @@ ip route get 172.22.162.46
 ip -4 route show | grep -E '172\.22\.|br-'
 
 # 3) 查 compose 项目网络子网（项目名通常为 case 目录名）
-docker network ls | grep infinilm-metax-deployment-opt-20260611
-docker network inspect infinilm-metax-deployment-opt-20260611_default \
+docker network ls | grep infinilm-metax-deployment-opt-20260714
+docker network inspect infinilm-metax-deployment-opt-20260714_default \
   | python3 -c "import sys,json; c=json.load(sys.stdin)[0]['IPAM']['Config']; print(c)"
 
 # 4) NFS 挂载是否 stale
@@ -866,12 +866,12 @@ networks:
 cd "${CASE}"
 docker-compose down
 # 可选：删除残留的旧 bridge 网络（仅当 inspect 显示 172.22.0.0/16 时）
-# docker network rm infinilm-metax-deployment-opt-20260611_default 2>/dev/null || true
+# docker network rm infinilm-metax-deployment-opt-20260714_default 2>/dev/null || true
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 
 # 确认新子网
-docker network inspect infinilm-metax-deployment-opt-20260611_default \
+docker network inspect infinilm-metax-deployment-opt-20260714_default \
   | grep -A2 Subnet
 ip -4 route show | grep 172.28
 ```
@@ -924,11 +924,11 @@ curl -sf --connect-timeout 5 --noproxy "*" "http://${SLAVE_IP}:8200/v1/models"
 curl -sf --connect-timeout 5 --noproxy "*" "http://${MASTER_IP}:18000/health"
 
 # 3) Master 容器 → Slave LAN IP（双机 / 单机模拟关键路径）
-docker exec infiniorch-master-opt-20260611 \
+docker exec infiniorch-master-opt-20260714 \
   curl -sf --connect-timeout 5 --noproxy "*" "http://${SLAVE_IP}:8200/v1/models"
 
 # 4) Slave 容器 → Master registry（双机 Slave 注册路径）
-docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260611 \
+docker exec infiniorch-worker-slave-xiyan-qwencoder-8200-20260714 \
   curl -sf --connect-timeout 5 --noproxy "*" "http://${MASTER_IP}:18000/health"
 ```
 
@@ -1001,7 +1001,7 @@ cd "${CASE}" && docker-compose down
 docker ps --format '{{.Names}}' | grep infiniorch
 ```
 
-E2E 验证前须停止所有 `infiniorch-*-opt-20260611` 容器。
+E2E 验证前须停止所有 `infiniorch-*-opt-20260714` 容器。
 
 ### L) 模型路径为空 / compose 挂载失败
 
@@ -1055,7 +1055,7 @@ SCENARIOS=cancel_mid_decode ./scripts/repro_cancel_token_mismatch.sh
 **日志核对：**
 
 ```bash
-docker exec infiniorch-worker-master-9g-8100-20260611 bash -lc \
+docker exec infiniorch-worker-master-9g-8100-20260714 bash -lc \
   'grep -E "cancelled|sampled token count mismatch|Error in step loop" \
    $(ls -t /app/logs/babysitter_*.log | head -1) | tail -20'
 ```

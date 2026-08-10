@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migrate legacy deep raw/ + warehouse/ layout to flat raw/<date> + compact/<model_id>."""
+"""Split flat raw/<date>/data.tsv into per-harness raw/<date>/<suite_prefix>.tsv."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from bench_harness.compact import compact_all_models
-from bench_harness.ingest import flatten_row, load_legacy_raw_partition, read_data_tsv
+from bench_harness.compact import compact_all_models, ingest_keys_for_date, reset_processed_keys
+from bench_harness.ingest import read_data_tsv
 from bench_harness.partition import (
-    glob_legacy_raw_partitions,
+    RAW_DATE_RE,
     glob_raw_date_dirs,
-    legacy_raw_dir,
     raw_data_path,
+    slugify_segment,
 )
-from bench_harness.registry import warehouse_facts_columns
+from bench_harness.registry import harness_raw_columns, suite_prefix
 
 TSV = "\t"
 
@@ -45,41 +45,98 @@ def _merge_rows(existing: list[dict[str, str]], new_rows: list[dict[str, str]]) 
     return sorted(merged.values(), key=lambda r: (r.get("started_at", ""), r.get("server_id", "")))
 
 
-def collect_legacy_rows(repo_root: Path) -> dict[str, list[dict[str, str]]]:
-    by_date: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for legacy_dir in glob_legacy_raw_partitions(repo_root):
-        manifest, part_rows = load_legacy_raw_partition(legacy_dir)
-        date = legacy_dir.name
-        for row in part_rows:
-            by_date[date].append(flatten_row(manifest, row))
-    return by_date
-
-
-def migrate_raw(repo_root: Path, *, dry_run: bool = False) -> dict[str, int]:
-    """Flatten legacy deep raw partitions into ``raw/<date>/data.tsv``."""
-    by_date = collect_legacy_rows(repo_root)
-    counts: dict[str, int] = {}
-    columns = warehouse_facts_columns()
-
-    for date, legacy_rows in sorted(by_date.items()):
-        target = raw_data_path(repo_root, date)
-        existing = read_data_tsv(target) if target.is_file() else []
-        merged = _merge_rows(existing, legacy_rows)
-        counts[date] = len(legacy_rows)
-        if dry_run:
-            print(f"[migrate] would write {target} ({len(merged)} rows, +{len(legacy_rows)} legacy)")
+def _assert_no_deep_raw(repo_root: Path) -> None:
+    raw_root = repo_root / "raw"
+    if not raw_root.is_dir():
+        return
+    deep: list[str] = []
+    for child in sorted(raw_root.iterdir()):
+        if not child.is_dir():
             continue
-        _write_tsv(target, merged, columns)
-        print(f"[migrate] wrote {target} ({len(merged)} rows)")
+        if RAW_DATE_RE.match(child.name):
+            continue
+        if child.name.startswith("."):
+            continue
+        deep.append(child.name)
+    if deep:
+        raise SystemExit(
+            "ERROR: deep legacy raw/ trees still present (not migrated):\n  "
+            + "\n  ".join(deep)
+            + "\nDelete them before splitting flat data.tsv → per-harness files."
+        )
 
-    if not by_date:
-        print("[migrate] no legacy raw partitions found")
+
+def split_flat_data_tsv(
+    repo_root: Path,
+    date: str | None = None,
+    *,
+    dry_run: bool = False,
+) -> dict[str, dict[str, int]]:
+    """Split ``raw/<date>/data.tsv`` into ``raw/<date>/<suite_prefix>.tsv``."""
+    _assert_no_deep_raw(repo_root)
+    raw_root = repo_root / "raw"
+    if not raw_root.is_dir():
+        print("[migrate] no raw/ directory")
+        return {}
+
+    date_dirs: list[Path] = []
+    for child in sorted(raw_root.iterdir()):
+        if not child.is_dir() or not RAW_DATE_RE.match(child.name):
+            continue
+        if date is not None and child.name != date:
+            continue
+        if (child / "data.tsv").is_file():
+            date_dirs.append(child)
+
+    if not date_dirs:
+        print("[migrate] no flat raw/<date>/data.tsv files found")
+        return {}
+
+    counts: dict[str, dict[str, int]] = {}
+    for date_dir in date_dirs:
+        flat = date_dir / "data.tsv"
+        rows = read_data_tsv(flat)
+        by_harness: dict[str, list[dict[str, str]]] = defaultdict(list)
+        for row in rows:
+            bench_id = str(row.get("bench_id", "") or "")
+            if not bench_id:
+                raise SystemExit(f"ERROR: row missing bench_id in {flat}")
+            harness = slugify_segment(suite_prefix(bench_id))
+            by_harness[harness].append(row)
+
+        counts[date_dir.name] = {}
+        for harness, harness_rows in sorted(by_harness.items()):
+            target = raw_data_path(repo_root, date_dir.name, harness)
+            existing = read_data_tsv(target) if target.is_file() else []
+            merged = _merge_rows(existing, harness_rows)
+            # Use first row's bench_id for column family (same suite_prefix).
+            sample_bench = merged[0].get("bench_id") or harness
+            columns = harness_raw_columns(sample_bench)
+            counts[date_dir.name][harness] = len(harness_rows)
+            if dry_run:
+                print(
+                    f"[migrate] would write {target} "
+                    f"({len(merged)} rows, +{len(harness_rows)} from data.tsv)"
+                )
+                continue
+            _write_tsv(target, merged, columns)
+            print(f"[migrate] wrote {target} ({len(merged)} rows)")
+
+        if dry_run:
+            print(f"[migrate] would remove {flat}")
+        else:
+            flat.unlink()
+            print(f"[migrate] removed {flat}")
+
     return counts
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Migrate bench-warehouse to flat raw + compact layout")
+    parser = argparse.ArgumentParser(
+        description="Split flat raw/<date>/data.tsv into per-harness .tsv files"
+    )
     parser.add_argument("--repo-root", type=Path, default=None)
+    parser.add_argument("--date", default=None, help="Limit to one YYYY-MM-DD date dir")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-compact", action="store_true")
     args = parser.parse_args(argv)
@@ -94,18 +151,23 @@ def main(argv: list[str] | None = None) -> int:
     (repo / "raw").mkdir(parents=True, exist_ok=True)
     (repo / "compact").mkdir(parents=True, exist_ok=True)
 
-    migrate_raw(repo, dry_run=args.dry_run)
+    try:
+        split_flat_data_tsv(repo, args.date, dry_run=args.dry_run)
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
     if not args.skip_compact and not args.dry_run:
         print("[migrate] compacting all model_id partitions …")
         compact_all_models(repo)
-
-    legacy_wh = repo / "warehouse"
-    if legacy_wh.is_dir():
-        print(f"[migrate] legacy warehouse/ retained at {legacy_wh} (not regenerated)")
+        keys: list[str] = []
+        for date_dir in glob_raw_date_dirs(repo):
+            keys.extend(ingest_keys_for_date(repo, date_dir.name))
+        reset_processed_keys(repo, keys)
+        print(f"[migrate] processed keys reset ({len(keys)} file(s))")
 
     flat_dates = glob_raw_date_dirs(repo)
-    print(f"[migrate] flat raw date dirs: {len(flat_dates)}")
+    print(f"[migrate] harness raw date dirs: {len(flat_dates)}")
     return 0
 
 

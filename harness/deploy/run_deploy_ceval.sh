@@ -43,7 +43,7 @@ case "${MODELS}" in
 esac
 
 TS="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/deploy_ceval_${MODELS}_limit1_${TS}}"
+OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/ceval_${MODELS}_limit1_${TS}}"
 mkdir -p "${OUT_DIR}"
 export OUT_DIR
 
@@ -88,7 +88,7 @@ bash "${HARNESS_ROOT}/lib/scrape_server_metrics.sh" after "${SERVER_DIR}" || tru
 echo ""
 echo "Deploy C-Eval complete: ${OUT_DIR}"
 
-BENCH_ID="deploy_ceval__${MODELS}"
+BENCH_ID="ceval__${MODELS}"
 export BASE_URL="${ROUTER_URL}"
 export MODEL="${MODELS}"
 bash "${HARNESS_ROOT}/lib/emit_bench.sh" "${BENCH_ID}" "${OUT_DIR}" "${STEP_STARTED}" "${STEP_FINISHED}" || {

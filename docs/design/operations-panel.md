@@ -143,8 +143,8 @@ Live instances mirror registry heartbeats. **Historical** servers are immutable 
 
 | Field | Notes |
 |-------|--------|
-| `bench_id` | Suite+step slug, e.g. `deploy_throughput__Qwen3-32B`, `unexpected_behavior__cancel_mid_decode`. |
-| `bench` | Suite prefix (`deploy_throughput`, `deploy_ceval`, `unexpected_behavior`, …). |
+| `bench_id` | Suite+step slug, e.g. `random-fixed-length__Qwen3-32B`, `unexpected_behavior__cancel_mid_decode`. |
+| `bench` | Suite prefix (`random-fixed-length`, `ceval`, `unexpected_behavior`, …). |
 | `bench_family` | `resilience` \| `correctness` \| `latency` \| `accuracy` (warehouse). |
 | `default_params` | e.g. `MAX_CONCURRENCY`, `NUM_PROMPTS`. |
 | `runner` | Entrypoint under `bench-warehouse/harness/` (or custom). |

@@ -238,8 +238,8 @@ fn slugify(value: &str) -> String {
 fn builtin_benches() -> Vec<Value> {
     vec![
         json!({
-            "bench_id": "deploy_throughput__generic",
-            "bench": "deploy_throughput",
+            "bench_id": "random-fixed-length__generic",
+            "bench": "random-fixed-length",
             "bench_family": "latency",
             "default_params": {
                 "MAX_CONCURRENCY": 16,
@@ -249,8 +249,8 @@ fn builtin_benches() -> Vec<Value> {
             "source": "builtin"
         }),
         json!({
-            "bench_id": "deploy_ceval__generic",
-            "bench": "deploy_ceval",
+            "bench_id": "ceval__generic",
+            "bench": "ceval",
             "bench_family": "accuracy",
             "default_params": {
                 "limit": 100

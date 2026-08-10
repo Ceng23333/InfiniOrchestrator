@@ -168,6 +168,7 @@ async def _chat_completion(
     last_tok_t = None
     chunks: list[str] = []
     completion_tokens = 0
+    prompt_tokens = 0
 
     timeout = aiohttp.ClientTimeout(total=timeout_sec)
     async with session.post(url, json=payload, timeout=timeout) as resp:
@@ -197,6 +198,8 @@ async def _chat_completion(
             usage = obj.get("usage") or {}
             if usage.get("completion_tokens"):
                 completion_tokens = int(usage["completion_tokens"])
+            if usage.get("prompt_tokens"):
+                prompt_tokens = int(usage["prompt_tokens"])
 
     text = "".join(chunks)
     e2e_ms = (time.perf_counter() - t0) * 1000.0
@@ -209,6 +212,7 @@ async def _chat_completion(
         "tpot_ms": float(tpot_ms),
         "itl_ms": float(statistics.mean(itls)) if itls else float(tpot_ms),
         "completion_tokens": float(completion_tokens),
+        "prompt_tokens": float(prompt_tokens),
     }
     return text, metrics
 
@@ -216,9 +220,13 @@ async def _chat_completion(
 def _request_extra_body(args: argparse.Namespace) -> dict[str, Any]:
     """Build OpenAI-compatible extra fields for chat/completions.
 
-    MiniCPM5 / Qwen-style chat templates open a free-form <think> block unless
-    enable_thinking=false is passed via chat_template_kwargs. With max_tokens=128
-    that burns the whole budget and extract_answer returns None (lb_em ~0).
+    ``--enable-thinking`` / ENABLE_THINKING selects official LongBench CoT
+    prompts (0shot_cot → 0shot_cot_ans). That is independent of native model
+    thinking: MiniCPM5 / Qwen-style chat templates open a free-form <think>
+    block unless ``chat_template_kwargs.enable_thinking=false``. With the
+    answer-phase max_tokens=128 that burns the budget and extract_answer
+    returns None (lb_em ~0). Always default native thinking off for scoring;
+    override only via --extra-body-json when intentional.
     """
     extra: dict[str, Any] = {}
     if args.extra_body_json:
@@ -226,10 +234,9 @@ def _request_extra_body(args: argparse.Namespace) -> dict[str, Any]:
         if not isinstance(parsed, dict):
             raise ValueError("--extra-body-json must be a JSON object")
         extra.update(parsed)
-    # Default: disable native thinking for official 0-shot; keep CoT path enabled.
     ct_kwargs = dict(extra.get("chat_template_kwargs") or {})
     if "enable_thinking" not in ct_kwargs:
-        ct_kwargs["enable_thinking"] = bool(args.enable_thinking)
+        ct_kwargs["enable_thinking"] = False
     extra["chat_template_kwargs"] = ct_kwargs
     return extra
 
@@ -266,6 +273,8 @@ async def _run_one(
                 args.timeout_sec,
                 extra_body,
             )
+            if not m1.get("prompt_tokens"):
+                m1["prompt_tokens"] = float(len(tokenizer.encode(prompt)))
             ans_tmpl = prompts["0shot_cot_ans"]
             prompt2 = (
                 ans_tmpl.replace("$DOC$", item["context"].strip())
@@ -287,12 +296,15 @@ async def _run_one(
                 args.timeout_sec,
                 extra_body,
             )
+            if not m2.get("prompt_tokens"):
+                m2["prompt_tokens"] = float(len(tokenizer.encode(prompt2)))
             metrics = {
                 "ttft_ms": m1["ttft_ms"],
                 "e2e_ms": m1["e2e_ms"] + m2["e2e_ms"],
                 "tpot_ms": m2["tpot_ms"],
                 "itl_ms": m2["itl_ms"],
                 "completion_tokens": m1["completion_tokens"] + m2["completion_tokens"],
+                "prompt_tokens": m1.get("prompt_tokens", 0.0) + m2.get("prompt_tokens", 0.0),
             }
         else:
             template = prompts["0shot"]
@@ -314,6 +326,8 @@ async def _run_one(
                 args.timeout_sec,
                 extra_body,
             )
+            if not metrics.get("prompt_tokens"):
+                metrics["prompt_tokens"] = float(len(tokenizer.encode(prompt)))
         pred = extract_answer(response.strip() if response else "")
         return {
             "_id": item.get("_id"),
@@ -387,6 +401,7 @@ async def _amain(args: argparse.Namespace) -> int:
                         "tpot_ms": 0.0,
                         "itl_ms": 0.0,
                         "completion_tokens": 0.0,
+                        "prompt_tokens": 0.0,
                         "error": str(exc),
                     }
                 )
@@ -400,6 +415,8 @@ async def _amain(args: argparse.Namespace) -> int:
     itls = [float(r["itl_ms"]) for r in results if r.get("itl_ms")]
     e2es = [float(r["e2e_ms"]) for r in results if r.get("e2e_ms")]
     out_toks = sum(float(r.get("completion_tokens") or 0) for r in results)
+    prompt_toks = sum(float(r.get("prompt_tokens") or 0) for r in results)
+    total_toks = prompt_toks + out_toks
 
     cot_tag = "cot" if args.enable_thinking else "no_cot"
     limit_tag = "all" if not args.limit else str(args.limit)
@@ -429,7 +446,7 @@ async def _amain(args: argparse.Namespace) -> int:
         "itl_mean_ms": statistics.mean(itls) if itls else 0.0,
         "req_per_s": n / wall_s,
         "output_tok_per_s": out_toks / wall_s,
-        "total_tok_per_s": out_toks / wall_s,
+        "total_tok_per_s": total_toks / wall_s,
         "status": "PASS" if n else "FAIL",
         "e2e_mean_ms": statistics.mean(e2es) if e2es else 0.0,
     }

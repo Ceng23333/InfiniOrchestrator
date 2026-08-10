@@ -4,22 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bench_harness.ingest import flatten_row, load_legacy_raw_partition, parse_raw_rows_for_date
-from bench_harness.partition import glob_legacy_raw_partitions, glob_raw_partitions
-from bench_harness.registry import bench_family
+from bench_harness.ingest import parse_raw_rows_for_date, read_data_tsv
+from bench_harness.partition import glob_raw_harness_files, slugify_segment
+from bench_harness.registry import bench_family, suite_prefix
 
 
-def parse_raw_partition_path(raw_dir: Path) -> list[dict[str, str]]:
-    data_path = raw_dir / "data.tsv"
-    if not data_path.is_file():
-        return []
-    manifest_path = raw_dir / "manifest.json"
-    if manifest_path.is_file():
-        manifest, rows = load_legacy_raw_partition(raw_dir)
-        return [flatten_row(manifest, row) for row in rows]
-    from bench_harness.ingest import read_data_tsv
-
-    return read_data_tsv(data_path)
+def parse_raw_partition_path(tsv_path: Path) -> list[dict[str, str]]:
+    """Load rows from one harness ``*.tsv`` path."""
+    return read_data_tsv(tsv_path)
 
 
 def parse_raw_partition(
@@ -29,27 +21,30 @@ def parse_raw_partition(
     date: str,
 ) -> list[dict[str, str]]:
     """Locate rows for ``bench_id`` (+ optional platform) on ``date``."""
-    rows = parse_raw_rows_for_date(repo_root, date)
+    harness = slugify_segment(suite_prefix(bench_id))
     out: list[dict[str, str]] = []
-    for row in rows:
-        if row.get("bench_id") != bench_id:
-            continue
-        plat = row.get("platform", "")
-        if platform and plat and plat != platform:
-            continue
-        out.append(row)
-    if out:
-        return out
 
-    for raw_dir in glob_raw_partitions(repo_root, date):
-        part_rows = parse_raw_partition_path(raw_dir)
-        for row in part_rows:
+    for path in glob_raw_harness_files(repo_root, date):
+        if path.stem != harness:
+            continue
+        for row in parse_raw_partition_path(path):
             if row.get("bench_id") != bench_id:
                 continue
             plat = row.get("platform", "")
             if platform and plat and plat != platform:
                 continue
             out.append(row)
+    if out:
+        return out
+
+    # Fallback: scan all harness files for the date.
+    for row in parse_raw_rows_for_date(repo_root, date):
+        if row.get("bench_id") != bench_id:
+            continue
+        plat = row.get("platform", "")
+        if platform and plat and plat != platform:
+            continue
+        out.append(row)
     return out
 
 

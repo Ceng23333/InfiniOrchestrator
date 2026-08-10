@@ -1,4 +1,4 @@
-"""Append bench rows to raw/<YYYY-MM-DD>/data.tsv."""
+"""Append bench rows to raw/<YYYY-MM-DD>/<suite_prefix>.tsv."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from bench_harness.hw_profile import apply_profile_to_row
 from bench_harness.metadata_merge import merge_metadata_into_row
 from bench_harness.partition import (
     date_from_row,
+    harness_from_bench_id,
     hw_profile_json,
     parse_bench_model,
     raw_data_path,
@@ -30,7 +31,7 @@ from bench_harness.registry import (
     SERVER_PROFILE_KEYS,
     bench_family,
     data_columns,
-    warehouse_facts_columns,
+    harness_raw_columns,
 )
 from bench_harness.server_client import metrics_json_to_row
 from bench_harness.staging import parse_ceval_staging, parse_longbench_staging, parse_throughput_staging
@@ -204,9 +205,10 @@ def append_row(
 ) -> Path:
     _enrich_emit_row(row, bench_id)
     date = str(row["date"])
-    data_path = raw_data_path(repo_root, date)
+    harness = harness_from_bench_id(bench_id)
+    data_path = raw_data_path(repo_root, date, harness)
 
-    columns = warehouse_facts_columns()
+    columns = harness_raw_columns(bench_id)
     for col in data_columns(bench_id):
         if col not in columns:
             columns.append(col)
@@ -362,7 +364,7 @@ def build_row_from_staging(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Emit bench row to raw/<date>/data.tsv")
+    parser = argparse.ArgumentParser(description="Emit bench row to raw/<date>/<harness>.tsv")
     parser.add_argument("--server-id", required=True)
     parser.add_argument("--host-id", required=True)
     parser.add_argument("--platform", required=True)

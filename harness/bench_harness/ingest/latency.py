@@ -1,4 +1,4 @@
-"""Latency family ingest (deploy_throughput__, mctracer_throughput__)."""
+"""Latency family ingest (random-fixed-length__, mctracer_throughput__)."""
 
 from __future__ import annotations
 

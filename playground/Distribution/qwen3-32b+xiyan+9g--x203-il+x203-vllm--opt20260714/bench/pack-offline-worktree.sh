@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Pack InfiniOrchestrator (including populated worktree/ submodules) for offline deploy.
+# Pack InfiniOrchestrator + sibling InfiniTensorWorktree for offline deploy.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../../../../scripts/worktree_env.sh
 source "${CASE_DIR}/../../../scripts/worktree_env.sh"
-require_worktree_repos InfiniCore InfiniLM InfiniMetadata bench-warehouse
+require_worktree_repos InfiniCore InfiniLM InfiniMetadata
 EXCLUDES_FILE="${SCRIPT_DIR}/pack-offline-excludes.txt"
 
 STAGING="${STAGING:-/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)}"
-BASE_IMAGE="${BASE_IMAGE:-infinilm-svc:metax-hpcc-1004_218-202602281209}"
-CASE_NAME="infinilm-metax-deployment-opt-20260611"
+BASE_IMAGE="${BASE_IMAGE:-mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:0.20.0-hpcc.ai3.7.0.102-torch2.8-py310-kylin2309a-arm64}"
+CASE_NAME="infinilm-metax-deployment-opt-20260714"
 MONOREPO_ROOT="$(cd "${IO_ROOT}/.." && pwd)"
+PACK_PARENT="$(cd "${IO_ROOT}/.." && pwd)"
+ITW_BASENAME="$(basename "${INFINI_TENSOR_WORKTREE}")"
 
 git_short_sha() {
   local repo="$1"
@@ -26,6 +28,7 @@ git_short_sha() {
 IL_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniLM")"
 IC_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniCore")"
 IM_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniMetadata")"
+ITW_SHA="$(git_short_sha "${WORKTREE_ROOT}")"
 BW_SHA="$(git_short_sha "${BENCH_WAREHOUSE_REPO}")"
 IO_SHA="$(git_short_sha "${IO_ROOT}")"
 
@@ -41,6 +44,12 @@ if [[ ! -f "${EXCLUDES_FILE}" ]]; then
   exit 1
 fi
 
+if [[ "$(cd "${INFINI_TENSOR_WORKTREE}/.." && pwd)" != "${PACK_PARENT}" ]]; then
+  echo "error: InfiniTensorWorktree must be a sibling of InfiniOrchestrator under ${PACK_PARENT}" >&2
+  echo "  INFINI_TENSOR_WORKTREE=${INFINI_TENSOR_WORKTREE}" >&2
+  exit 1
+fi
+
 MANIFEST="${IO_ROOT}/MANIFEST"
 PACK_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -48,21 +57,22 @@ cat > "${MANIFEST}" <<EOF
 IL_SHA=${IL_SHA}
 IC_SHA=${IC_SHA}
 IM_SHA=${IM_SHA}
+ITW_SHA=${ITW_SHA}
 BW_SHA=${BW_SHA}
 IO_SHA=${IO_SHA}
-WORKTREE_ROOT=InfiniOrchestrator/InfiniTensorWorktree
+WORKTREE_ROOT=${ITW_BASENAME}
 PACK_DATE=${PACK_DATE}
 BASE_IMAGE=${BASE_IMAGE}
 CASE=${CASE_NAME}
 EOF
 
-# Pack from parent of IO_ROOT so archive has InfiniOrchestrator/… prefix.
-PACK_PARENT="$(cd "${IO_ROOT}/.." && pwd)"
+# Pack siblings so archive has InfiniOrchestrator/… and InfiniTensorWorktree/…
 tar_args=(
   -C "${PACK_PARENT}"
   -czf "${SRC_TAR}"
   --exclude-from="${EXCLUDES_FILE}"
   InfiniOrchestrator
+  "${ITW_BASENAME}"
 )
 
 echo "IO_ROOT=${IO_ROOT}"
@@ -95,7 +105,9 @@ echo ""
 echo "Post-pack gates:"
 grep -n 'gc.collect' "${WORKTREE_ROOT}/InfiniLM/python/infinilm/modeling_utils.py"
 test -f "${IO_ROOT}/deploy/cases/${CASE_NAME}/validate.sh"
-test -f "${IO_ROOT}/container/metax/build-image.sh"
+test -f "${IO_ROOT}/deploy/cases/${CASE_NAME}/build-image-phase1.sh"
+test -f "${MONOREPO_ROOT}/docs/IMAGE_BUILD_PHASES.md" || \
+  echo "warning: ${MONOREPO_ROOT}/docs/IMAGE_BUILD_PHASES.md missing (workspace doc)"
 
 echo ""
 echo "Packed: ${SRC_TAR}"

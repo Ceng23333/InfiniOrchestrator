@@ -98,7 +98,7 @@ if [[ -z "${TOKENIZER_DIR}" ]]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/deploy_longbench_v2_${MODEL}_${TS}}"
+OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/longbench_v2_${MODEL}_${TS}}"
 mkdir -p "${OUT_DIR}"
 export OUT_DIR
 
@@ -254,7 +254,7 @@ bash "${HARNESS_ROOT}/lib/scrape_server_metrics.sh" after "${SERVER_DIR}" || tru
 echo ""
 echo "Deploy LongBench-v2 complete: ${OUT_DIR}"
 
-BENCH_ID="deploy_longbench_v2__${MODEL}"
+BENCH_ID="longbench_v2__${MODEL}"
 export BASE_URL="${ROUTER_URL}"
 export MODEL
 export max_gen_toks="${MAX_GEN_TOKS}"

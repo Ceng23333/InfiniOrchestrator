@@ -1,16 +1,20 @@
-"""Merge strategies for conflicting raw ingest data.tsv partitions."""
+"""Merge strategies for conflicting raw ingest harness .tsv partitions."""
 
 from __future__ import annotations
 
 import argparse
 import csv
-import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
 
 TSV = "\t"
+
+_HARNESS_PATH_RE = re.compile(
+    r"^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/(?P<harness>[A-Za-z0-9][A-Za-z0-9._-]*)\.tsv$"
+)
 
 
 def dedupe_key(row: dict[str, str]) -> tuple[str, str]:
@@ -32,10 +36,21 @@ def read_tsv(path: Path) -> list[dict[str, str]]:
     return read_tsv_text(path.read_text(encoding="utf-8"))
 
 
-def _columns_for_rows(*row_sets: Iterable[dict[str, str]]) -> list[str]:
-    from bench_harness.registry import warehouse_facts_columns
+def _harness_from_path(path: str) -> str | None:
+    m = _HARNESS_PATH_RE.match(path.replace("\\", "/"))
+    return m.group("harness") if m else None
 
-    columns = list(warehouse_facts_columns())
+
+def _columns_for_rows(
+    *row_sets: Iterable[dict[str, str]],
+    harness: str | None = None,
+) -> list[str]:
+    from bench_harness.registry import harness_raw_columns, warehouse_facts_columns
+
+    if harness:
+        columns = list(harness_raw_columns(harness))
+    else:
+        columns = list(warehouse_facts_columns())
     for rows in row_sets:
         for row in rows:
             for key in row:
@@ -101,9 +116,18 @@ def resolve_data_tsv_conflict(path: str, *, repo_root: Path) -> Path:
     rel = path
     full = repo_root / rel
     merged = merge_data_tsv_from_git(rel, repo_root=repo_root)
-    columns = _columns_for_rows(merged)
+    harness = _harness_from_path(rel)
+    columns = _columns_for_rows(merged, harness=harness)
     write_tsv(full, columns, merged)
     return full
+
+
+def _is_harness_tsv(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    if _HARNESS_PATH_RE.match(norm):
+        return True
+    # Allow conflict resolution for any raw date harness .tsv under raw/
+    return bool(re.match(r"^raw/.+\.tsv$", norm)) and not norm.endswith("/data.tsv")
 
 
 def resolve_all_conflicts(*, repo_root: Path) -> list[str]:
@@ -120,30 +144,24 @@ def resolve_all_conflicts(*, repo_root: Path) -> list[str]:
 
     resolved: list[str] = []
     for path in unresolved:
-        if path.endswith("/data.tsv") or path.endswith("data.tsv"):
+        if _is_harness_tsv(path) or path.endswith(".tsv"):
+            if not path.startswith("raw/"):
+                continue
             resolve_data_tsv_conflict(path, repo_root=repo_root)
-            subprocess.run(["git", "add", "--", path], cwd=repo_root, check=True)
-            resolved.append(path)
-        elif path.endswith("/manifest.json") or path.endswith("manifest.json"):
-            subprocess.run(
-                ["git", "checkout", "--theirs", "--", path],
-                cwd=repo_root,
-                check=True,
-            )
             subprocess.run(["git", "add", "--", path], cwd=repo_root, check=True)
             resolved.append(path)
     return resolved
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Resolve ingest data.tsv merge conflicts")
+    parser = argparse.ArgumentParser(description="Resolve ingest harness .tsv merge conflicts")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_all = sub.add_parser("resolve-conflicts", help="Resolve all unmerged paths in repo")
     p_all.add_argument("--repo-root", type=Path, default=None)
 
-    p_file = sub.add_parser("resolve-file", help="Resolve one data.tsv using git stages")
-    p_file.add_argument("path", help="path to data.tsv under repo root")
+    p_file = sub.add_parser("resolve-file", help="Resolve one harness .tsv using git stages")
+    p_file.add_argument("path", help="path to harness .tsv under repo root")
     p_file.add_argument("--repo-root", type=Path, default=None)
 
     args = parser.parse_args(argv)

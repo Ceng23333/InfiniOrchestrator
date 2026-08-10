@@ -1,0 +1,7 @@
+case_id = "minicpm5-x203-vllm"
+category = "Standalone"
+n = 1
+model_id = "minicpm5"
+hw_profile_id = "metax-x203-hpcc"
+hw_abbr = "x203"
+be_abbr = "vllm"

@@ -20,10 +20,10 @@ mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:
 
 Tag prefixes: `infinilm-svc:metax-hpcc-ai370-runtime-base-<YYYYMMDD>` (Phase 1), `…-runtime-base-deps-…` (1.5), `…-<IL>-<IC>-<YYYYMMDD>` (Phase 2).
 
-**Source layout:** Phase 1 defaults `SOURCE_ROOT` to [`InfiniOrchestrator/InfiniTensorWorktree`](../../../worktree) (InfiniCore + InfiniLM submodules). `SVC_ROOT` defaults to sibling `../InfiniLM-SVC` (not a submodule). Override only if needed:
+**Source layout:** Phase 1 defaults `SOURCE_ROOT` to sibling [`InfiniTensorWorktree`](https://github.com/Ceng23333/InfiniTensorWorktree) (`INFINI_TENSOR_WORKTREE`, InfiniCore + InfiniLM submodules). `SVC_ROOT` defaults to sibling `../InfiniLM-SVC` (not a submodule). Override only if needed:
 
 ```bash
-SOURCE_ROOT=/path/to/InfiniOrchestrator/InfiniTensorWorktree \
+SOURCE_ROOT=/path/to/InfiniTensorWorktree \
 SVC_ROOT=/path/to/InfiniLM-SVC \
   ./build-image-phase1.sh
 ```
@@ -31,9 +31,9 @@ SVC_ROOT=/path/to/InfiniLM-SVC \
 ## Quick start — Phase 1
 
 ```bash
-# From InfiniOrchestrator root (submodules initialized):
+# From InfiniOrchestrator root (sibling InfiniTensorWorktree checked out):
 source scripts/worktree_env.sh
-cd deploy/cases/infinilm-metax-deployment-opt-20260714
+cd playground/Distribution/qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714
 ./build-image-phase1.sh
 # writes .runtime_base_tag + MANIFEST
 
@@ -47,7 +47,7 @@ Phase 1.5 / 2 (prepared, not required for this iteration):
 
 ```bash
 RUNTIME_BASE_TAG=$(cat .runtime_base_tag) OFFLINE_DEPS_ROOT=$PWD/offline-deps ./build-image-phase1_5.sh
-FROM_TAG=$(cat .runtime_base_tag) SOURCE_ROOT="$(cd ../../.. && pwd)/InfiniTensorWorktree" ./build-image-phase2.sh
+FROM_TAG=$(cat .runtime_base_tag) SOURCE_ROOT="${INFINI_TENSOR_WORKTREE}" ./build-image-phase2.sh
 # then: cp .env.master.example .env; set IMAGE_TAG from .image_tag; docker-compose up …
 ```
 

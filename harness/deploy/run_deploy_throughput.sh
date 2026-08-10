@@ -71,7 +71,7 @@ ROUTER_READY_TIMEOUT_SEC="${ROUTER_READY_TIMEOUT_SEC:-3600}"
 ROUTER_POLL_INTERVAL_SEC="${ROUTER_POLL_INTERVAL_SEC:-10}"
 
 TS="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/deploy_throughput_${MODEL}_${TS}}"
+OUT_DIR="${OUT_DIR:-${BENCH_RESULTS_ROOT}/random-fixed-length_${MODEL}_${TS}}"
 mkdir -p "${OUT_DIR}"
 export OUT_DIR
 
@@ -231,7 +231,7 @@ bash "${HARNESS_ROOT}/lib/scrape_server_metrics.sh" after "${SERVER_DIR}" || tru
 echo ""
 echo "Deploy throughput complete: ${OUT_DIR}"
 
-BENCH_ID="deploy_throughput__${MODEL}"
+BENCH_ID="random-fixed-length__${MODEL}"
 export BASE_URL="${ROUTER_URL}"
 export MODEL
 bash "${HARNESS_ROOT}/lib/emit_bench.sh" "${BENCH_ID}" "${OUT_DIR}" "${STEP_STARTED}" "${STEP_FINISHED}" || {
