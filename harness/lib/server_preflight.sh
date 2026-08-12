@@ -117,7 +117,7 @@ server_preflight() {
 
   cd "${HARNESS_ROOT}"
   local meta
-  if ! meta="$(python3 -m bench_harness.server_client preflight --base-url "${metadata_url}" 2>/dev/null)"; then
+  if ! meta="$(python3 -m server_client preflight --base-url "${metadata_url}" 2>/dev/null)"; then
     # Entrypoint missing /metadata → stub so client-only warehouse emit still works.
     echo "[server_preflight] WARN: GET /metadata failed at ${metadata_url}; using stub metadata" >&2
     export BENCH_SKIP_SERVER_METRICS="${BENCH_SKIP_SERVER_METRICS:-1}"

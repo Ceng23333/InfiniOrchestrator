@@ -4,20 +4,31 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# harness/bin/bench-sync → strip trailing harness/ so data root is the warehouse.
+if [[ "$(basename "${REPO_ROOT}")" == "harness" ]]; then
+  REPO_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
+fi
 BENCH_WAREHOUSE_REPO="${BENCH_WAREHOUSE_REPO:-${REPO_ROOT}}"
+export BENCH_WAREHOUSE_REPO
 
 INGEST_FILE_RE='^raw/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]*\.tsv$'
+INGEST_LABEL_RE='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 
 usage() {
   cat <<'EOF'
 Usage:
-  bench-sync push [--message MSG] [--no-push]
+  bench-sync push [--message MSG] [--label LABEL] [--date YYYY-MM-DD] [--no-push]
   bench-sync merge-ingests [--target BRANCH]
-  bench-sync verify-ingest-branch [--server-id ID]
+  bench-sync verify-ingest-branch [--branch BRANCH] [--label LABEL] [--date YYYY-MM-DD]
+  bench-sync drop-merged-ingests [--target BRANCH]
 
 push:
-  Stage raw/<YYYY-MM-DD>/<harness>.tsv on ingest/<server_id>.
-  Auto-pushes to origin when a new commit is created (unless --no-push).
+  Stage raw/<YYYY-MM-DD>/<harness>.tsv on ingest/<date>/<label>
+  (e.g. ingest/2026-08-12/ascend). Auto-pushes to origin when a new commit
+  is created (unless --no-push).
+
+  Label resolution: --label, else BENCH_INGEST_LABEL, else HOST_ID/host_id, else unknown.
+  Date resolution: --date, else UTC today.
 
 merge-ingests:
   Fetch origin/ingest/* and merge into the integration branch (default: master).
@@ -25,8 +36,53 @@ merge-ingests:
   Used by scheduled-compact before compact.
 
 verify-ingest-branch:
-  Assert ingest/<server_id> differs from master only in allowed raw/ paths.
+  Assert ingest/<date>/<label> differs from master only in allowed raw/ paths.
+
+drop-merged-ingests:
+  Delete origin/ingest/* branches that are fully contained in the target branch.
+  Used by scheduled-compact after a successful compact + push.
 EOF
+}
+
+utc_date() {
+  date -u +%Y-%m-%d
+}
+
+slugify_label() {
+  local text="${1:-}"
+  text="$(printf '%s' "${text}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+  if [[ -z "${text}" ]]; then
+    echo "unknown"
+    return
+  fi
+  echo "${text}"
+}
+
+resolve_ingest_label() {
+  local explicit="${1:-}"
+  local label
+  if [[ -n "${explicit}" ]]; then
+    label="$(slugify_label "${explicit}")"
+  elif [[ -n "${BENCH_INGEST_LABEL:-}" ]]; then
+    label="$(slugify_label "${BENCH_INGEST_LABEL}")"
+  elif [[ -n "${HOST_ID:-}" ]]; then
+    label="$(slugify_label "${HOST_ID}")"
+  elif [[ -n "${host_id:-}" ]]; then
+    label="$(slugify_label "${host_id}")"
+  else
+    label="unknown"
+  fi
+  if [[ ! "${label}" =~ ${INGEST_LABEL_RE} ]]; then
+    echo "[bench-sync] invalid ingest label: ${label}" >&2
+    return 1
+  fi
+  printf '%s' "${label}"
+}
+
+ingest_branch_name() {
+  local date_part="$1"
+  local label="$2"
+  printf 'ingest/%s/%s' "${date_part}" "${label}"
 }
 
 ingest_file_ok() {
@@ -78,13 +134,24 @@ stage_raw_ingest_files() {
   git reset -- ':(glob)raw/*/data.tsv' 2>/dev/null || true
 }
 
+unique_origin_ingest_refs() {
+  # Nested names like origin/ingest/2026-08-12/ascend need recursive for-each-ref.
+  git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/ingest' 2>/dev/null \
+    | grep -E '^origin/ingest/' \
+    | sort -u
+}
+
 cmd_push() {
   local message="ingest"
   local do_push=0
   local explicit_no_push=0
+  local label_arg=""
+  local date_arg=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --message) message="$2"; shift 2 ;;
+      --label) label_arg="$2"; shift 2 ;;
+      --date) date_arg="$2"; shift 2 ;;
       --no-push) explicit_no_push=1; shift ;;
       *) shift ;;
     esac
@@ -92,7 +159,14 @@ cmd_push() {
 
   cd "${BENCH_WAREHOUSE_REPO}"
   export INFERENCE_SERVER_ID="${INFERENCE_SERVER_ID:-unknown}"
-  local branch="ingest/${INFERENCE_SERVER_ID}"
+  local date_part label branch
+  date_part="${date_arg:-$(utc_date)}"
+  if [[ ! "${date_part}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "[bench-sync] invalid --date (want YYYY-MM-DD): ${date_part}" >&2
+    return 1
+  fi
+  label="$(resolve_ingest_label "${label_arg}")"
+  branch="$(ingest_branch_name "${date_part}" "${label}")"
 
   if git rev-parse --git-dir >/dev/null 2>&1; then
     if [[ "$(git branch --show-current)" != "${branch}" ]]; then
@@ -122,7 +196,7 @@ cmd_push() {
   fi
 
   if [[ "${do_push}" -eq 1 ]]; then
-    cmd_verify_ingest_branch --server-id "${INFERENCE_SERVER_ID}"
+    cmd_verify_ingest_branch --branch "${branch}"
     if git remote get-url origin >/dev/null 2>&1; then
       git push -u origin "${branch}"
       echo "[bench-sync] pushed ${branch}"
@@ -133,17 +207,27 @@ cmd_push() {
 }
 
 cmd_verify_ingest_branch() {
-  local server_id="${INFERENCE_SERVER_ID:-}"
+  local branch=""
+  local label_arg=""
+  local date_arg=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --server-id) server_id="$2"; shift 2 ;;
+      --branch) branch="$2"; shift 2 ;;
+      --label) label_arg="$2"; shift 2 ;;
+      --date) date_arg="$2"; shift 2 ;;
+      # Legacy alias: treat value as label under UTC today (or --date if also passed later).
+      --server-id) label_arg="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
 
   cd "${BENCH_WAREHOUSE_REPO}"
-  server_id="${server_id:-${INFERENCE_SERVER_ID:-unknown}}"
-  local branch="ingest/${server_id}"
+  if [[ -z "${branch}" ]]; then
+    local date_part label
+    date_part="${date_arg:-$(utc_date)}"
+    label="$(resolve_ingest_label "${label_arg}")"
+    branch="$(ingest_branch_name "${date_part}" "${label}")"
+  fi
 
   if ! git rev-parse --verify master >/dev/null 2>&1; then
     echo "[bench-sync] verify-ingest-branch: no master branch" >&2
@@ -201,7 +285,7 @@ cmd_merge_ingests() {
   fi
 
   local merged=0 skipped=0 refs ref branch
-  refs="$(git branch -r --list 'origin/ingest/*' | sed 's/^[* ]*//' | sort -u || true)"
+  refs="$(unique_origin_ingest_refs || true)"
   if [[ -z "${refs}" ]]; then
     echo "[bench-sync] no origin/ingest/* branches to merge"
     return 0
@@ -220,7 +304,7 @@ cmd_merge_ingests() {
       merged=$((merged + 1))
     else
       echo "[bench-sync] merge conflict on ${branch}; applying ingest TSV merge strategy"
-      if ! python3 -m bench_harness.merge_ingest resolve-conflicts; then
+      if ! python3 -m bench_warehouse.merge_ingest resolve-conflicts --repo-root "${BENCH_WAREHOUSE_REPO}"; then
         echo "[bench-sync] FAIL: could not auto-resolve conflicts on ${branch}" >&2
         git merge --abort 2>/dev/null || true
         return 1
@@ -240,11 +324,66 @@ cmd_merge_ingests() {
   echo "[bench-sync] merge-ingests done: ${merged} merged, ${skipped} skipped"
 }
 
+cmd_drop_merged_ingests() {
+  local target="${BENCH_SYNC_TARGET:-master}"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  cd "${BENCH_WAREHOUSE_REPO}"
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "[bench-sync] not a git repo" >&2
+    return 1
+  fi
+
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "[bench-sync] drop-merged-ingests: no origin remote" >&2
+    return 1
+  fi
+
+  git fetch origin --prune
+
+  if [[ "$(git branch --show-current)" != "${target}" ]]; then
+    git checkout "${target}"
+  fi
+  git pull --ff-only origin "${target}" || true
+
+  local refs ref branch deleted=0 skipped=0
+  refs="$(unique_origin_ingest_refs || true)"
+  if [[ -z "${refs}" ]]; then
+    echo "[bench-sync] drop-merged-ingests: no origin/ingest/* branches"
+    return 0
+  fi
+
+  while IFS= read -r ref; do
+    [[ -n "${ref}" ]] || continue
+    branch="${ref#origin/}"
+    if ! git merge-base --is-ancestor "${ref}" HEAD 2>/dev/null; then
+      echo "[bench-sync] keep ${branch} (not fully merged into ${target})"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    echo "[bench-sync] deleting merged ${branch}"
+    if git push origin --delete "${branch}"; then
+      deleted=$((deleted + 1))
+      git branch -D "${branch}" 2>/dev/null || true
+    else
+      echo "[bench-sync] WARN: failed to delete ${branch}" >&2
+    fi
+  done <<< "${refs}"
+
+  echo "[bench-sync] drop-merged-ingests done: ${deleted} deleted, ${skipped} kept"
+}
+
 main() {
   case "${1:-}" in
     push) shift; cmd_push "$@" ;;
     merge-ingests) shift; cmd_merge_ingests "$@" ;;
     verify-ingest-branch) shift; cmd_verify_ingest_branch "$@" ;;
+    drop-merged-ingests) shift; cmd_drop_merged_ingests "$@" ;;
     -h|--help|help|"") usage ;;
     *)
       echo "Unknown command: ${1}" >&2

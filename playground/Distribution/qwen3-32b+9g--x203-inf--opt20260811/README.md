@@ -21,7 +21,7 @@ Forked from [`qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714`](../qwen3-32b+
 | 1 runtime-base | [`image/build-image-phase1.sh`](image/build-image-phase1.sh) | **Execute** → `image/.runtime_base_tag` + `image/MANIFEST` |
 | 2 product | [`image/build-image-phase2.sh`](image/build-image-phase2.sh) | **Execute** → `image/.image_tag` for compose |
 
-InfiniTensorWorktree pin: `image/.worktree_tag` (e.g. `v2026.08.10`) + `ITW_TAG` / `ITW_SHA` in `image/MANIFEST`.
+InfiniTensorWorktree pin: `image/.worktree_tag` (e.g. `v2026.08.12`) + `ITW_TAG` / `ITW_SHA` in `image/MANIFEST`.
 
 ## BASE_IMAGE (vendor HPCC OS/stack only)
 

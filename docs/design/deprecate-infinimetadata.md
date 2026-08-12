@@ -8,7 +8,7 @@ InfiniMetadata is no longer pinned in InfiniTensorWorktree. Warehouse identity a
 |---------|--------|----------------|
 | Server identity (`server_id`, build/runtime probes) | InfiniEntrypoint | `GET /metadata`, `GET /v1/metadata` on entrypoint port (`service_port+1`) |
 | Request `srv_*` metrics (TTFT/ITL/e2e/req/tokens) | InfiniLoadBalancer | `GET /metrics` (Prometheus text, `infinilm_*` names) |
-| Harness helpers (`frontend`, prom→row) | `bench_harness/` (vendored) | no InfiniMetadata package |
+| Harness helpers (`frontend`, prom→row) | `bench_warehouse/` in bench-warehouse | no InfiniMetadata package |
 
 ## Harness env
 

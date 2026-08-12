@@ -1,6 +1,6 @@
 # Playground scheme
 
-Case tree is the source of identity for harness **emit**. Warehouse column names live in `harness/bench_harness/registry.py` (`CASE_META_COLUMNS`); field meanings and layout live here.
+Case tree is the source of identity for harness **emit**. Warehouse column names live in `bench-warehouse/bench_warehouse/registry.py` (`CASE_META_COLUMNS`); field meanings and layout live here.
 
 Machine-readable field list: [`case.schema.toml`](case.schema.toml).
 
@@ -50,6 +50,7 @@ Set `CASE_PATH` to the case’s `case.toml` before running harness emit (or set 
 | `hw_profile_id` | `hw_profile_id` | host IP or alias id; resolves `prof_*` |
 | `hw_abbr` | `hw_abbr` | must match profile `abbr` |
 | `be_abbr` | `be_abbr` | backend abbr; see `backends.md` |
+| `worktree` | `worktree` | InfiniTensorWorktree pin tag (e.g. `v2026.08.12`); env `WORKTREE` / `ITW_TAG` |
 
 Also recorded on the row (not from `case.toml`): `case_path` (= `CASE_PATH`).
 
@@ -63,6 +64,7 @@ model_id = "minicpm5"
 hw_profile_id = "metax-x203-hpcc"
 hw_abbr = "x203"
 be_abbr = "vllm"
+worktree = "v2026.08.12"
 ```
 
 ## Harness wiring
@@ -73,4 +75,4 @@ export CASE_PATH="${IO_ROOT}/playground/Standalone/minicpm5-x203-vllm/case.toml"
 "${IO_ROOT}/harness/run_bench_client.sh" longbench
 ```
 
-Emit implementation: `harness/bench_harness/emit.py` (`_apply_case_metadata`).
+Emit implementation: `bench-warehouse/bench_warehouse/emit.py` (`_apply_case_metadata`).

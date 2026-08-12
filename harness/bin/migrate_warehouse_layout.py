@@ -10,15 +10,15 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from bench_harness.compact import compact_all_models, ingest_keys_for_date, reset_processed_keys
-from bench_harness.ingest import read_data_tsv
-from bench_harness.partition import (
+from bench_warehouse.compact import compact_all_models, ingest_keys_for_date, reset_processed_keys
+from bench_warehouse.ingest import read_data_tsv
+from bench_warehouse.partition import (
     RAW_DATE_RE,
     glob_raw_date_dirs,
     raw_data_path,
     slugify_segment,
 )
-from bench_harness.registry import harness_raw_columns, suite_prefix
+from bench_warehouse.registry import harness_raw_columns, suite_prefix
 
 TSV = "\t"
 
@@ -141,9 +141,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-compact", action="store_true")
     args = parser.parse_args(argv)
 
-    repo = args.repo_root or Path(
-        os.environ.get("BENCH_WAREHOUSE_REPO", Path(__file__).resolve().parents[1])
-    )
+    repo = args.repo_root
+    if repo is None:
+        env = os.environ.get("BENCH_WAREHOUSE_REPO", "").strip()
+        if env:
+            repo = Path(env)
+        else:
+            # Script lives at <warehouse>/harness/bin/migrate_warehouse_layout.py
+            repo = Path(__file__).resolve().parents[2]
     if not repo.is_dir():
         print(f"ERROR: repo not found: {repo}", file=sys.stderr)
         return 1

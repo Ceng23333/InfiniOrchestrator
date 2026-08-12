@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run unexpected-behavior fault-injection steps against a live inference endpoint.
-# Per-step emits to raw/<date>/<suite_prefix>.tsv via bench_harness.emit.
+# Per-step emits to raw/<date>/<suite_prefix>.tsv via bench_warehouse.emit.
 # Server touchpoints: GET /metadata + GET /metrics (HTTP only).
 
 set -euo pipefail

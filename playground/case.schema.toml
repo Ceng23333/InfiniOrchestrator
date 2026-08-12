@@ -1,6 +1,6 @@
 # Playground case.toml field contract (consumed by harness emit).
 # Layout authority: playground/{Standalone,Distribution}/<case_id>/case.toml
-# Warehouse columns: harness/bench_harness/registry.py CASE_META_COLUMNS
+# Warehouse columns: bench-warehouse/bench_warehouse/registry.py CASE_META_COLUMNS
 #
 # Keys below are written into case.toml. Emit maps:
 #   category -> case_category
@@ -56,3 +56,10 @@ type = "string"
 emit = "be_abbr"
 env = ["BE_ABBR", "BENCH_FRONTEND"]
 doc = "Backend abbreviation; see playground/backends.md (vllm|sgl|inf|oai)."
+
+[fields.worktree]
+required = true
+type = "string"
+emit = "worktree"
+env = ["WORKTREE", "ITW_TAG"]
+doc = "InfiniTensorWorktree pin label (annotated tag, e.g. v2026.08.12). Matches image/.worktree_tag when the case builds from ITW; source identity for Playground fork / warehouse rows."

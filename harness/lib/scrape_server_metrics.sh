@@ -24,7 +24,7 @@ scrape_server_metrics() {
   fi
 
   cd "${BENCH_WAREHOUSE_REPO}"
-  python3 -m bench_harness.server_client scrape \
+  python3 -m server_client scrape \
     --base-url "${base_url}" \
     --out-dir "${out_dir}" \
     --label "${label}"

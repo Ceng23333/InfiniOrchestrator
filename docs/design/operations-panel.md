@@ -150,7 +150,7 @@ Live instances mirror registry heartbeats. **Historical** servers are immutable 
 | `runner` | Entrypoint under `bench-warehouse/harness/` (or custom). |
 | `source` | `builtin` \| `custom` (Playground registration). |
 
-**Maps to today:** harness recipes + `manifest.json` / `bench_harness.registry` — not a typed registry API yet.
+**Maps to today:** harness recipes + `manifest.json` / `bench_warehouse.registry` — not a typed registry API yet.
 
 ### BenchResult
 

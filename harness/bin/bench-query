@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec python3 -m bench_harness.query "$@"
+exec python3 -m bench_warehouse.query "$@"

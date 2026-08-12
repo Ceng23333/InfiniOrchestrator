@@ -15,11 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from bench_harness.registry import HISTOGRAM_SRV_COLS, PERIOD_HISTOGRAM_SUFFIXES
+from bench_warehouse.registry import HISTOGRAM_SRV_COLS, PERIOD_HISTOGRAM_SUFFIXES
 
-from bench_harness.aggregation import summarize_period_samples
-from bench_harness.prometheus_import import prometheus_text_to_json_snapshot
-from bench_harness.warehouse_export import (
+from bench_warehouse.aggregation import summarize_period_samples
+from bench_warehouse.prometheus_import import prometheus_text_to_json_snapshot
+from bench_warehouse.warehouse_export import (
     WAREHOUSE_COUNTER_SRV_COLS,
     json_snapshot_to_warehouse_row,
 )

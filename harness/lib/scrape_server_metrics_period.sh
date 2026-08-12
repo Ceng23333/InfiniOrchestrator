@@ -38,7 +38,7 @@ start_period_scrape() {
 
   mkdir -p "${out_dir}"
   cd "${BENCH_WAREHOUSE_REPO}"
-  python3 -m bench_harness.server_client period-poll \
+  python3 -m server_client period-poll \
     --base-url "${base_url}" \
     --out-dir "${out_dir}" \
     --poll-interval-sec "${poll_sec}" \

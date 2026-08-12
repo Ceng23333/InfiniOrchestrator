@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-step emit wrapper: calls bench_harness.emit with bench_id slug.
+# Per-step emit wrapper: calls bench_warehouse.emit with bench_id slug.
 set -euo pipefail
 
 # shellcheck disable=SC1091
@@ -30,7 +30,7 @@ export HOST_ID="${HOST_ID:-metax-152}"
 export PLATFORM="${PLATFORM:-hpcc}"
 
 args=(
-  python3 -m bench_harness.emit
+  python3 -m bench_warehouse.emit
   --server-id "${INFERENCE_SERVER_ID}"
   --host-id "${HOST_ID}"
   --platform "${PLATFORM}"

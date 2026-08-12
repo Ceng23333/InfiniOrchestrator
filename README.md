@@ -84,15 +84,17 @@ Canonical definition: [`playground/README.md`](playground/README.md) + [`playgro
 
 ## Harness + warehouse
 
-Harness lives in this repo. Warehouse is data-only:
+- **`harness/`** — runners (`scenarios/`, `lib/*.sh`, `server_client.py` scrape).
+- **`../bench-warehouse`** — data repo + Python package `bench_warehouse` (`warehouse-emit` / `warehouse-compact` / …).
 
 ```bash
 export BENCH_WAREHOUSE_REPO=../bench-warehouse
 export HARDWARE_PROFILE_REPO=../hardware-profile
+pip install -e "$BENCH_WAREHOUSE_REPO"
+# optional: pip install -e harness   # installs server_client + path-dep on bench-warehouse
 export CASE_ID=minicpm5-mxc500-vllm
 "${IO_ROOT}/harness/run_bench_client.sh" longbench
-# compact:
-python -m bench_harness.compact --repo-root "$BENCH_WAREHOUSE_REPO"
+python -m bench_warehouse.compact --repo-root "$BENCH_WAREHOUSE_REPO"
 ```
 
 ## Design docs
