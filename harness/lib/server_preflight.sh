@@ -97,7 +97,14 @@ server_preflight() {
 
   cd "${BENCH_WAREHOUSE_REPO}"
   local meta
-  meta="$(python3 -m bench_harness.server_client preflight --base-url "${base_url}")"
+  if ! meta="$(python3 -m bench_harness.server_client preflight --base-url "${base_url}" 2>/dev/null)"; then
+    # Router / loadbalancer / workers without InfiniMetadata return 503 on GET /metadata.
+    # Fall back to stub so client-only warehouse emit still works against compose stacks.
+    echo "[server_preflight] WARN: GET /metadata failed at ${base_url}; using stub metadata" >&2
+    export BENCH_SKIP_SERVER_METRICS="${BENCH_SKIP_SERVER_METRICS:-1}"
+    _bench_stub_preflight "${base_url}" "${artifact_root}" >/dev/null
+    return 0
+  fi
   export INFERENCE_SERVER_ID
   INFERENCE_SERVER_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["server_id"])' <<< "${meta}")"
   export INFERENCE_SERVER_ID

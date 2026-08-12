@@ -1,0 +1,164 @@
+version: "2.4"
+networks:
+  default:
+    ipam:
+      config:
+        # Avoid 172.22.0.0/16 — overlaps site NFS/LAN (172.22.162.46).
+        - subnet: 172.28.0.0/16
+services:
+  etcd:
+    image: ${ETCD_IMAGE_TAG:-quay.io/coreos/etcd:v3.7.0}
+    container_name: infiniorch-etcd-opt-20260811
+    restart: unless-stopped
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+    command:
+      - etcd
+      - --name=infiniorch-etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=infiniorch-etcd=http://etcd:2380
+      - --initial-cluster-token=infiniorch-opt-20260811
+      - --initial-cluster-state=new
+    ports:
+      - "2379:2379"
+
+  master:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-master-opt-20260811
+    restart: unless-stopped
+    depends_on:
+      - etcd
+    environment:
+      # etcd runs as a dedicated compose service (quay.io/coreos/etcd).
+      LAUNCH_COMPONENTS: loadbalancer
+      REGISTRY_PORT: ${REGISTRY_PORT:-18000}
+      ROUTER_PORT: ${ROUTER_PORT:-8000}
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
+      # Optional: size-based routing threshold (bytes); default avoids empty-string parse issues
+      CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
+    ports:
+      - "${ROUTER_PORT:-8000}:${ROUTER_PORT:-8000}"
+      # Alias legacy REGISTRY_PORT → loadbalancer (etcd replaced HTTP registry).
+      - "${REGISTRY_PORT:-18000}:${ROUTER_PORT:-8000}"
+
+  worker-master-9g-8100:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-master-9g-8100-20260811
+    restart: unless-stopped
+    depends_on:
+      - master
+      - etcd
+    environment:
+      LAUNCH_COMPONENTS: entrypoint
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
+      BABYSITTER_CONFIGS: /config/master-9g_8b_thinking.toml
+      # For "master-only" (single docker-compose project), register with a Docker-resolvable host.
+      # Using MASTER_ADVERTISE_HOST (LAN IP) can be unreachable from the router container, causing "No route to host".
+      BABYSITTER_HOST: worker-master-9g-8100
+    volumes:
+      - ./config:/config:ro
+      - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ports:
+      - "${MASTER_9G_8B_THINKING_API_PORT:-8100}:8100"
+      - "${MASTER_9G_8B_THINKING_BABYSITTER_PORT:-8101}:8101"
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-master-qwen-paged-8200:
+    image: ${IMAGE_TAG}
+    container_name: infiniorch-worker-master-qwen-paged-8200-20260811
+    restart: unless-stopped
+    depends_on:
+      - master
+      - etcd
+    environment:
+      LAUNCH_COMPONENTS: entrypoint
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
+      BABYSITTER_CONFIGS: /config/master-qwen3-32b-paged.toml
+      # Register with docker-compose DNS name so the master router can reach the worker.
+      BABYSITTER_HOST: worker-master-qwen-paged-8200
+    ports:
+      - "${MASTER_QWEN_PAGED_API_PORT:-8200}:8200"
+      - "${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}:8201"
+    volumes:
+      - ./config:/config:ro
+      - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
+      # AOT cache (Qwen3-32B_*). rw so entry --phase all can cold-compile missing pkgs.
+      - ${PIECEWISE_INDUCTOR_CACHE_DIR:-../cache/piecewise_inductor}:/workspace/piecewise_inductor_cache:rw
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined
+
+  worker-master-embeddings-20002:
+    # MiniCPM remote code needs transformers~4.51 (0611 image); product image is TF5 and yields NaNs.
+    # EMBEDDING_IMAGE_TAG may pin an older TF4.51 image — that is not a vLLM LLM worker.
+    # Legacy SVC entrypoint uses LAUNCH_COMPONENTS=babysitter (not entrypoint).
+    image: ${EMBEDDING_IMAGE_TAG}
+    container_name: infiniorch-worker-master-embeddings-20002-20260811
+    restart: unless-stopped
+    depends_on:
+      - master
+      - etcd
+    environment:
+      LAUNCH_COMPONENTS: babysitter
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
+      REGISTRY_URL: http://master:${REGISTRY_PORT:-18000}
+      ROUTER_URL: http://master:${ROUTER_PORT:-8000}
+      BABYSITTER_CONFIGS: /config/master-embeddings.toml
+      BABYSITTER_HOST: worker-master-embeddings-20002
+    volumes:
+      - ./config:/config:ro
+      - ./embeddings_server.py:/app/embeddings_server.py:ro
+      - ${EMBEDDING_MODEL_DIR:-./models}:/workspace/models:ro
+    ports:
+      - "${EMBEDDING_PORT:-20002}:20002"
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - /dev/dri
+      - /dev/htcd
+      - /dev/infiniband
+    group_add:
+      - video
+    privileged: true
+    security_opt:
+      - apparmor=unconfined

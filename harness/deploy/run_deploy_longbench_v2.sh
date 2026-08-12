@@ -167,15 +167,65 @@ if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "
   if [[ "${_backend}" == "infinilm" ]]; then
     _default_port=18190
   fi
-  _bench_url="http://127.0.0.1:${DEV_PORT:-${_default_port}}"
+  # Prefer explicit in-container URL (compose router on host → docker bridge gateway).
+  if [[ -n "${BENCH_CTN_URL:-}" ]]; then
+    _bench_url="${BENCH_CTN_URL}"
+  elif [[ -n "${ROUTER_URL:-}" && "${ROUTER_URL}" =~ ^https?://(127\.0\.0\.1|localhost)(:[0-9]+)? ]]; then
+    _gw="$(docker inspect "${DEV_CONTAINER}" --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}' 2>/dev/null || true)"
+    _gw="${_gw:-172.17.0.1}"
+    _bench_url="$(echo "${ROUTER_URL}" | sed -E "s#://(127\\.0\\.0\\.1|localhost)#://${_gw}#")"
+  else
+    _bench_url="http://127.0.0.1:${DEV_PORT:-${_default_port}}"
+  fi
   echo "[deploy-longbench] BENCH_BACKEND=${_backend}: client inside ${DEV_CONTAINER} url=${_bench_url}"
-  _data_json_arg=""
+  # Map host bind mounts → in-container paths (devcontainer: WORK→/workspace, models→/models).
+  _host_to_ctn() {
+    local p="$1"
+    local work="${INFINILM_PREFILL_WORK:-${MONOREPO_WORK:-}}"
+    local ctn="${CONTAINER_REPO:-/workspace}"
+    if [[ -n "${work}" && ("${p}" == "${work}" || "${p}" == "${work}/"*) ]]; then
+      printf '%s\n' "${ctn}${p#"${work}"}"
+      return 0
+    fi
+    case "${p}" in
+      /root/zenghua/models|/root/zenghua/models/*)
+        printf '%s\n' "/models${p#/root/zenghua/models}"
+        ;;
+      /models|/models/*|/workspace|/workspace/*|/extra-models|/extra-models/*)
+        printf '%s\n' "${p}"
+        ;;
+      *)
+        printf '%s\n' "${p}"
+        ;;
+    esac
+  }
+  _ctn_client="$(_host_to_ctn "${CLIENT_PY}")"
+  _ctn_out="$(_host_to_ctn "${OUT_DIR}")"
+  _ctn_tok="$(_host_to_ctn "${TOKENIZER_DIR}")"
+  _ctn_data=""
   if [[ -n "${LONGBENCH_DATA_JSON:-}" ]]; then
-    _data_json_arg="--data-json '${LONGBENCH_DATA_JSON}'"
+    _ctn_data="$(_host_to_ctn "${LONGBENCH_DATA_JSON}")"
+  fi
+  _ctn_official=""
+  if [[ -n "${LONGBENCH_OFFICIAL_ROOT:-}" ]]; then
+    _ctn_official="$(_host_to_ctn "${LONGBENCH_OFFICIAL_ROOT}")"
+  fi
+  _ctn_hf_cache=""
+  if [[ -n "${HF_DATASETS_CACHE:-}" ]]; then
+    _ctn_hf_cache="$(_host_to_ctn "${HF_DATASETS_CACHE}")"
+  fi
+  _ctn_hf_home=""
+  if [[ -n "${HF_HOME:-}" ]]; then
+    _ctn_hf_home="$(_host_to_ctn "${HF_HOME}")"
+  fi
+  echo "[deploy-longbench] ctn CLIENT_PY=${_ctn_client} OUT_DIR=${_ctn_out} TOK=${_ctn_tok}"
+  _data_json_arg=""
+  if [[ -n "${_ctn_data}" ]]; then
+    _data_json_arg="--data-json '${_ctn_data}'"
   fi
   _official_arg=""
-  if [[ ${#_official_args[@]} -gt 0 ]]; then
-    _official_arg="--official-root '${LONGBENCH_OFFICIAL_ROOT}'"
+  if [[ -n "${_ctn_official}" ]]; then
+    _official_arg="--official-root '${_ctn_official}'"
   fi
   _think_arg=""
   if [[ ${#_think_flag[@]} -gt 0 ]]; then
@@ -188,13 +238,13 @@ if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "
   fi
   docker exec \
     -e PYTHONUNBUFFERED=1 \
-    -e HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-}" \
-    -e HF_HOME="${HF_HOME:-}" \
+    -e HF_DATASETS_CACHE="${_ctn_hf_cache}" \
+    -e HF_HOME="${_ctn_hf_home}" \
     -e HF_HUB_OFFLINE=1 \
     -e TRANSFORMERS_OFFLINE=1 \
     -e HF_DATASETS_OFFLINE=1 \
-    -e LONGBENCH_DATA_JSON="${LONGBENCH_DATA_JSON:-}" \
-    -e LONGBENCH_OFFICIAL_ROOT="${LONGBENCH_OFFICIAL_ROOT:-}" \
+    -e LONGBENCH_DATA_JSON="${_ctn_data}" \
+    -e LONGBENCH_OFFICIAL_ROOT="${_ctn_official}" \
     -e ENABLE_THINKING="${ENABLE_THINKING}" \
     -e MAX_GEN_TOKS="${MAX_GEN_TOKS}" \
     -e LIMIT="${LIMIT}" \
@@ -202,17 +252,17 @@ if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "
     -e LONGBENCH_DIFFICULTY="${LONGBENCH_DIFFICULTY}" \
     "${DEV_CONTAINER}" \
     bash -lc "source /opt/conda/etc/profile.d/conda.sh && conda activate base && \
-      python3 '${CLIENT_PY}' \
+      python3 '${_ctn_client}' \
         --base-url '${_bench_url}' \
         --model '${MODEL}' \
-        --out-dir '${OUT_DIR}' \
+        --out-dir '${_ctn_out}' \
         --length '${LONGBENCH_LENGTH}' \
         --difficulty '${LONGBENCH_DIFFICULTY}' \
         --limit '${LIMIT}' \
         --max-concurrency '${MAX_CONCURRENCY}' \
         --max-gen-toks '${MAX_GEN_TOKS}' \
         --max-input-tokens '${MAX_INPUT_TOKENS}' \
-        --tokenizer-dir '${TOKENIZER_DIR}' \
+        --tokenizer-dir '${_ctn_tok}' \
         --timeout-sec '${TIMEOUT}' \
         ${_data_json_arg} \
         ${_official_arg} \

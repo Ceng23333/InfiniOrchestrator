@@ -17,6 +17,13 @@ deploy/cases/**/piecewise_inductor_cache/**
 !deploy/cases/**/piecewise_inductor_cache/README.md
 !deploy/cases/**/piecewise_inductor_cache/.gitignore
 
+# Distribution case host caches (AOT, etc.) — track only README / .gitignore
+playground/Distribution/**/cache/**
+!playground/Distribution/**/cache/**/
+!playground/Distribution/**/cache/README.md
+!playground/Distribution/**/cache/**/README.md
+!playground/Distribution/**/cache/**/.gitignore
+
 # Local env (templates *.example are tracked)
 .env
 .env.slave-sim
