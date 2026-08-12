@@ -1,4 +1,4 @@
-"""Fetch /metadata and /metrics from InfiniLM inference_server (HTTP client touchpoints)."""
+"""Fetch /metadata (Entrypoint) and /metrics (LoadBalancer) HTTP touchpoints."""
 
 from __future__ import annotations
 
@@ -17,27 +17,12 @@ from typing import Any
 
 from bench_harness.registry import HISTOGRAM_SRV_COLS, PERIOD_HISTOGRAM_SUFFIXES
 
-json_snapshot_to_warehouse_row = None
-prometheus_text_to_json_snapshot = None
-summarize_period_samples = None
-WAREHOUSE_COUNTER_SRV_COLS = None
-
-try:
-    from infinimetadata.aggregation import summarize_period_samples as _summarize_period_samples
-    from infinimetadata.prometheus_import import (
-        prometheus_text_to_json_snapshot as _prometheus_text_to_json_snapshot,
-    )
-    from infinimetadata.warehouse_export import (
-        WAREHOUSE_COUNTER_SRV_COLS as _WAREHOUSE_COUNTER_SRV_COLS,
-        json_snapshot_to_warehouse_row as _json_snapshot_to_warehouse_row,
-    )
-
-    summarize_period_samples = _summarize_period_samples
-    prometheus_text_to_json_snapshot = _prometheus_text_to_json_snapshot
-    json_snapshot_to_warehouse_row = _json_snapshot_to_warehouse_row
-    WAREHOUSE_COUNTER_SRV_COLS = _WAREHOUSE_COUNTER_SRV_COLS
-except ImportError:
-    pass
+from bench_harness.aggregation import summarize_period_samples
+from bench_harness.prometheus_import import prometheus_text_to_json_snapshot
+from bench_harness.warehouse_export import (
+    WAREHOUSE_COUNTER_SRV_COLS,
+    json_snapshot_to_warehouse_row,
+)
 
 COUNTER_SRV_COLS = WAREHOUSE_COUNTER_SRV_COLS or [
     "srv_req_total_ok",
@@ -109,8 +94,6 @@ def scrape_metrics_json(
     timeout: float = 30.0,
     prom_text: str | None = None,
 ) -> dict[str, Any]:
-    if prometheus_text_to_json_snapshot is None:
-        raise RuntimeError("infinimetadata is required for metrics JSON conversion")
     prom = prom_text if prom_text is not None else scrape_metrics_prometheus(base_url, timeout=timeout)
     return prometheus_text_to_json_snapshot(prom, server_id=server_id)
 
@@ -118,8 +101,6 @@ def scrape_metrics_json(
 def metrics_json_to_row(metrics: dict[str, Any]) -> dict[str, str]:
     if not metrics:
         return {}
-    if json_snapshot_to_warehouse_row is None:
-        raise RuntimeError("infinimetadata is required for metrics flattening")
     return json_snapshot_to_warehouse_row(metrics)
 
 
@@ -128,8 +109,6 @@ def _utc_now_iso() -> str:
 
 
 def summarize_period_metrics(samples: list[dict[str, str]]) -> dict[str, str]:
-    if summarize_period_samples is None:
-        raise RuntimeError("infinimetadata is required for period metrics summarization")
     return summarize_period_samples(
         samples,
         histogram_cols=HISTOGRAM_SRV_COLS,
@@ -243,12 +222,12 @@ def save_metrics_snapshot(
         (out_dir / f"metrics_{label}.prom").write_text("", encoding="utf-8")
         (out_dir / f"metrics_{label}.json").write_text("{}\n", encoding="utf-8")
         return empty
-    meta = fetch_metadata(base_url, timeout=timeout)
+    server_id = os.environ.get("INFERENCE_SERVER_ID", "").strip()
     prom = scrape_metrics_prometheus(base_url, timeout=timeout)
     (out_dir / f"metrics_{label}.prom").write_text(prom, encoding="utf-8")
     metrics = scrape_metrics_json(
         base_url,
-        server_id=str(meta.get("server_id") or ""),
+        server_id=server_id or None,
         timeout=timeout,
         prom_text=prom,
     )

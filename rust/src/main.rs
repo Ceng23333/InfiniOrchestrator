@@ -12,6 +12,7 @@ mod config;
 mod discovery;
 mod handlers;
 mod load_balancer;
+mod metrics;
 mod models;
 mod proxy;
 mod utils;

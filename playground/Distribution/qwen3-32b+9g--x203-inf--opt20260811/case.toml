@@ -1,0 +1,7 @@
+case_id = "qwen3-32b+9g--x203-inf--opt20260811"
+category = "Distribution"
+n = 4
+model_id = "qwen3-32b"
+hw_profile_id = "metax-x203-hpcc"
+hw_abbr = "x203"
+be_abbr = "inf"

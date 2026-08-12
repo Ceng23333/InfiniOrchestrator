@@ -22,6 +22,8 @@ impl EntrypointHandlers {
             .route("/health", get(Self::health_handler))
             .route("/models", get(Self::models_handler))
             .route("/info", get(Self::info_handler))
+            .route("/metadata", get(Self::metadata_handler))
+            .route("/v1/metadata", get(Self::metadata_handler))
             .with_state(self.state.clone());
 
         let port = self.state.entrypoint_port();
@@ -48,6 +50,7 @@ impl EntrypointHandlers {
             "status": "healthy",
             "service": state.config.service_name(),
             "entrypoint": "enhanced",
+            "server_id": state.server_id,
             "infinilm_server_running": process_running,
             "infinilm_server_port": service_port,
             "timestamp": std::time::SystemTime::now()
@@ -101,10 +104,18 @@ impl EntrypointHandlers {
             "port": state.entrypoint_port(),
             "url": format!("http://{}:{}", state.config.host, state.entrypoint_port()),
             "service_type": state.config.service_type,
+            "server_id": state.server_id,
             "infinilm_server_port": service_port,
             "uptime": uptime,
             "restart_count": restart_count
         })))
+    }
+
+    async fn metadata_handler(
+        State(state): State<Arc<EntrypointState>>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        let service_port = *state.service_port.read().await;
+        Ok(Json(state.build_metadata_payload(service_port).await))
     }
 }
 

@@ -6,6 +6,7 @@ pub mod discovery;
 pub mod entrypoint;
 pub mod handlers;
 pub mod load_balancer;
+pub mod metrics;
 pub mod models;
 pub mod proxy;
 pub mod registry;

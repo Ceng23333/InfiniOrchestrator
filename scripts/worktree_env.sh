@@ -58,6 +58,6 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   echo "HARDWARE_PROFILE_REPO=${HARDWARE_PROFILE_REPO}"
   echo "HARNESS_ROOT=${HARNESS_ROOT}"
   echo "SVC_ROOT=${SVC_ROOT}"
-  require_worktree_repos InfiniCore InfiniLM InfiniMetadata
+  require_worktree_repos InfiniCore InfiniLM
   echo "InfiniTensorWorktree OK"
 fi

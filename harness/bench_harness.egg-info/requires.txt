@@ -1,2 +1,0 @@
-pandas>=2.0
-infinimetadata @ git+https://github.com/InfiniTensor/InfiniMetadata.git

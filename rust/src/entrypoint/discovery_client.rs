@@ -101,6 +101,10 @@ impl EntrypointDiscoveryClient {
                     serde_json::json!(self.state.config.service_type),
                 ),
                 ("entrypoint".to_string(), serde_json::json!("enhanced")),
+                (
+                    "server_id".to_string(),
+                    serde_json::json!(self.state.server_id),
+                ),
             ]),
             weight: 1,
         };
@@ -178,10 +182,16 @@ impl EntrypointDiscoveryClient {
         let service_name = self.state.config.service_name();
         let instance_id = format!("{service_name}-server");
 
+        {
+            let mut cache = self.state.models_cache.write().await;
+            *cache = models.clone();
+        }
+
         let mut metadata = serde_json::json!({
             "type": "openai-api",
             "parent_service": service_name,
             "entrypoint": "enhanced",
+            "server_id": self.state.server_id,
             "models": models.iter().map(|m| m.get("id").and_then(|v| v.as_str()).unwrap_or("")).collect::<Vec<_>>(),
             "models_list": models
         });

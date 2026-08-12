@@ -7,6 +7,7 @@ use crate::proxy::handler::proxy_handler;
 use crate::load_balancer::load_balancer::LoadBalancer;
 
 mod health;
+mod metrics;
 mod models;
 mod panel;
 mod services;
@@ -23,6 +24,7 @@ pub fn create_router(load_balancer: Arc<LoadBalancer>) -> Router {
         .route("/health", get(health::health_handler))
         .route("/status", get(health::health_handler)) // Alias for /health
         .route("/stats", get(stats::stats_handler))
+        .route("/metrics", get(metrics::metrics_handler))
         .route("/services", get(services::services_handler))
         .route("/models", get(models::models_handler))
         .fallback(proxy_handler)

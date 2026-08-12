@@ -5,6 +5,7 @@ use crate::discovery::types::WatchEvent;
 use crate::discovery::{DiscoveryBackend, EtcdDiscovery};
 use crate::load_balancer::health_checker::HealthChecker;
 use crate::load_balancer::service_instance::ServiceInstance;
+use crate::metrics::GatewayMetrics;
 use crate::utils::errors::RouterError;
 use crate::utils::time::current_timestamp;
 use std::collections::{HashMap, HashSet};
@@ -30,6 +31,7 @@ pub struct LoadBalancer {
     health_checker: Arc<HealthChecker>,
     discovery: Option<Arc<dyn DiscoveryBackend>>,
     running: Arc<RwLock<bool>>,
+    pub metrics: Arc<GatewayMetrics>,
 }
 
 impl LoadBalancer {
@@ -99,6 +101,7 @@ impl LoadBalancer {
             health_checker,
             discovery,
             running: Arc::new(RwLock::new(true)),
+            metrics: Arc::new(GatewayMetrics::new()),
         })
     }
 

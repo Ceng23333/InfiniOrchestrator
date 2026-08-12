@@ -5,11 +5,18 @@ use axum::{
     http::{HeaderName, HeaderValue, StatusCode},
     response::Response,
 };
-use futures::StreamExt;
+use futures::Stream;
 use reqwest::Response as ReqwestResponse;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use tracing::info;
 
-/// Handle streaming response from upstream service
+use crate::metrics::{
+    now_secs, parse_usage_tokens, sse_chunk_has_token, GatewayMetrics, RequestMetricsHandle,
+};
+
+/// Handle streaming response from upstream service, recording gateway metrics.
 pub async fn handle_streaming_response(
     upstream_response: ReqwestResponse,
     status: StatusCode,
@@ -17,11 +24,11 @@ pub async fn handle_streaming_response(
     method: &str,
     path: &str,
     service_name: &str,
+    metrics: Arc<GatewayMetrics>,
+    req_metrics: RequestMetricsHandle,
 ) -> Response {
-    // Build response with streaming body
     let mut response_builder = Response::builder().status(status);
 
-    // Copy headers (excluding hop-by-hop headers)
     for (name_str, value_str) in response_headers {
         if let Ok(header_name) = HeaderName::from_bytes(name_str.as_bytes()) {
             if let Ok(header_value) = HeaderValue::from_str(&value_str) {
@@ -30,20 +37,19 @@ pub async fn handle_streaming_response(
         }
     }
 
-    // Create a streaming body from the upstream response
-    let stream = upstream_response.bytes_stream();
+    let upstream = upstream_response.bytes_stream();
+    let status_label = if status.is_success() { "ok" } else { "error" }.to_string();
+    let metered = MeteredByteStream {
+        inner: Box::pin(upstream),
+        metrics,
+        handle: req_metrics,
+        status_label,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        finished: false,
+    };
 
-    // Convert reqwest::Stream to axum::Body
-    // Map reqwest::Bytes to axum::body::Bytes
-    let body_stream = stream.map(|result| match result {
-        Ok(bytes) => Ok(axum::body::Bytes::from(bytes.to_vec())),
-        Err(e) => {
-            tracing::error!("Stream error: {}", e);
-            Err(std::io::Error::other(format!("Stream error: {}", e)))
-        }
-    });
-
-    let body = Body::from_stream(body_stream);
+    let body = Body::from_stream(metered);
 
     let response = match response_builder.body(body) {
         Ok(r) => r,
@@ -61,4 +67,78 @@ pub async fn handle_streaming_response(
         method, path, service_name, status
     );
     response
+}
+
+struct MeteredByteStream<S> {
+    inner: Pin<Box<S>>,
+    metrics: Arc<GatewayMetrics>,
+    handle: RequestMetricsHandle,
+    status_label: String,
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    finished: bool,
+}
+
+impl<S> MeteredByteStream<S> {
+    fn finalize(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        self.metrics.record_request_finish(
+            &self.status_label,
+            &self.handle.server_id,
+            self.handle.arrival_secs,
+            now_secs(),
+            self.handle.first_token_secs,
+            self.prompt_tokens,
+            self.completion_tokens,
+        );
+    }
+}
+
+impl<S> Drop for MeteredByteStream<S> {
+    fn drop(&mut self) {
+        self.finalize();
+    }
+}
+
+impl<S, E> Stream for MeteredByteStream<S>
+where
+    S: Stream<Item = Result<bytes::Bytes, E>>,
+    E: std::fmt::Display,
+{
+    type Item = Result<axum::body::Bytes, std::io::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match this.inner.as_mut().poll_next(cx) {
+            Poll::Ready(Some(Ok(bytes))) => {
+                if sse_chunk_has_token(&bytes) {
+                    this.handle.on_token(&this.metrics);
+                }
+                let text = String::from_utf8_lossy(&bytes);
+                if text.contains("\"usage\"") {
+                    let (p, c) = parse_usage_tokens(&text);
+                    if p > 0 {
+                        this.prompt_tokens = p;
+                    }
+                    if c > 0 {
+                        this.completion_tokens = c;
+                    }
+                }
+                Poll::Ready(Some(Ok(axum::body::Bytes::from(bytes.to_vec()))))
+            }
+            Poll::Ready(Some(Err(e))) => {
+                this.status_label = "error".to_string();
+                this.finalize();
+                Poll::Ready(Some(Err(std::io::Error::other(format!("Stream error: {e}")))))
+            }
+            Poll::Ready(None) => {
+                this.finalize();
+                Poll::Ready(None)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }

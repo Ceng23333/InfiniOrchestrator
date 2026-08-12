@@ -1,0 +1,58 @@
+# Playground case.toml field contract (consumed by harness emit).
+# Layout authority: playground/{Standalone,Distribution}/<case_id>/case.toml
+# Warehouse columns: harness/bench_harness/registry.py CASE_META_COLUMNS
+#
+# Keys below are written into case.toml. Emit maps:
+#   category -> case_category
+#   (others keep the same name on the emit row)
+# Env overrides (when set) win over case.toml; see emit._apply_case_metadata.
+
+[fields.case_id]
+required = true
+type = "string"
+emit = "case_id"
+env = ["CASE_ID"]
+doc = "Directory basename under Standalone/ or Distribution/; must match folder name."
+
+[fields.category]
+required = true
+type = "enum"
+values = ["Standalone", "Distribution"]
+emit = "case_category"
+env = ["CASE_CATEGORY"]
+doc = "Must equal the parent directory name under playground/."
+
+[fields.n]
+required = true
+type = "int"
+emit = "n"
+env = ["N", "CASE_N"]
+doc = "Service / replica count. Standalone = 1; Distribution = n >= 2 (compose service count)."
+
+[fields.model_id]
+required = true
+type = "string"
+emit = "model_id"
+env = ["MODEL_ID", "MODEL"]
+doc = "Primary model id for warehouse compact path and reports."
+
+[fields.hw_profile_id]
+required = true
+type = "string"
+emit = "hw_profile_id"
+env = ["HW_PROFILE_ID"]
+doc = "Host IP (major id) or optional alias id from HARDWARE_PROFILE_REPO profiles/{vendor}-{gpu.model}.yaml hosts[]; expands to prof_* at emit."
+
+[fields.hw_abbr]
+required = true
+type = "string"
+emit = "hw_abbr"
+env = ["HW_ABBR"]
+doc = "Hardware abbreviation (e.g. x203); must match profile abbr."
+
+[fields.be_abbr]
+required = true
+type = "string"
+emit = "be_abbr"
+env = ["BE_ABBR", "BENCH_FRONTEND"]
+doc = "Backend abbreviation; see playground/backends.md (vllm|sgl|inf|oai)."

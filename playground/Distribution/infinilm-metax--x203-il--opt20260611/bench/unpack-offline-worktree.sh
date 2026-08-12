@@ -53,7 +53,7 @@ export INFINI_TENSOR_WORKTREE="${WORKTREE_ROOT}"
 echo "IO_ROOT=${IO_ROOT}"
 echo "WORKTREE_ROOT=${WORKTREE_ROOT}"
 echo "IL_SHA=${IL_SHA:-?} IC_SHA=${IC_SHA:-?} IO_SHA=${IO_SHA:-?} ITW_SHA=${ITW_SHA:-?}"
-echo "IM_SHA=${IM_SHA:-?} BW_SHA=${BW_SHA:-?}"
+echo "BW_SHA=${BW_SHA:-?}"
 echo "PACK_DATE=${PACK_DATE:-?} CASE=${CASE:-?}"
 
 echo ""

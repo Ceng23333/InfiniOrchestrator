@@ -1,0 +1,6 @@
+suite_prefix: unexpected_behavior
+family: resilience
+model_in_bench_id: false
+metric_columns:
+  - gate_pass
+  - step_loop_fatal

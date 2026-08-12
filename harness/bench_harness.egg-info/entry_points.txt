@@ -1,5 +1,0 @@
-[console_scripts]
-bench-compact = bench_harness.compact:main
-bench-emit = bench_harness.emit:main
-bench-query = bench_harness.query:main
-bench-validate-e2e = bench_harness.validate_e2e:main

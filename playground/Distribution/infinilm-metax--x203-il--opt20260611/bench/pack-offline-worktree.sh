@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../../../../scripts/worktree_env.sh
 source "${CASE_DIR}/../../../scripts/worktree_env.sh"
-require_worktree_repos InfiniCore InfiniLM InfiniMetadata
+require_worktree_repos InfiniCore InfiniLM
 EXCLUDES_FILE="${SCRIPT_DIR}/pack-offline-excludes.txt"
 
 STAGING="${STAGING:-/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)}"
@@ -27,7 +27,6 @@ git_short_sha() {
 
 IL_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniLM")"
 IC_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniCore")"
-IM_SHA="$(git_short_sha "${WORKTREE_ROOT}/InfiniMetadata")"
 ITW_SHA="$(git_short_sha "${WORKTREE_ROOT}")"
 BW_SHA="$(git_short_sha "${BENCH_WAREHOUSE_REPO}")"
 IO_SHA="$(git_short_sha "${IO_ROOT}")"
@@ -56,7 +55,6 @@ PACK_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat > "${MANIFEST}" <<EOF
 IL_SHA=${IL_SHA}
 IC_SHA=${IC_SHA}
-IM_SHA=${IM_SHA}
 ITW_SHA=${ITW_SHA}
 BW_SHA=${BW_SHA}
 IO_SHA=${IO_SHA}

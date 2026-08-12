@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fetch server-assigned server_id from GET /metadata (Infini), or synthesize stub
-# metadata for non-Infini backends (vLLM / OpenAI). HTTP only; no server lifecycle.
+# Fetch server_id from Entrypoint GET /metadata, or synthesize stub metadata for
+# non-Infini backends (vLLM / OpenAI). HTTP only; no server lifecycle.
 set -euo pipefail
 
 # shellcheck disable=SC1091
@@ -29,6 +29,19 @@ _bench_parse_url_host_port() {
       _pf_port=80
     fi
   fi
+}
+
+_bench_derive_entrypoint_url() {
+  # Infer Entrypoint as inference_port+1 when INFERENCE_METADATA_URL unset.
+  local base_url="${1%/}"
+  local _pf_host _pf_port
+  _bench_parse_url_host_port "${base_url}"
+  local scheme="http"
+  if [[ "${base_url}" == https://* ]]; then
+    scheme="https"
+  fi
+  local ep_port=$((_pf_port + 1))
+  printf '%s://%s:%s' "${scheme}" "${_pf_host}" "${ep_port}"
 }
 
 _bench_stub_preflight() {
@@ -95,12 +108,18 @@ server_preflight() {
     return 0
   fi
 
-  cd "${BENCH_WAREHOUSE_REPO}"
+  local metadata_url="${INFERENCE_METADATA_URL:-}"
+  if [[ -z "${metadata_url}" ]]; then
+    metadata_url="$(_bench_derive_entrypoint_url "${base_url}")"
+  fi
+  metadata_url="${metadata_url%/}"
+  export INFERENCE_METADATA_URL="${metadata_url}"
+
+  cd "${HARNESS_ROOT}"
   local meta
-  if ! meta="$(python3 -m bench_harness.server_client preflight --base-url "${base_url}" 2>/dev/null)"; then
-    # Router / loadbalancer / workers without InfiniMetadata return 503 on GET /metadata.
-    # Fall back to stub so client-only warehouse emit still works against compose stacks.
-    echo "[server_preflight] WARN: GET /metadata failed at ${base_url}; using stub metadata" >&2
+  if ! meta="$(python3 -m bench_harness.server_client preflight --base-url "${metadata_url}" 2>/dev/null)"; then
+    # Entrypoint missing /metadata → stub so client-only warehouse emit still works.
+    echo "[server_preflight] WARN: GET /metadata failed at ${metadata_url}; using stub metadata" >&2
     export BENCH_SKIP_SERVER_METRICS="${BENCH_SKIP_SERVER_METRICS:-1}"
     _bench_stub_preflight "${base_url}" "${artifact_root}" >/dev/null
     return 0
@@ -114,7 +133,7 @@ server_preflight() {
     printf '%s\n' "${meta}" > "${artifact_root}/metadata.json"
   fi
 
-  echo "[server_preflight] server_id=${INFERENCE_SERVER_ID} base_url=${base_url}"
+  echo "[server_preflight] server_id=${INFERENCE_SERVER_ID} metadata_url=${metadata_url} base_url=${base_url}"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from infinimetadata.frontend import FRONTEND_INFINILM
+from bench_harness.frontend import FRONTEND_INFINILM
 
 from bench_harness.deploy_tier import apply_deploy_tier
 from bench_harness.hw_profile import apply_profile_to_row
@@ -114,26 +114,40 @@ def _parse_case_toml(path: Path) -> dict[str, str]:
 
 
 def _apply_case_metadata(row: dict[str, Any]) -> None:
-    """Attach case metadata from env and optional case.toml."""
+    """Attach case metadata from playground/case.schema.toml + optional case.toml."""
+    from bench_harness.schema_load import loaded_playground_fields
+
     case_path = os.environ.get("CASE_PATH", "").strip()
     case_file = Path(case_path) if case_path else None
     toml: dict[str, str] = _parse_case_toml(case_file) if case_file else {}
+    row.setdefault("case_path", case_path or row.get("case_path", ""))
 
-    def _pick(key: str, *env_keys: str) -> str:
-        for env_key in env_keys:
+    missing_required: list[str] = []
+    for fld in loaded_playground_fields():
+        val = ""
+        for env_key in fld.env:
             val = os.environ.get(env_key, "").strip()
             if val:
-                return val
-        return toml.get(key, "")
+                break
+        if not val:
+            val = toml.get(fld.name, "").strip()
+        if not val and fld.required and case_path:
+            missing_required.append(fld.name)
+        if fld.type == "enum" and val and fld.values and val not in fld.values:
+            raise ValueError(
+                f"case field {fld.name}={val!r} not in schema values {fld.values}"
+            )
+        if fld.emit == "model_id":
+            row.setdefault(fld.emit, val or row.get("model", ""))
+        else:
+            row.setdefault(fld.emit, val)
 
-    row.setdefault("case_id", _pick("case_id", "CASE_ID"))
-    row.setdefault("case_category", _pick("case_category", "CASE_CATEGORY", "category"))
-    row.setdefault("case_path", case_path or row.get("case_path", ""))
-    row.setdefault("n", _pick("n", "N", "CASE_N"))
-    row.setdefault("model_id", _pick("model_id", "MODEL_ID", "MODEL") or row.get("model", ""))
-    row.setdefault("hw_profile_id", _pick("hw_profile_id", "HW_PROFILE_ID"))
-    row.setdefault("hw_abbr", _pick("hw_abbr", "HW_ABBR"))
-    row.setdefault("be_abbr", _pick("be_abbr", "BE_ABBR", "BENCH_FRONTEND"))
+    if missing_required:
+        print(
+            f"[emit] WARN: CASE_PATH={case_path}: missing required case.toml fields: "
+            + ", ".join(missing_required),
+            flush=True,
+        )
 
     apply_profile_to_row(row)
 

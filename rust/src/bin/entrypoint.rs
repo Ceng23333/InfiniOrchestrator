@@ -10,7 +10,6 @@ use infini_loadbalancer::entrypoint::process_manager::ProcessManager;
 use infini_loadbalancer::entrypoint::EntrypointState;
 use std::sync::Arc;
 use tokio::signal;
-use tokio::sync::RwLock;
 use tracing::info;
 
 #[tokio::main]
@@ -63,14 +62,8 @@ async fn main() -> Result<()> {
         config.etcd_endpoints, config.discovery_prefix
     );
 
-    let state = Arc::new(EntrypointState {
-        config: config.clone(),
-        config_file,
-        process: Arc::new(RwLock::new(None)),
-        service_port: Arc::new(RwLock::new(None)),
-        start_time: std::time::Instant::now(),
-        restart_count: Arc::new(RwLock::new(0)),
-    });
+    let state = Arc::new(EntrypointState::new(config.clone(), config_file));
+    info!("server_id={}", state.server_id);
 
     let handlers = EntrypointHandlers::new(state.clone());
     let server_handle = tokio::spawn(async move {

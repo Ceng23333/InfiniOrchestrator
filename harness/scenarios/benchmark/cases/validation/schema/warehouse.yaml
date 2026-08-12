@@ -1,0 +1,5 @@
+suite_prefix: validation
+family: correctness
+model_in_bench_id: true
+metric_columns:
+  - gate_pass

@@ -1,0 +1,23 @@
+suite_prefix: longbench_v2
+family: quality_dyn
+model_in_bench_id: true
+metric_columns:
+  - lb_em
+  - lb_n
+  - lb_limit
+  - lb_pool_n
+  - lb_truncated_n
+  - lb_length
+  - lb_difficulty
+  - workload_scale
+  - ttft_p50_ms
+  - ttft_p99_ms
+  - ttft_mean_ms
+  - tpot_p50_ms
+  - tpot_mean_ms
+  - itl_p50_ms
+  - itl_p99_ms
+  - itl_mean_ms
+  - req_per_s
+  - output_tok_per_s
+  - total_tok_per_s

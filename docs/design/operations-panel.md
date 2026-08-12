@@ -120,7 +120,7 @@ erDiagram
 
 | Field | Notes |
 |-------|--------|
-| `server_id` | UUID from inference `GET /metadata` (canonical for warehouse rows). |
+| `server_id` | UUID from Entrypoint `GET /metadata` (canonical for warehouse rows). |
 | `service_name` | Registry / babysitter logical name. |
 | `cluster_id` | Required. |
 | `host_id` | Required (placement). |
@@ -135,7 +135,7 @@ erDiagram
 | `forked_from_server_id` | Optional lineage when launched from a past Server. |
 | `metadata` | Opaque key/value map (JSON). Carries registry/babysitter registration fields (e.g. `cache_type`) plus projection of inference `GET /metadata` (`server_id`, build_info, runtime_env, frontend, …). |
 
-**Maps to today:** registry `ServiceInfo.metadata`, router `ServiceInstance.metadata`, babysitter TOML `[metadata]`, and inference `GET /metadata` / `/v1/metadata`.
+**Maps to today:** etcd/`ServiceInstance.metadata`, entrypoint TOML `[metadata]`, and Entrypoint `GET /metadata` / `/v1/metadata` (LoadBalancer `GET /metrics` for gateway `srv_*`).
 
 Live instances mirror registry heartbeats. **Historical** servers are immutable config snapshots used only for Playground “fork”.
 
@@ -178,7 +178,8 @@ Live instances mirror registry heartbeats. **Historical** servers are immutable 
 | Registry | `GET/POST /services`, heartbeats | Server (live) |
 | LoadBalancer | `/health`, `/status`, `/stats`, `/services`, `/models`, proxy `/v1/*` | LoadBalancer, Server (routed) |
 | Babysitter | TOML + process manager; `/health` on port+1 | Server |
-| Inference | `GET /metadata`, `GET /metrics`, `/v1/*` | Server identity + Dashboard metrics |
+| Entrypoint | `GET /metadata`, `/health` | Server identity |
+| LoadBalancer | `GET /metrics`, `/v1/*` | Gateway metrics + traffic |
 | Orchestrator scripts | `scripts/run_*_full_bench.sh`, case `bench/` | Playground lifecycle (future) |
 | Harness | `bench-warehouse/harness/run_bench_client.sh` | Bench, BenchResult emit |
 | Warehouse | `raw/`, `warehouse/`, `bench-query` | BenchResult history |
@@ -227,7 +228,7 @@ flowchart LR
 ### 3. Dashboard (live production)
 
 - Cluster → LoadBalancer → Server drill-down **and** Cluster → Server (shortcut) listing.
-- Sources: router `/status`/`/stats`/`/services` (if any), registry `/services`, worker `/metrics` + `/metadata`.
+- Sources: LB `/status`/`/stats`/`/services`/`/metrics`, Entrypoint `/metadata`, registry/`etcd` services.
 - Views: health, TTFT/ITL/engine gauges, router request/error counters when a LoadBalancer is present.
 
 ## Playground flows (sketch)

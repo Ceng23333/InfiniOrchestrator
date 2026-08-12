@@ -1,0 +1,6 @@
+suite_prefix: ceval
+family: accuracy
+model_in_bench_id: true
+metric_columns:
+  - ceval_em
+  - ceval_limit

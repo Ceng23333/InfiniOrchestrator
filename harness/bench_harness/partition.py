@@ -7,24 +7,14 @@ import re
 from pathlib import Path
 from typing import Any
 
-from infinimetadata.frontend import FRONTEND_METADATA_KEY
-from infinimetadata.frontend import frontend_path_part as _im_frontend_path_part
+from bench_harness.frontend import FRONTEND_METADATA_KEY
+from bench_harness.frontend import frontend_path_part as _im_frontend_path_part
 
-from bench_harness.registry import suite_prefix
+from bench_harness.registry import MODEL_IN_BENCH_ID_PREFIXES, suite_prefix
 
 HW_PROFILE_COLUMNS = ["platform", "arch", "gpu_model", "gpu_driver"]
 
 _HARNESS_FRONTEND_EXTRA = frozenset({"vLLM", "OpenAI"})
-
-MODEL_IN_BENCH_ID_PREFIXES = frozenset(
-    {
-        "random-fixed-length",
-        "ceval",
-        "longbench_v2",
-        "mctracer_throughput",
-        "validation",
-    }
-)
 
 RAW_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 

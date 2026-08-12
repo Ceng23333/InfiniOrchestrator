@@ -2,7 +2,7 @@
 
 Deployment-focused repo for InfiniLM / vLLM / SGLang stacks with **InfiniEntrypoint** (pid=1), **InfiniLoadBalancer**, etcd discovery, playground cases, and harness.
 
-Frozen InfiniCore / InfiniLM / InfiniMetadata pins live in the sibling **[InfiniTensorWorktree](https://github.com/Ceng23333/InfiniTensorWorktree)** repo (release tags `vYYYY.MM.DD`).
+Frozen InfiniCore / InfiniLM pins live in the sibling **[InfiniTensorWorktree](https://github.com/Ceng23333/InfiniTensorWorktree)** repo (release tags `vYYYY.MM.DD`).
 
 ## Layout
 
@@ -11,11 +11,12 @@ workspace/
   InfiniOrchestrator/
     rust/                   # infini-entrypoint, infini-loadbalancer, infini-sharepool
     harness/                # bench runners + emit/compact/query
-    playground/
+    playground/             # case scheme → emit (see playground/README.md)
+      case.schema.toml      # case.toml field contract
       Standalone/           # n=1 cases: {model}-{hw_abbr}-{be_abbr}
       Distribution/         # n>=2 / deploy recipes
     deploy/                 # packaging overlay (not a second case tree)
-  InfiniTensorWorktree/     # sibling: InfiniCore, InfiniLM, InfiniMetadata + MANIFEST
+  InfiniTensorWorktree/     # sibling: InfiniCore, InfiniLM + MANIFEST
 ```
 
 External private catalogs (env):
@@ -24,7 +25,7 @@ External private catalogs (env):
 |-----|------|
 | `INFINI_TENSOR_WORKTREE` | Pin umbrella (default `../InfiniTensorWorktree`) |
 | `BENCH_WAREHOUSE_REPO` | Data-only metrics: `raw/<date>/`, `compact/<model_id>/` |
-| `HARDWARE_PROFILE_REPO` | GPU-primary HW catalog (`abbr`, profiles) |
+| `HARDWARE_PROFILE_REPO` | GPU band files (`profiles/{vendor}-{gpu.model}.yaml`) + hosts list (ip-primary) |
 
 ```bash
 source scripts/worktree_env.sh
@@ -45,7 +46,7 @@ From InfiniOrchestrator:
 
 ```bash
 source scripts/worktree_env.sh
-require_worktree_repos InfiniCore InfiniLM InfiniMetadata
+require_worktree_repos InfiniCore InfiniLM
 ```
 
 Release pin (in InfiniTensorWorktree):
@@ -54,14 +55,14 @@ Release pin (in InfiniTensorWorktree):
 TAG=vYYYY.MM.DD ./scripts/release.sh --from-current
 ```
 
-Manifest: `InfiniTensorWorktree/MANIFEST` (`ITW_SHA`, `IC_SHA`, `IL_SHA`, `IM_SHA`).
+Manifest: `InfiniTensorWorktree/MANIFEST` (`ITW_SHA`, `IC_SHA`, `IL_SHA`).
 
 ## Control plane
 
 | Binary | Role |
 |--------|------|
-| `infini-entrypoint` | pid=1 process manager; registers to etcd |
-| `infini-loadbalancer` | OpenAI gateway; watches etcd |
+| `infini-entrypoint` | pid=1 process manager; `GET /metadata`; registers to etcd |
+| `infini-loadbalancer` | OpenAI gateway; `GET /metrics`; watches etcd |
 | `infini-sharepool` | Placeholder `/health` |
 | `infini-registry` | Removed (exits with deprecation) |
 
@@ -70,11 +71,16 @@ ETCD_ENDPOINTS=http://127.0.0.1:2379 DISCOVERY_PREFIX=/infini/orchestrator/case 
   infini-entrypoint --config-file master.toml
 ```
 
+Warehouse identity scrapes Entrypoint (`INFERENCE_METADATA_URL`, default inference port+1). Gateway `srv_*` scrapes LoadBalancer (`BENCH_METRICS_URL` / `ROUTER_URL`). See [`docs/design/deprecate-infinimetadata.md`](docs/design/deprecate-infinimetadata.md).
+
 ## Playground naming
+
+Canonical definition: [`playground/README.md`](playground/README.md) + [`playground/case.schema.toml`](playground/case.schema.toml).
 
 - **Simple:** `{model_id}-{hw_abbr}-{be_abbr}` (e.g. `minicpm5-mxc500-vllm`)
 - **Complex:** `{model_expr}--{band}[+{band}...][--{qualifier}]`
 - Service count via `Standalone` / `Distribution` + `case.toml` `n` (no `n{N}` prefix, no soft scope)
+- Emit reads `CASE_PATH` → `case.toml` into warehouse `CASE_META_COLUMNS`
 
 ## Harness + warehouse
 
@@ -93,4 +99,5 @@ python -m bench_harness.compact --repo-root "$BENCH_WAREHOUSE_REPO"
 
 - [`docs/design/discovery-etcd.md`](docs/design/discovery-etcd.md)
 - [`docs/design/share-pool.md`](docs/design/share-pool.md)
+- [`docs/design/deprecate-infinimetadata.md`](docs/design/deprecate-infinimetadata.md)
 - [`docs/design/operations-panel.md`](docs/design/operations-panel.md) (deferred panel refactor)

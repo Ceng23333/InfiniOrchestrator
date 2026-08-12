@@ -1,13 +1,18 @@
-"""Load hardware profiles from HARDWARE_PROFILE_REPO/profiles/*.yaml."""
+"""Load hardware profiles from HARDWARE_PROFILE_REPO/profiles/*.yaml.
+
+Band files are ``{vendor}-{gpu.model}.yaml`` with shared ``gpu``/``abbr`` and a ``hosts``
+list. Host major id is ``ip``; optional ``id`` is a stable alias. Requires PyYAML
+for list parsing.
+"""
 
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any
 
 _PROFILE_CACHE: dict[str, dict[str, Any]] = {}
+_INDEXED = False
 
 
 def hardware_profile_repo(explicit: Path | None = None) -> Path:
@@ -19,78 +24,92 @@ def hardware_profile_repo(explicit: Path | None = None) -> Path:
     return Path(__file__).resolve().parents[3] / "hardware-profile"
 
 
-def _parse_yaml_scalar(value: str) -> Any:
-    text = value.strip()
-    if text in ("null", "~", ""):
-        return None
-    if text in ("true", "false"):
-        return text == "true"
-    if re.fullmatch(r"-?[0-9]+", text):
-        return int(text)
-    if re.fullmatch(r"-?[0-9]+\.[0-9]+", text):
-        return float(text)
-    if (text.startswith('"') and text.endswith('"')) or (
-        text.startswith("'") and text.endswith("'")
-    ):
-        return text[1:-1]
-    return text
-
-
-def _load_yaml_minimal(text: str) -> dict[str, Any]:
-    """Parse simple nested key: value YAML (no lists/anchors)."""
-    root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-
-    for raw_line in text.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip())
-        line = raw_line.strip()
-        if ":" not in line:
-            continue
-        key, _, rest = line.partition(":")
-        key = key.strip()
-        if not key:
-            continue
-
-        while stack and indent <= stack[-1][0]:
-            stack.pop()
-        parent = stack[-1][1]
-
-        if rest.strip():
-            parent[key] = _parse_yaml_scalar(rest)
-        else:
-            child: dict[str, Any] = {}
-            parent[key] = child
-            stack.append((indent, child))
-
-    return root
-
-
 def _load_yaml_file(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     try:
         import yaml  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "PyYAML is required to load hardware-profile hosts[] lists"
+        ) from exc
+    data = yaml.safe_load(text)
+    return data if isinstance(data, dict) else {}
 
-        data = yaml.safe_load(text)
-        return data if isinstance(data, dict) else {}
-    except ImportError:
-        return _load_yaml_minimal(text)
+
+def _section(obj: dict[str, Any], name: str) -> dict[str, Any]:
+    val = obj.get(name)
+    return val if isinstance(val, dict) else {}
+
+
+def _merge_host(band: dict[str, Any], host_entry: dict[str, Any]) -> dict[str, Any]:
+    """Merge shared GPU band + one host entry into a denormalize-ready dict."""
+    ip = str(host_entry.get("ip", "") or "").strip()
+    alias = str(host_entry.get("id", "") or "").strip()
+    gpu = dict(_section(band, "gpu"))
+    if "driver" in host_entry:
+        gpu["driver"] = host_entry.get("driver")
+
+    host_meta = dict(_section(host_entry, "host"))
+    host_meta["ip"] = ip
+
+    return {
+        "abbr": band.get("abbr"),
+        "hw_profile_id": alias or ip,
+        "gpu": gpu,
+        "cpu": dict(_section(host_entry, "cpu")),
+        "os": dict(_section(host_entry, "os")),
+        "host": host_meta,
+        "interconnect": dict(_section(host_entry, "interconnect")),
+        "image_hints": dict(_section(host_entry, "image_hints")),
+    }
+
+
+def _band_only(band: dict[str, Any]) -> dict[str, Any]:
+    """Shared GPU fields only (abbr lookup without selecting a host)."""
+    return {
+        "abbr": band.get("abbr"),
+        "hw_profile_id": "",
+        "gpu": dict(_section(band, "gpu")),
+        "cpu": {},
+        "os": {},
+        "host": {},
+        "interconnect": {},
+        "image_hints": {},
+    }
 
 
 def _index_profiles(repo: Path) -> None:
+    global _INDEXED
     profiles_dir = repo / "profiles"
     if not profiles_dir.is_dir():
+        _INDEXED = True
         return
+
     for path in sorted(profiles_dir.glob("*.yaml")):
         data = _load_yaml_file(path)
         if not isinstance(data, dict):
             continue
-        pid = str(data.get("hw_profile_id", "") or path.stem)
-        _PROFILE_CACHE[pid] = data
-        abbr = str(data.get("abbr", "") or "")
+
+        abbr = str(data.get("abbr", "") or "").strip()
         if abbr:
-            _PROFILE_CACHE[abbr] = data
+            _PROFILE_CACHE[abbr] = _band_only(data)
+
+        hosts = data.get("hosts")
+        if not isinstance(hosts, list):
+            continue
+        for entry in hosts:
+            if not isinstance(entry, dict):
+                continue
+            ip = str(entry.get("ip", "") or "").strip()
+            if not ip:
+                continue
+            merged = _merge_host(data, entry)
+            _PROFILE_CACHE[ip] = merged
+            alias = str(entry.get("id", "") or "").strip()
+            if alias:
+                _PROFILE_CACHE[alias] = merged
+
+    _INDEXED = True
 
 
 def load_profile(
@@ -99,29 +118,17 @@ def load_profile(
     hw_abbr: str | None = None,
     repo: Path | None = None,
 ) -> dict[str, Any]:
-    """Resolve a profile dict by ``hw_profile_id`` or ``abbr``."""
+    """Resolve a profile by host IP / alias id, or band abbr (GPU-only)."""
+    global _INDEXED
     repo_path = hardware_profile_repo(repo)
-    if not _PROFILE_CACHE:
+    if not _INDEXED:
         _index_profiles(repo_path)
 
-    for key in (hw_profile_id, hw_abbr):
-        if key and key in _PROFILE_CACHE:
-            return dict(_PROFILE_CACHE[key])
-
-    profiles_dir = repo_path / "profiles"
-    if profiles_dir.is_dir():
-        for path in sorted(profiles_dir.glob("*.yaml")):
-            data = _load_yaml_file(path)
-            if not isinstance(data, dict):
-                continue
-            if hw_profile_id and str(data.get("hw_profile_id", "")) == hw_profile_id:
-                return data
-            if hw_abbr and str(data.get("abbr", "")) == hw_abbr:
-                return data
-            if hw_profile_id and path.stem == hw_profile_id:
-                return data
-            if hw_abbr and path.stem == hw_abbr:
-                return data
+    # Prefer host IP / alias over band abbr when both are supplied.
+    if hw_profile_id and hw_profile_id in _PROFILE_CACHE:
+        return dict(_PROFILE_CACHE[hw_profile_id])
+    if hw_abbr and hw_abbr in _PROFILE_CACHE:
+        return dict(_PROFILE_CACHE[hw_abbr])
     return {}
 
 
@@ -130,15 +137,15 @@ def denormalize_profile(profile: dict[str, Any]) -> dict[str, str]:
     if not profile:
         return {}
 
-    def _section(name: str) -> dict[str, Any]:
+    def _sec(name: str) -> dict[str, Any]:
         val = profile.get(name)
         return val if isinstance(val, dict) else {}
 
-    gpu = _section("gpu")
-    cpu = _section("cpu")
-    os_info = _section("os")
-    host = _section("host")
-    ic = _section("interconnect")
+    gpu = _sec("gpu")
+    cpu = _sec("cpu")
+    os_info = _sec("os")
+    host = _sec("host")
+    ic = _sec("interconnect")
 
     def _str(val: Any) -> str:
         if val is None:
@@ -160,6 +167,7 @@ def denormalize_profile(profile: dict[str, Any]) -> dict[str, str]:
         "prof_os_name": _str(os_info.get("name")),
         "prof_os_version": _str(os_info.get("version")),
         "prof_os_kernel": _str(os_info.get("kernel")),
+        "prof_host_ip": _str(host.get("ip")),
         "prof_host_platform": _str(host.get("platform")),
         "prof_host_class": _str(host.get("host_class")),
         "prof_interconnect_type": _str(ic.get("type")),
@@ -174,3 +182,10 @@ def apply_profile_to_row(row: dict[str, Any], *, repo: Path | None = None) -> No
     profile = load_profile(hw_profile_id=pid or None, hw_abbr=abbr or None, repo=repo)
     if profile:
         row.update(denormalize_profile(profile))
+
+
+def reset_profile_cache() -> None:
+    """Clear cached index (tests / reload after catalog edits)."""
+    global _INDEXED
+    _PROFILE_CACHE.clear()
+    _INDEXED = False

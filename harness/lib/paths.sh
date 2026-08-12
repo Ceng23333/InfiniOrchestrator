@@ -14,21 +14,15 @@ fi
 
 export HARNESS_ROOT IO_ROOT BENCH_WAREHOUSE_REPO
 export HARDWARE_PROFILE_REPO="${HARDWARE_PROFILE_REPO:-$(cd "${IO_ROOT}/.." && pwd)/hardware-profile}"
-export MONOREPO_WORK="${MONOREPO_WORK:-${IO_ROOT}}"
+# Host tree mounted at /workspace in DEV_CONTAINER (profiling workspace root).
+export MONOREPO_WORK="${MONOREPO_WORK:-$(cd "${IO_ROOT}/.." && pwd)}"
 export INFINI_TENSOR_WORKTREE="${INFINI_TENSOR_WORKTREE:-$(cd "${IO_ROOT}/.." && pwd)/InfiniTensorWorktree}"
-_IM_SRC="${INFINI_TENSOR_WORKTREE}/InfiniMetadata/src"
-# Harness + InfiniMetadata must be importable for emit/compact/query.
-_py_parts=("${HARNESS_ROOT}")
-if [[ -d "${_IM_SRC}" ]]; then
-  _py_parts+=("${_IM_SRC}")
-fi
-_joined="$(IFS=:; echo "${_py_parts[*]}")"
+# Harness must be importable for emit/compact/query (vendored frontend/metrics helpers).
 if [[ -z "${PYTHONPATH:-}" ]]; then
-  export PYTHONPATH="${_joined}"
-elif [[ ":${PYTHONPATH}:" != *":${HARNESS_ROOT}:"* ]] || { [[ -d "${_IM_SRC}" ]] && [[ ":${PYTHONPATH}:" != *":${_IM_SRC}:"* ]]; }; then
-  export PYTHONPATH="${_joined}:${PYTHONPATH}"
+  export PYTHONPATH="${HARNESS_ROOT}"
+elif [[ ":${PYTHONPATH}:" != *":${HARNESS_ROOT}:"* ]]; then
+  export PYTHONPATH="${HARNESS_ROOT}:${PYTHONPATH}"
 fi
-unset _IM_SRC _py_parts _joined
 if [[ -z "${BENCH_RESULTS_ROOT:-}" ]]; then
   BENCH_RESULTS_ROOT="${BENCH_WAREHOUSE_REPO}/bench_results"
 fi

@@ -18,6 +18,7 @@ use tracing::{error, info};
 use crate::proxy::session_extractor::generate_session_from_ip;
 use crate::proxy::streaming::handle_streaming_response;
 use crate::load_balancer::load_balancer::LoadBalancer;
+use crate::metrics::{now_secs, parse_usage_tokens, RequestMetricsHandle};
 
 /// Get proxy timeout from environment variable or use default (30 minutes)
 fn get_proxy_timeout() -> Duration {
@@ -447,6 +448,14 @@ pub async fn proxy_handler(
         let status = StatusCode::from_u16(upstream_response.status().as_u16())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
+        let server_id = service
+            .metadata
+            .get("server_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let req_metrics = RequestMetricsHandle::new(server_id);
+
         // Extract headers before consuming the response
         let response_headers: Vec<(String, String)> = upstream_response
             .headers()
@@ -479,7 +488,6 @@ pub async fn proxy_handler(
         let is_chunked = transfer_encoding.to_lowercase() == "chunked";
 
         if is_sse || is_chunked {
-            // Handle streaming response
             return handle_streaming_response(
                 upstream_response,
                 status,
@@ -487,6 +495,8 @@ pub async fn proxy_handler(
                 method.as_str(),
                 uri.path(),
                 &service.name,
+                load_balancer.metrics.clone(),
+                req_metrics,
             )
             .await;
         }
@@ -496,6 +506,15 @@ pub async fn proxy_handler(
             Ok(bytes) => bytes,
             Err(e) => {
                 error!("Failed to read response body: {}", e);
+                load_balancer.metrics.record_request_finish(
+                    "error",
+                    &req_metrics.server_id,
+                    req_metrics.arrival_secs,
+                    now_secs(),
+                    None,
+                    0,
+                    0,
+                );
                 return (
                     StatusCode::BAD_GATEWAY,
                     Json(json!({"error": "Failed to read response from service"})),
@@ -503,6 +522,21 @@ pub async fn proxy_handler(
                     .into_response();
             }
         };
+
+        let body_text = String::from_utf8_lossy(&response_body);
+        let (prompt_tokens, completion_tokens) = parse_usage_tokens(&body_text);
+        let status_label = if status.is_success() { "ok" } else { "error" };
+        // Non-stream: treat full response arrival as first-token ≈ e2e (no token stream).
+        let finished = now_secs();
+        load_balancer.metrics.record_request_finish(
+            status_label,
+            &req_metrics.server_id,
+            req_metrics.arrival_secs,
+            finished,
+            Some(finished),
+            prompt_tokens,
+            completion_tokens,
+        );
 
         // Build response
         let mut response_builder = Response::builder().status(status);

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from infinimetadata.frontend import FRONTEND_METADATA_KEY
+from bench_harness.frontend import FRONTEND_METADATA_KEY
+
+from bench_harness.schema_load import loaded_warehouse_schemas
 
 # JSON columns for deployment-case profile (not per-key warehouse columns).
 SERVER_ARGS_COLUMN = "server_args"
@@ -73,46 +75,29 @@ BASE_COLUMNS = [
     BENCH_ARGS_COLUMN,
 ]
 
-_LATENCY_METRIC_COLUMNS = [
-    "ttft_p50_ms",
-    "ttft_p99_ms",
-    "ttft_mean_ms",
-    "tpot_p50_ms",
-    "tpot_mean_ms",
-    "itl_p50_ms",
-    "itl_p99_ms",
-    "itl_mean_ms",
-    "req_per_s",
-    "output_tok_per_s",
-    "total_tok_per_s",
-]
 
-FAMILY_PREFIXES: dict[str, str] = {
-    "unexpected_behavior": "resilience",
-    "validation": "correctness",
-    "random-fixed-length": "latency",
-    "mctracer_throughput": "latency",
-    "ceval": "accuracy",
-    "longbench_v2": "quality_dyn",
-}
+def _build_family_maps() -> tuple[dict[str, str], dict[str, list[str]], frozenset]:
+    """suite_prefix→family, family→metrics, suite_prefixes with model in bench_id."""
+    prefixes: dict[str, str] = {}
+    family_metrics: dict[str, list[str]] = {}
+    model_in: set[str] = set()
+    for suite, schema in loaded_warehouse_schemas().items():
+        prefixes[suite] = schema.family
+        existing = family_metrics.get(schema.family)
+        if existing is None:
+            family_metrics[schema.family] = list(schema.metric_columns)
+        else:
+            merged: list[str] = list(existing)
+            for col in schema.metric_columns:
+                if col not in merged:
+                    merged.append(col)
+            family_metrics[schema.family] = merged
+        if schema.model_in_bench_id:
+            model_in.add(suite)
+    return prefixes, family_metrics, frozenset(model_in)
 
-FAMILY_METRIC_COLUMNS: dict[str, list[str]] = {
-    "resilience": ["gate_pass", "step_loop_fatal"],
-    "correctness": ["gate_pass"],
-    "latency": list(_LATENCY_METRIC_COLUMNS),
-    "accuracy": ["ceval_em", "ceval_limit"],
-    "quality_dyn": [
-        "lb_em",
-        "lb_n",
-        "lb_limit",
-        "lb_pool_n",
-        "lb_truncated_n",
-        "lb_length",
-        "lb_difficulty",
-        "workload_scale",
-        *_LATENCY_METRIC_COLUMNS,
-    ],
-}
+
+FAMILY_PREFIXES, FAMILY_METRIC_COLUMNS, MODEL_IN_BENCH_ID_PREFIXES = _build_family_maps()
 
 HISTOGRAM_SRV_COLS = [
     "srv_ttft_p50_ms",
@@ -158,7 +143,12 @@ def suite_prefix(bench_id: str) -> str:
 
 def bench_family(bench_id: str) -> str:
     prefix = suite_prefix(bench_id)
-    return FAMILY_PREFIXES.get(prefix, "unknown")
+    if prefix not in FAMILY_PREFIXES:
+        raise KeyError(
+            f"unknown suite_prefix={prefix!r} for bench_id={bench_id!r}; "
+            "add scenarios/benchmark/cases/*/schema/warehouse.yaml"
+        )
+    return FAMILY_PREFIXES[prefix]
 
 
 def data_columns(bench_id: str) -> list[str]:
@@ -189,6 +179,7 @@ CASE_META_COLUMNS = [
     "prof_os_name",
     "prof_os_version",
     "prof_os_kernel",
+    "prof_host_ip",
     "prof_host_platform",
     "prof_host_class",
     "prof_interconnect_type",

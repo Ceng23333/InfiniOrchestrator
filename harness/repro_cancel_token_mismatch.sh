@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-# Thin wrapper: repro the cancel/disconnect sampled-token mismatch bug.
-set -euo pipefail
-SCENARIOS="${SCENARIOS:-cancel_mid_decode}"
-export SCENARIOS
-exec "$(dirname "$0")/run_unexpected_behavior_bench.sh" "$@"
+# Repro wrapper → unexpected_behavior case runner.
+exec "$(cd "$(dirname "$0")" && pwd)/scenarios/benchmark/cases/unexpected_behavior/scripts/run.sh" "$@"
