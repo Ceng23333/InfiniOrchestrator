@@ -1,0 +1,8 @@
+case_id = "9g_8b_thinking-910b4-mindie"
+category = "Standalone"
+n = 1
+model_id = "9g_8b_thinking"
+hw_profile_id = "ascend-910b4-ascend"
+hw_abbr = "910B4"
+be_abbr = "oai"
+worktree = "v2026.08.12"

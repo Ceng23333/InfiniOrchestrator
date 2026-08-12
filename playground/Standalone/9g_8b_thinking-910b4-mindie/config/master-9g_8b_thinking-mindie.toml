@@ -1,0 +1,30 @@
+# Standalone InfiniEntrypoint wrap: MindIE for 9g_8b_thinking on Ascend 910B4.
+
+name = "master-9g_8b_thinking-mindie"
+host = "0.0.0.0"
+port = 1135
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+command = "/home/mindie-run/run-daemon.sh"
+args = []
+work_dir = "/usr/local/Ascend/mindie/2.3.0/mindie-service"
+
+# Host NPUs 2/3 are selected via ASCEND_RT_VISIBLE_DEVICES; MindIE npuDeviceIds stay relative [[0, 1]].
+[backend.env]
+MINDIE_LOG_TO_STDOUT = "1"
+MINDIE_LLM_PYTHON_LOG_TO_STDOUT = "1"
+MINDIE_LLM_PYTHON_LOG_TO_FILE = "0"
+ASCEND_RT_VISIBLE_DEVICES = "2,3"
+ASCEND_VISIBLE_DEVICES = "2,3"
+
+[metadata]
+backend_type = "mindie"
+model_id = "9g_8b_thinking"
+served_model_name = "9g-8b-thinking-llama"
+static = true
