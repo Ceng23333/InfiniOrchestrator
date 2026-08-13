@@ -29,6 +29,7 @@ const state = {
     category: "harness",
     harness: "longbench_v2",
     model: "all",
+    deployMode: "all",
     hardware: "all",
     backend: "all",
     dateFrom: "",
@@ -51,6 +52,7 @@ const SERIES_COLORS = [
 
 const VIZ_BASE_COLUMNS = [
   "date",
+  "deploy_mode",
   "model",
   "hw",
   "be",
@@ -62,9 +64,12 @@ const VIZ_BASE_COLUMNS = [
 
 const els = {};
 
+const PANEL_TABS = ["playground", "harness", "visualization", "dashboard"];
+
 document.addEventListener("DOMContentLoaded", () => {
   bindElements();
   bindEvents();
+  setActiveTab(tabFromLocation(), { fromLocation: true });
   loadSnapshot();
   loadPlaygroundCases();
   loadHarnessCases();
@@ -124,6 +129,7 @@ function bindElements() {
     vizCategory: document.querySelector("#viz-category"),
     vizHarness: document.querySelector("#viz-harness"),
     vizModel: document.querySelector("#viz-model"),
+    vizDeployMode: document.querySelector("#viz-deploy-mode"),
     vizHardware: document.querySelector("#viz-hardware"),
     vizBackend: document.querySelector("#viz-backend"),
     vizDateFrom: document.querySelector("#viz-date-from"),
@@ -156,11 +162,15 @@ function bindEvents() {
   els.tabs.forEach((tab) => {
     tab.addEventListener("click", () => setActiveTab(tab.dataset.tab));
   });
+  window.addEventListener("hashchange", () => {
+    setActiveTab(tabFromLocation(), { fromLocation: true });
+  });
 
   const vizControls = [
     [els.vizCategory, "category"],
     [els.vizHarness, "harness"],
     [els.vizModel, "model"],
+    [els.vizDeployMode, "deployMode"],
     [els.vizHardware, "hardware"],
     [els.vizBackend, "backend"],
     [els.vizPreset, "preset"],
@@ -277,21 +287,34 @@ function setStatus(text, tone) {
   els.status.classList.toggle("is-bad", tone === "bad");
 }
 
-function setActiveTab(tabName) {
-  state.activeTab = tabName;
+function tabFromLocation() {
+  const raw = (window.location.hash || "").replace(/^#/, "").trim();
+  const tab = raw.split(/[/?&]/)[0];
+  return PANEL_TABS.includes(tab) ? tab : "playground";
+}
+
+function setActiveTab(tabName, options = {}) {
+  const nextTab = PANEL_TABS.includes(tabName) ? tabName : "playground";
+  state.activeTab = nextTab;
   els.tabs.forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.tab === tabName);
+    tab.classList.toggle("is-active", tab.dataset.tab === nextTab);
   });
   els.views.forEach((view) => {
-    view.classList.toggle("is-active", view.id === tabName);
+    view.classList.toggle("is-active", view.id === nextTab);
   });
-  if (tabName === "visualization" && !state.harness) {
+  if (!options.fromLocation) {
+    const nextHash = `#${nextTab}`;
+    if (window.location.hash !== nextHash) {
+      history.replaceState(null, "", nextHash);
+    }
+  }
+  if (nextTab === "visualization" && !state.harness) {
     loadHarnessData();
   }
-  if (tabName === "playground" && !state.playgroundCases) {
+  if (nextTab === "playground" && !state.playgroundCases) {
     loadPlaygroundCases();
   }
-  if (tabName === "harness" && !state.harnessCases) {
+  if (nextTab === "harness" && !state.harnessCases) {
     loadHarnessCases();
   }
 }
@@ -429,6 +452,11 @@ function hydrateVizControls() {
     ["all", "All"],
     ...(options.models || []).map((value) => [value, value]),
   ]);
+  const deployModes = options.deploy_modes || ["Standalone", "Distribution"];
+  setOptions(els.vizDeployMode, [
+    ["all", "All"],
+    ...deployModes.map((value) => [value, value]),
+  ]);
   setOptions(els.vizHardware, [
     ["all", "All"],
     ...(options.hardware || []).map((value) => [value, value]),
@@ -453,6 +481,7 @@ function hydrateVizControls() {
     els.vizMetric.value = state.viz.metric;
   }
   els.vizModel.value = state.viz.model;
+  els.vizDeployMode.value = state.viz.deployMode;
   els.vizHardware.value = state.viz.hardware;
   els.vizBackend.value = state.viz.backend;
   els.vizPreset.value = state.viz.preset;
@@ -474,11 +503,14 @@ function getFilteredHarnessRows() {
       return false;
     }
     const model = row.model || row.model_id || "";
+    const deployMode = row.deploy_mode || row.case_category || "";
     const hardware = row.hw || "";
     const backend = row.be || "";
     const preset = row.preset || "";
     const date = row.date || "";
     const modelMatch = state.viz.model === "all" || model === state.viz.model;
+    const deployModeMatch =
+      state.viz.deployMode === "all" || deployMode === state.viz.deployMode;
     const hardwareMatch =
       state.viz.hardware === "all" || hardware === state.viz.hardware;
     const backendMatch =
@@ -488,6 +520,7 @@ function getFilteredHarnessRows() {
     const toMatch = !state.viz.dateTo || date <= state.viz.dateTo;
     return (
       modelMatch &&
+      deployModeMatch &&
       hardwareMatch &&
       backendMatch &&
       presetMatch &&
@@ -512,7 +545,24 @@ function renderVisualization() {
     source.status === "ok"
       ? `Source: ${source.repo || ""} (${(source.files || []).length} files)`
       : `Source: ${source.status || "unavailable"}`;
-  els.vizSourceStatus.textContent = `${sourceLine} · PASS · lb_em > ${emMin}`;
+  const sync = source.sync;
+  let syncPart = "";
+  if (sync && typeof sync === "object") {
+    const bits = [];
+    if (sync.status) {
+      bits.push(String(sync.status));
+    }
+    if (sync.sha) {
+      bits.push(String(sync.sha));
+    }
+    if (sync.pulled_at) {
+      bits.push(String(sync.pulled_at));
+    }
+    if (bits.length) {
+      syncPart = ` · sync ${bits.join(" ")}`;
+    }
+  }
+  els.vizSourceStatus.textContent = `${sourceLine}${syncPart} · PASS · lb_em > ${emMin}`;
 
   const rows = getFilteredHarnessRows();
   els.vizRowCount.textContent = `${rows.length} rows`;
@@ -696,13 +746,19 @@ function renderVizTable(rows) {
         const path = row.tsv_path || "";
         const line = row.tsv_line || "";
         const label = path && line ? `${path}:${line}` : path || "—";
-        const link = document.createElement("a");
-        link.className = "source-link";
-        link.href = `/panel/api/warehouse/file?path=${encodeURIComponent(path)}&line=${encodeURIComponent(line)}`;
-        link.target = "_blank";
-        link.rel = "noopener";
-        link.textContent = label;
-        td.append(link);
+        const href = warehouseSourceUrl(path, line);
+        if (href) {
+          const link = document.createElement("a");
+          link.className = "source-link";
+          link.href = href;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.title = href;
+          link.textContent = label;
+          td.append(link);
+        } else {
+          td.textContent = label;
+        }
       } else {
         td.textContent = row[col] != null ? row[col] : "";
       }
@@ -714,6 +770,19 @@ function renderVizTable(rows) {
   wrap.append(table);
   els.vizTable.className = "";
   els.vizTable.replaceChildren(wrap);
+}
+
+function warehouseSourceUrl(path, line) {
+  if (!path) {
+    return "";
+  }
+  const base = (state.harness?.source?.github_blob_base || "").replace(/\/$/, "");
+  if (!base) {
+    return "";
+  }
+  const cleaned = String(path).replace(/^\/+/, "");
+  const anchor = line ? `#L${line}` : "";
+  return `${base}/${cleaned}${anchor}`;
 }
 
 function highlightVizRow(rowId) {

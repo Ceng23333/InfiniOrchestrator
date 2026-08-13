@@ -528,6 +528,7 @@ fn resolve_io_root() -> Option<PathBuf> {
 
 fn load_longbench_v2_payload() -> Value {
     let Some(repo) = resolve_warehouse_root() else {
+        let sync = read_warehouse_sync_status_from_env();
         return json!({
             "category": "harness",
             "harness_id": "longbench_v2",
@@ -538,17 +539,22 @@ fn load_longbench_v2_payload() -> Value {
                 "hardware": [],
                 "backends": [],
                 "dates": [],
-                "presets": []
+                "presets": [],
+                "deploy_modes": []
             },
             "rows": [],
             "source": {
                 "repo": Value::Null,
                 "files": [],
-                "status": "BENCH_WAREHOUSE_REPO not found (set env or place sibling bench-warehouse)"
+                "github_blob_base": Value::Null,
+                "status": "BENCH_WAREHOUSE_REPO not found (set env or place sibling bench-warehouse)",
+                "sync": sync
             }
         });
     };
 
+    let github_blob_base = resolve_warehouse_github_blob_base(&repo);
+    let sync = read_warehouse_sync_status(&repo);
     let (rows, files) = load_longbench_v2_rows(&repo);
     if rows.is_empty() {
         return json!({
@@ -561,17 +567,20 @@ fn load_longbench_v2_payload() -> Value {
                 "hardware": [],
                 "backends": [],
                 "dates": [],
-                "presets": []
+                "presets": [],
+                "deploy_modes": []
             },
             "rows": [],
             "source": {
                 "repo": repo.display().to_string(),
                 "files": files,
+                "github_blob_base": github_blob_base,
                 "status": if files.is_empty() {
                     "no raw/*/longbench_v2.tsv files found"
                 } else {
                     "tsv files found but no data rows"
-                }
+                },
+                "sync": sync
             }
         });
     }
@@ -587,9 +596,108 @@ fn load_longbench_v2_payload() -> Value {
         "source": {
             "repo": repo.display().to_string(),
             "files": files,
-            "status": "ok"
+            "github_blob_base": github_blob_base,
+            "status": "ok",
+            "sync": sync
         }
     })
+}
+
+/// Sidecar status written by warehouse-sync (`/warehouse/.warehouse-sync-status`).
+fn read_warehouse_sync_status(repo: &Path) -> Value {
+    read_warehouse_sync_status_file(&repo.join(".warehouse-sync-status"))
+}
+
+fn read_warehouse_sync_status_from_env() -> Value {
+    let path = std::env::var("BENCH_WAREHOUSE_REPO")
+        .ok()
+        .map(|root| PathBuf::from(root).join(".warehouse-sync-status"))
+        .unwrap_or_else(|| PathBuf::from("/warehouse/.warehouse-sync-status"));
+    read_warehouse_sync_status_file(&path)
+}
+
+fn read_warehouse_sync_status_file(path: &Path) -> Value {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Value::Null;
+    };
+    match serde_json::from_str::<Value>(raw.trim()) {
+        Ok(value) if value.is_object() => value,
+        _ => Value::Null,
+    }
+}
+
+fn resolve_warehouse_github_blob_base(repo: &Path) -> String {
+    if let Ok(explicit) = std::env::var("BENCH_WAREHOUSE_GITHUB_BLOB_BASE") {
+        let trimmed = explicit.trim().trim_end_matches('/').to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+
+    let repo_url = std::env::var("BENCH_WAREHOUSE_GITHUB_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| read_git_https_remote(repo))
+        .unwrap_or_else(|| "https://github.com/InfiniTensor/bench-warehouse".to_string());
+    let repo_url = repo_url
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .to_string();
+    let git_ref = std::env::var("BENCH_WAREHOUSE_GITHUB_REF")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| read_git_current_branch(repo))
+        .unwrap_or_else(|| "master".to_string());
+    format!("{repo_url}/blob/{git_ref}")
+}
+
+fn read_git_https_remote(repo: &Path) -> Option<String> {
+    let config = fs::read_to_string(repo.join(".git/config")).ok()?;
+    let mut in_origin = false;
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_origin = trimmed == "[remote \"origin\"]";
+            continue;
+        }
+        if in_origin {
+            if let Some(url) = trimmed.strip_prefix("url =") {
+                let url = url.trim();
+                if let Some(https) = git_remote_to_https(url) {
+                    return Some(https);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn git_remote_to_https(url: &str) -> Option<String> {
+    if url.starts_with("https://") || url.starts_with("http://") {
+        return Some(url.trim_end_matches('/').trim_end_matches(".git").to_string());
+    }
+    // git@github.com:Org/repo.git
+    if let Some(rest) = url.strip_prefix("git@") {
+        let rest = rest.trim_end_matches(".git");
+        if let Some((host, path)) = rest.split_once(':') {
+            return Some(format!("https://{host}/{path}"));
+        }
+    }
+    // ssh://git@github.com/Org/repo.git
+    if let Some(rest) = url.strip_prefix("ssh://git@") {
+        let rest = rest.trim_end_matches('/').trim_end_matches(".git");
+        return Some(format!("https://{rest}"));
+    }
+    None
+}
+
+fn read_git_current_branch(repo: &Path) -> Option<String> {
+    let head = fs::read_to_string(repo.join(".git/HEAD")).ok()?;
+    let head = head.trim();
+    head.strip_prefix("ref: refs/heads/")
+        .map(|branch| branch.trim().to_string())
 }
 
 fn resolve_warehouse_root() -> Option<PathBuf> {
@@ -682,6 +790,9 @@ fn load_longbench_v2_rows(repo: &Path) -> (Vec<Value>, Vec<String>) {
             if let Some(be) = be {
                 map.insert("be".to_string(), Value::String(be));
             }
+            if let Some(deploy_mode) = first_nonempty_map(&map, &["case_category"]) {
+                map.insert("deploy_mode".to_string(), Value::String(deploy_mode));
+            }
             map.insert("preset".to_string(), Value::String(preset));
             map.insert("date".to_string(), Value::String(date));
             map.insert("row_id".to_string(), Value::String(row_id));
@@ -714,6 +825,7 @@ fn build_filter_options(rows: &[Value]) -> Value {
     let mut backends = BTreeSet::new();
     let mut dates = BTreeSet::new();
     let mut presets = BTreeSet::new();
+    let mut deploy_modes = BTreeSet::new();
 
     for row in rows {
         if let Some(value) = nonempty_row(row, "model") {
@@ -731,6 +843,9 @@ fn build_filter_options(rows: &[Value]) -> Value {
         if let Some(value) = nonempty_row(row, "preset") {
             presets.insert(value);
         }
+        if let Some(value) = nonempty_row(row, "deploy_mode") {
+            deploy_modes.insert(value);
+        }
     }
 
     json!({
@@ -739,6 +854,7 @@ fn build_filter_options(rows: &[Value]) -> Value {
         "backends": backends.into_iter().collect::<Vec<_>>(),
         "dates": dates.into_iter().collect::<Vec<_>>(),
         "presets": presets.into_iter().collect::<Vec<_>>(),
+        "deploy_modes": deploy_modes.into_iter().collect::<Vec<_>>(),
     })
 }
 

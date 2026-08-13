@@ -60,6 +60,10 @@ cp -n .env.master.example .env   # or keep existing .env
 # IMAGE_TAG=$(cat ../image/.image_tag)
 ./compose.sh --profile frontend --profile workers up -d
 # Optional: ./compose.sh --profile observability up -d
+# Optional hot warehouse pull (needs BENCH_WAREHOUSE_GITHUB_TOKEN for private HTTPS):
+# ./compose.sh --profile frontend --profile warehouse-sync up -d
+# Canonical full stack:
+# ./compose.sh --profile frontend --profile workers --profile observability --profile warehouse-sync up -d
 
 # 3. Smoke
 ./validate.sh localhost
@@ -73,7 +77,9 @@ cd ..
 ./export-bundle.sh
 ```
 
-`compose.sh` merges [`deploy/docker-compose/`](../../../../deploy/docker-compose/) `etcd` + `frontend` (+ optional `observability`) with this case’s workers. Service name **`frontend`** is the Dynamo Frontend (formerly `master`); workers use `ROUTER_URL=http://frontend:${ROUTER_PORT}`.
+`compose.sh` merges [`frontend/docker-compose/`](../../../../frontend/docker-compose/) `etcd` + `frontend` (+ optional `observability` / `warehouse-sync`) with this case’s workers. Service name **`frontend`** is the Dynamo Frontend (formerly `master`); workers use `ROUTER_URL=http://frontend:${ROUTER_PORT}`.
+
+**Bench warehouse:** owned by Frontend fragments (`BENCH_WAREHOUSE_REPO=/warehouse` + named volume `bench_warehouse`). Enable `--profile warehouse-sync` to pull the private repo on an interval (set `BENCH_WAREHOUSE_GITHUB_TOKEN`; see fragment README). Without sync the volume may be empty — LongBench viz needs sync+token, or host-native panel via [`frontend/run-host-panel.sh`](../../../../frontend/run-host-panel.sh). Panel LongBench `source.sync` reflects `/warehouse/.warehouse-sync-status` when present.
 
 Default `COMPOSE_PROJECT_NAME` is **`docker-compose`** (matches the historical project on this host). Override only when intentionally creating a parallel project — and then use a non-overlapping compose subnet.
 GPU map: 9g `0`, Qwen `4,5,6,7`, embeddings on free GPU / remap. Network subnet `172.28.0.0/16`. MetaX device blocks unchanged.

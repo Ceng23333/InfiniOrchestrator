@@ -13,7 +13,7 @@ infinilm-svc:metax-hpcc-ai3107:<IL_SHA>-<IC_SHA>-<BUILD_TS>
 ## Build (source machine)
 
 ```bash
-cd InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260622
+cd InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260622
 ./build-image.sh
 ./export-bundle.sh
 ```

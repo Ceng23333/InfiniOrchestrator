@@ -3,6 +3,8 @@
 #   ./compose.sh --profile frontend --profile workers up -d
 # Optional Prom/Grafana:
 #   ./compose.sh --profile observability up -d
+# Optional bench-warehouse hot sync (named volume; needs GitHub token for private HTTPS):
+#   ./compose.sh --profile frontend --profile warehouse-sync up -d
 version: "2.4"
 networks:
   default:
@@ -25,12 +27,10 @@ services:
       ROUTER_PORT: ${ROUTER_PORT:-8800}
       REGISTRY_PORT: ${REGISTRY_PORT:-18000}
       CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
-      BENCH_WAREHOUSE_REPO: /warehouse
       IO_ROOT: /io
     volumes:
-      # Dev overlay: host-built Frontend with Visualization tab + warehouse for harness APIs.
+      # Dev overlay: host-built Frontend binary + IO tree for panel case-browser.
       - ${IO_RUST_RELEASE_DIR:-../../../../rust/target/release}/infini-loadbalancer:/usr/local/bin/infini-loadbalancer:ro
-      - ${BENCH_WAREHOUSE_HOST_PATH:-../../../../../bench-warehouse}:/warehouse:ro
       - ${IO_HOST_PATH:-../../../../}:/io:ro
 
   worker-master-9g-8100:

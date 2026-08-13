@@ -80,7 +80,7 @@ erDiagram
 | `name` | Human label. |
 | `env` | `production` \| `dev` (aligns with warehouse `deploy_tier` where applicable). |
 | `registry_url` | Today’s HTTP registry on master (`REGISTRY_URL`). |
-| `deploy_case` | Path/name under `deploy/cases/…`. |
+| `deploy_case` | Path/name under `playground/Distribution/…`. |
 | `discovery_prefix` | Optional; future etcd prefix (see discovery-etcd). |
 
 **Maps to today:** one Compose project + shared registry/router URLs. No first-class Cluster table exists yet.
@@ -174,7 +174,7 @@ Live instances mirror registry heartbeats. **Historical** servers are immutable 
 
 | Layer | Path / API | Entities touched |
 |-------|------------|------------------|
-| Deploy case | `deploy/cases/<case>/docker-compose.yml` | Cluster, Host |
+| Deploy case | `playground/Distribution/<case>/docker-compose.yml` | Cluster, Host |
 | Registry | `GET/POST /services`, heartbeats | Server (live) |
 | LoadBalancer | `/health`, `/status`, `/stats`, `/services`, `/models`, proxy `/v1/*` | LoadBalancer, Server (routed) |
 | Babysitter | TOML + process manager; `/health` on port+1 | Server |

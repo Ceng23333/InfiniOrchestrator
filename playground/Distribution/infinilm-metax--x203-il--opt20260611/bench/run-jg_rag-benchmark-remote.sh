@@ -11,7 +11,7 @@ CASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BENCH_DIR="${SCRIPT_DIR}"
 RESULTS_DIR="${CASE_DIR}/results"
 
-# Repo root (bench/ lives under InfiniOrchestrator/deploy/cases/<case>/bench)
+# Repo root (bench/ lives under InfiniOrchestrator/playground/Distribution/<case>/bench)
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../../" && pwd)"
 
 # Router endpoint

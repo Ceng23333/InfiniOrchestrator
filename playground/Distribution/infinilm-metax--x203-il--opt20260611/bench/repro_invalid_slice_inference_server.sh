@@ -5,10 +5,10 @@ set -euo pipefail
 
 REPO_FLA="${REPO_FLA:-/home/zenghua/workspace/fla-support}"
 REPO_SVC="${REPO_SVC:-/home/zenghua/workspace/infinilm-svc-refactor}"
-PAYLOAD="${REPO_SVC}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/results/repro-slice-payload.json"
+PAYLOAD="${REPO_SVC}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611/results/repro-slice-payload.json"
 MODEL="${MODEL:-/data-aisoft/zenghua/models/9g_8b_thinking_llama}"
 PORT="${PORT:-18080}"
-LOG="${LOG:-${REPO_SVC}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/results/repro-inference-server-$(date -u +%Y%m%d-%H%M%SZ).log}"
+LOG="${LOG:-${REPO_SVC}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611/results/repro-inference-server-$(date -u +%Y%m%d-%H%M%SZ).log}"
 
 export PYTHONPATH="${REPO_FLA}/InfiniLM/python:${REPO_FLA}/InfiniCore/python:${PYTHONPATH:-}"
 export TORCH_LIB="$(python3 -c 'import torch, os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))')"

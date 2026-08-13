@@ -42,13 +42,13 @@ BASE_IMAGE=infinilm-svc:metax-hpcc-1004_218-202602281209 \
 INFINI_RUNTIME_CONTAINER=infinilm-dev-20260622 \
 DOCKER_BUILD_NO_CACHE=1 \
 ./build-image.sh
-echo "${IMAGE_TAG}" > ../../deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag
+echo "${IMAGE_TAG}" > ../../playground/Distribution/infinilm-metax--x203-il--opt20260611/.image_tag
 ```
 
 Run the case (master host):
 
 ```bash
-cd deploy/cases/infinilm-metax-deployment-opt-20260611
+cd playground/Distribution/infinilm-metax--x203-il--opt20260611
 cp .env.master.example .env
 # set IMAGE_TAG from .image_tag after build
 docker-compose up -d master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
@@ -100,7 +100,7 @@ Startup log gates: 9g `max_seq=65536`; Qwen `max_seq=40960` + `paged decode CG: 
 After `docker-compose up` and startup CG capture completes:
 
 ```bash
-cd deploy/cases/infinilm-metax-deployment-opt-20260611
+cd playground/Distribution/infinilm-metax--x203-il--opt20260611
 
 # Full ladder (smoke + prefix cache + throughput + C-Eval)
 ./bench/run_deploy_validation.sh

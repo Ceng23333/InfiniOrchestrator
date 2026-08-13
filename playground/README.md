@@ -23,7 +23,7 @@ playground/
 
 - `category` in `case.toml` **must** match the parent dir (`Standalone` | `Distribution`).
 - `case_id` **must** match the case directory name.
-- Do not invent a second case tree under `deploy/`; packaging overlays reference a playground case id.
+- Do not invent a second case tree under `frontend/`; packaging overlays reference a playground case id.
 
 ## Naming
 

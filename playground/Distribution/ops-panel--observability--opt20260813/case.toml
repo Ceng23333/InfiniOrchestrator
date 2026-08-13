@@ -1,8 +1,0 @@
-case_id = "ops-panel--observability--opt20260813"
-category = "Distribution"
-n = 1
-model_id = "ops-panel"
-hw_profile_id = "local"
-hw_abbr = "local"
-be_abbr = "inf"
-worktree = "v2026.08.13"

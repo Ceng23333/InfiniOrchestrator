@@ -1,6 +1,6 @@
 # Metax 离线友好部署指南
 
-本文将以 **3 个阶段** 部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325`：
+本文将以 **3 个阶段** 部署 `InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260325`：
 
 1. 从本地 `InfiniCore/InfiniLM` 源码构建部署/运行镜像（构建过程中不依赖外网）。
 2. 在使用 case 自带 `.env` 的前提下，用 `docker-compose` 启动 `master` 与模型 worker。
@@ -8,7 +8,7 @@
 
 ## 目标
 
-使用如下条件部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325`：
+使用如下条件部署 `InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260325`：
 
 - 使用本地 InfiniCore + InfiniLM 源码作为构建上下文
 - 主机上已存在基础镜像：`infinilm-svc:metax-hpcc-1004_218-202602281209`
@@ -93,7 +93,7 @@ python $REPO/InfiniLM/examples/jiuge.py \
 在 case 目录执行：
 
 ```bash
-cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325" && \
+cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260325" && \
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 ```
@@ -114,7 +114,7 @@ docker-compose up -d --force-recreate \
 在 slave 主机上（同一 case 目录）启动：
 
 ```bash
-cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325" && \
+cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260325" && \
 docker-compose up -d --force-recreate \
   worker-slave-fla-9g-8100 worker-slave-fla-qwen-8200
 ```
@@ -134,7 +134,7 @@ docker-compose up -d --force-recreate \
 执行：
 
 ```bash
-cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260325" && \
+cd "/root/zenghua/20260326/infinilm-svc-refactor/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260325" && \
 ./validate.sh 192.168.163.151 192.168.163.152
 ```
 

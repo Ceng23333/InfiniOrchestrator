@@ -15,6 +15,12 @@ services:
       ETCD_ENDPOINTS: http://etcd:2379
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
       CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
+      BENCH_WAREHOUSE_REPO: /warehouse
+    volumes:
+      - bench_warehouse:/warehouse:ro
     ports:
       - "0.0.0.0:${FRONTEND_HOST_PORT:-8800}:${ROUTER_PORT:-8800}"
       - "0.0.0.0:${REGISTRY_PORT:-18000}:${ROUTER_PORT:-8800}"
+
+volumes:
+  bench_warehouse:

@@ -18,7 +18,8 @@
 **/*.jsonl
 **/offline-bundle-test
 **/offline-bundle-*
-deploy/cases/**/results
+playground/Distribution/**/results
+playground/Standalone/**/results
 **/bench_results
 **/bisect
 

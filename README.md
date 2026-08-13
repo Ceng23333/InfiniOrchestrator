@@ -15,7 +15,7 @@ workspace/
       case.schema.toml      # case.toml field contract
       Standalone/           # n=1 cases: {model}-{hw_abbr}-{be_abbr}
       Distribution/         # n>=2 / deploy recipes
-    deploy/                 # packaging overlay (not a second case tree)
+    frontend/               # packaging overlay (Frontend stack compose fragments; not a second case tree)
   InfiniTensorWorktree/     # sibling: InfiniCore, InfiniLM + MANIFEST
 ```
 

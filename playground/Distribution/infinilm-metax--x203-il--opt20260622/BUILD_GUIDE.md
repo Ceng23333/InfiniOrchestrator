@@ -12,7 +12,7 @@ Commit-based image build on HPCC ai3.1.0.7 / torch2.6.
 ## Build steps
 
 ```bash
-CASE=/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260622
+CASE=/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260622
 cd "${CASE}"
 
 # Verify source SHAs

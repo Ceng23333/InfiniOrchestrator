@@ -21,7 +21,7 @@ cd ../../..
 Run the case:
 
 ```bash
-cd deploy/cases/infinilm-metax-deployment-opt-20260325
+cd playground/Distribution/infinilm-metax--x203-il--opt20260325
 cp .env.example .env
 # edit MODEL1_DIR and QWEN3_32B_DIR in .env
 # optional: set EMBEDDING_MODEL_DIR to enable embedding worker

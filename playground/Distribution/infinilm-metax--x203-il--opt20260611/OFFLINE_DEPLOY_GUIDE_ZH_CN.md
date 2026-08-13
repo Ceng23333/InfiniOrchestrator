@@ -1,6 +1,6 @@
 # Metax 离线友好部署指南 — infinilm-metax-deployment-opt-20260611
 
-本文以 **零阶段（可选）+ 3 个阶段** 部署 `InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611`：
+本文以 **零阶段（可选）+ 3 个阶段** 部署 `InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611`：
 
 0. **（离线交付）** 从 tar 包解压源码快照、预加载基础 Docker 镜像（无内网 / 无开发 worktree 时）。
 1. 从本地 `InfiniCore/InfiniLM` 源码构建部署/运行镜像（构建过程中不依赖外网）。
@@ -47,7 +47,7 @@ monorepo 开发目录（同一 inode）：
 **源端打包**（在有 git 的开发机或 monorepo worktree 上执行一次）：
 
 ```bash
-CASE="/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="/opt/offline/infinilm-metax-20260622/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 STAGING="/data-aisoft/zenghua/staging/offline-src-$(date -u +%Y%m%d)"
 STAGING="${STAGING}" "${CASE}/bench/pack-offline-worktree.sh"
 
@@ -86,7 +86,7 @@ BASE_TAR="/path/to/infinilm-svc-metax-hpcc-base.tar.gz"
 # 从 tar 内取出 unpack helper（仅需一次）
 HELPER="$(mktemp)"
 tar -xzf "${SRC_TAR}" -O \
-  InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/bench/unpack-offline-worktree.sh \
+  InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611/bench/unpack-offline-worktree.sh \
   > "${HELPER}" && chmod +x "${HELPER}"
 
 OFFLINE_ROOT="${OFFLINE_ROOT}" SRC_TAR="${SRC_TAR}" "${HELPER}"
@@ -107,7 +107,7 @@ tar -xzf "${SRC_TAR}" -C "${OFFLINE_ROOT}"
 export WORKSPACE="${OFFLINE_ROOT}"
 set -a && source "${WORKSPACE}/MANIFEST" && set +a
 grep -n 'gc.collect' "${WORKSPACE}/InfiniLM/python/infinilm/modeling_utils.py"
-test -f "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/validate.sh"
+test -f "${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611/validate.sh"
 ```
 
 加载基础镜像（目标机尚无 `infinilm-svc:metax-hpcc-1004_218-202602281209` 时）：
@@ -126,7 +126,7 @@ docker images | grep 'infinilm-svc.*metax-hpcc-1004_218-202602281209'
 收到新的 `deployment-src-*.tar.gz` 后，在现有 `WORKSPACE` 上覆盖解压（或解压到新目录后改 `WORKSPACE`），重新执行第一阶段 `build-image.sh`，更新 case `.env` 中的 `IMAGE_TAG`（或从 `.image_tag` 复制），再：
 
 ```bash
-cd "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+cd "${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 docker-compose up -d --force-recreate \
   master worker-master-9g-8100 worker-master-qwen-paged-8200 worker-master-embeddings-20002
 # slave 主机同理 force-recreate worker-slave-xiyan-qwencoder-8200
@@ -140,7 +140,7 @@ docker-compose up -d --force-recreate \
 ORCH_TAR="/path/to/infini-orchestrator-metax-IL-IC-DATE.tar.gz"
 gunzip -c "${ORCH_TAR}" | docker load
 IMAGE_TAG="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^infini-orchestrator-metax:' | head -1)"
-echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag"
+echo "${IMAGE_TAG}" > "${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611/.image_tag"
 # 直接进入第二阶段 A
 ```
 
@@ -180,7 +180,7 @@ done
 
 ```bash
 DEV_WS="/opt/offline/infinilm-metax-20260622"
-CASE="${DEV_WS}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${DEV_WS}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 STAGING=/tmp/offline-src
 WORKSPACE="/tmp/offline-deploy-verify-$(date -u +%Y%m%d)"
 
@@ -250,7 +250,7 @@ grep -n 'gc.collect' InfiniLM/python/infinilm/modeling_utils.py  # 应有多处�
 模板 [`.env.master.example`](.env.master.example) 中的 NFS 路径在部分站点可能为空目录。启动 compose **前**确认权重可读：
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 # 读模板默认值或已有 .env
 QWEN3_32B_DIR="${QWEN3_32B_DIR:-/data-aisoft/zenghua/models/Qwen3-32B}"
 EMBEDDING_MODEL_DIR="${EMBEDDING_MODEL_DIR:-/data-aisoft/zenghua/models/embedding-models}"
@@ -312,7 +312,7 @@ INFINI_RUNTIME_CONTAINER=__base__ \
 DOCKER_BUILD_NO_CACHE=1 \
 ./build-image.sh
 
-echo "${IMAGE_TAG}" > ../../deploy/cases/infinilm-metax-deployment-opt-20260611/.image_tag
+echo "${IMAGE_TAG}" > ../../playground/Distribution/infinilm-metax--x203-il--opt20260611/.image_tag
 echo "Built: ${IMAGE_TAG}"
 ```
 
@@ -359,7 +359,7 @@ python $REPO/InfiniLM/examples/jiuge.py \
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -369,7 +369,7 @@ IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
 
@@ -397,7 +397,7 @@ curl -sf --noproxy "*" "http://${MASTER_IP}:8800/v1/models"
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -426,7 +426,7 @@ curl -sf --noproxy "*" "http://${MASTER_IP}:18000/services" | grep slave-xiyan-q
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 
@@ -480,7 +480,7 @@ curl -sf --noproxy "*" -X POST "http://${MASTER_IP}:8800/v1/chat/completions" \
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611   # 或 Path A 解压目录
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP="$(hostname -I | awk '{print $1}')"
 IMAGE_TAG="$(cat "${CASE}/.image_tag")"          # Phase 1 写入
 ```
@@ -531,7 +531,7 @@ done
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 IMAGE_TAG=infini-orchestrator-metax:8fa8b74-b81c5860-20260625
@@ -562,7 +562,7 @@ docker-compose up -d --force-recreate worker-slave-xiyan-qwencoder-8200
 **命令：**
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 cd "${CASE}"
 
 # 若 master .env 尚无 XiYan 路径（仅 master 栈时）
@@ -619,7 +619,7 @@ SLAVE_IP=<SLAVE_IP>
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP="$(hostname -I | awk '{print $1}')"
 
 cd "${CASE}"
@@ -631,7 +631,7 @@ ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
 
 ```bash
 WORKSPACE=/opt/offline/infinilm-metax-20260611
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 MASTER_IP=<MASTER_IP>
 SLAVE_IP=<SLAVE_IP>
 
@@ -661,7 +661,7 @@ ROUTER_PORT=8800 EMBEDDING_PORT=20003 \
 `validate.sh` 通过后，可运行完整 bench 阶梯（**不重启**已部署的 orchestrator 栈）：
 
 ```bash
-CASE="${WORKSPACE}/InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260611"
+CASE="${WORKSPACE}/InfiniOrchestrator/playground/Distribution/infinilm-metax--x203-il--opt20260611"
 cd "${CASE}"
 
 # 等待 worker 日志出现 LLMEngine initialized + C++ capture complete 后执行

@@ -8,14 +8,15 @@
 *.tgz
 **/offline-bundle-test/
 
-# Bench / deploy run artifacts
-deploy/cases/**/results/
+# Bench / playground run artifacts
+playground/Distribution/**/results/
+playground/Standalone/**/results/
 bench_results/
 
 # Piecewise Inductor AOT seed products (keep README only)
-deploy/cases/**/piecewise_inductor_cache/**
-!deploy/cases/**/piecewise_inductor_cache/README.md
-!deploy/cases/**/piecewise_inductor_cache/.gitignore
+playground/Distribution/**/piecewise_inductor_cache/**
+!playground/Distribution/**/piecewise_inductor_cache/README.md
+!playground/Distribution/**/piecewise_inductor_cache/.gitignore
 
 # Distribution case host caches (AOT, etc.) — track only README / .gitignore
 playground/Distribution/**/cache/**

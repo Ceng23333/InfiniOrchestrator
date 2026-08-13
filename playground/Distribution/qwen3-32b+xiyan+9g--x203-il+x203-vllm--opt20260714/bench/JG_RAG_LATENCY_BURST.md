@@ -58,7 +58,7 @@ Goal: while load is running, show that **chat completions can be hung or extreme
    - **jg_rag via router** (same as [`run-jg_rag-benchmark-remote.sh`](run-jg_rag-benchmark-remote.sh)): raise `MAX_CONCURRENCY` until TTFT/latency explodes (see load ladder above).
 
 ```bash
-# From this repository: InfiniOrchestrator/deploy/cases/infinilm-metax-deployment-opt-20260714/bench
+# From this repository: InfiniOrchestrator/playground/Distribution/qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714/bench
 
 export HEALTH_ENDPOINTS="http://127.0.0.1:8100/health http://127.0.0.1:8101/health"
 # Optional: add router:  export HEALTH_ENDPOINTS="$HEALTH_ENDPOINTS http://192.168.163.151:8000/health"

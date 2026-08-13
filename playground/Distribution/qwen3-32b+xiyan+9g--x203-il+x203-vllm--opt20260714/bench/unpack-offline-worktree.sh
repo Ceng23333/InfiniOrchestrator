@@ -15,7 +15,7 @@ if [[ ! -f "${SRC_TAR}" ]]; then
   exit 1
 fi
 
-CASE_NAME="infinilm-metax-deployment-opt-20260714"
+CASE_NAME="qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714"
 BASE_IMAGE="${BASE_IMAGE:-infinilm-svc:metax-hpcc-1004_218-202602281209}"
 
 echo "OFFLINE_ROOT=${OFFLINE_ROOT}"
@@ -58,11 +58,13 @@ echo "IL_SHA=${IL_SHA:-?} IC_SHA=${IC_SHA:-?} IO_SHA=${IO_SHA:-?} ITW_SHA=${ITW_
 echo "BW_SHA=${BW_SHA:-?}"
 echo "PACK_DATE=${PACK_DATE:-?} CASE=${CASE:-?}"
 
+CASE_DIR="${IO_ROOT}/playground/Distribution/${CASE_NAME}"
+
 echo ""
 echo "Sanity checks:"
 grep -n 'gc.collect' "${WORKTREE_ROOT}/InfiniLM/python/infinilm/modeling_utils.py"
-test -f "${IO_ROOT}/deploy/cases/${CASE_NAME}/validate.sh"
-test -f "${IO_ROOT}/deploy/cases/${CASE_NAME}/build-image-phase1.sh"
+test -f "${CASE_DIR}/validate.sh"
+test -f "${CASE_DIR}/build-image-phase1.sh"
 test -d "${WORKTREE_ROOT}/InfiniCore"
 test -d "${WORKTREE_ROOT}/InfiniLM"
 

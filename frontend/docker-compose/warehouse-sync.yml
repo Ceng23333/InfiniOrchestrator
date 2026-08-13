@@ -1,0 +1,32 @@
+# Periodic git sync of private bench-warehouse into named volume `bench_warehouse`.
+# Profile: warehouse-sync
+#
+# Env (set in case .env / override):
+#   BENCH_WAREHOUSE_GIT_URL              default https://github.com/InfiniTensor/bench-warehouse.git
+#   BENCH_WAREHOUSE_GIT_REF              default master
+#   BENCH_WAREHOUSE_SYNC_INTERVAL_SEC    default 300
+#   BENCH_WAREHOUSE_GITHUB_TOKEN         required for private HTTPS (bearer via http.extraHeader; never logged)
+#
+# Same named volume as frontend.yml (`bench_warehouse` → /warehouse). Sidecar mounts rw;
+# Frontend mounts :ro via BENCH_WAREHOUSE_REPO=/warehouse.
+# Without this profile the volume may be empty → LongBench API empty/not found until sync runs
+# (or use host-native panel via frontend/run-host-panel.sh).
+version: "2.4"
+services:
+  warehouse-sync:
+    profiles: ["warehouse-sync"]
+    image: ${WAREHOUSE_SYNC_IMAGE:-alpine/git}
+    restart: unless-stopped
+    environment:
+      BENCH_WAREHOUSE_GIT_URL: ${BENCH_WAREHOUSE_GIT_URL:-https://github.com/InfiniTensor/bench-warehouse.git}
+      BENCH_WAREHOUSE_GIT_REF: ${BENCH_WAREHOUSE_GIT_REF:-master}
+      BENCH_WAREHOUSE_SYNC_INTERVAL_SEC: ${BENCH_WAREHOUSE_SYNC_INTERVAL_SEC:-300}
+      BENCH_WAREHOUSE_GITHUB_TOKEN: ${BENCH_WAREHOUSE_GITHUB_TOKEN:-}
+    volumes:
+      - bench_warehouse:/warehouse
+      # Absolute path: case compose.sh sets --project-directory away from this fragment.
+      - ${WAREHOUSE_SYNC_SCRIPT}:/sync.sh:ro
+    entrypoint: ["/bin/sh", "/sync.sh"]
+
+volumes:
+  bench_warehouse:
