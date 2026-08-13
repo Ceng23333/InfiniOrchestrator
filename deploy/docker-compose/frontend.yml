@@ -1,0 +1,20 @@
+# Dynamo Frontend analog: infini-loadbalancer (OpenAI + /panel* + /metrics).
+# Profile: frontend
+version: "2.4"
+services:
+  frontend:
+    profiles: ["frontend"]
+    image: ${IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      - etcd
+    environment:
+      LAUNCH_COMPONENTS: loadbalancer
+      REGISTRY_PORT: ${REGISTRY_PORT:-18000}
+      ROUTER_PORT: ${ROUTER_PORT:-8800}
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
+      CACHE_TYPE_ROUTING_THRESHOLD: ${CACHE_TYPE_ROUTING_THRESHOLD:-51200}
+    ports:
+      - "0.0.0.0:${FRONTEND_HOST_PORT:-8800}:${ROUTER_PORT:-8800}"
+      - "0.0.0.0:${REGISTRY_PORT:-18000}:${ROUTER_PORT:-8800}"

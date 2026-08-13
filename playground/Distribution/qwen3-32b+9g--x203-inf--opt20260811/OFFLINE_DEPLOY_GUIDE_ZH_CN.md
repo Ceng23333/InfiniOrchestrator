@@ -8,6 +8,8 @@ Master-only **InfiniLM** case：`qwen3-32b+9g--x203-inf--opt20260811`（`be_abbr
 - 布局：`image/` + `docker-compose/` + `cache/` + `regression/` + `k8s/`（占位）
 - 镜像：Phase 1 runtime-base → Phase 2 product `IMAGE_TAG`
 
+**同架构冷启动（空目录 → 与 InfiniTensorWorktree pin 一致）：** 见 [`COLD_START_GUIDE.md`](COLD_START_GUIDE.md)（Phase 0 克隆钉牌 + Phase 1/2 + compose + validate）。本指南侧重已有镜像/环境后的离线友好 redeploy。
+
 ## BASE_IMAGE（厂商 OS/stack，非运行时后端）
 
 Docker ID 钉死 **`1a3cbde5ff2a`**：

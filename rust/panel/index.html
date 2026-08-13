@@ -24,13 +24,182 @@
       </header>
 
       <nav class="tabs" aria-label="Operations modules">
-        <button class="tab is-active" type="button" data-tab="dashboard">Dashboard</button>
-        <button class="tab" type="button" data-tab="benchmark">Benchmark</button>
-        <button class="tab" type="button" data-tab="playground">Playground</button>
+        <button class="tab is-active" type="button" data-tab="playground">Playground</button>
+        <button class="tab" type="button" data-tab="harness">Harness</button>
+        <button class="tab" type="button" data-tab="visualization">Visualization</button>
+        <button class="tab" type="button" data-tab="dashboard">Dashboard</button>
       </nav>
 
       <main>
-        <section id="dashboard" class="view is-active" aria-labelledby="dashboard-tab">
+        <section id="playground" class="view is-active" aria-labelledby="playground-tab">
+          <div class="toolbar cases-toolbar">
+            <label>
+              Search
+              <input id="pg-search" type="search" placeholder="case_id, model, path">
+            </label>
+            <label>
+              Category
+              <select id="pg-category">
+                <option value="all">All</option>
+                <option value="Standalone">Standalone</option>
+                <option value="Distribution">Distribution</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <select id="pg-model">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Hardware
+              <select id="pg-hw">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Backend
+              <select id="pg-be">
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          <p id="pg-source-status" class="muted viz-source-status"></p>
+          <div class="cases-grid">
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Cases</h2>
+                <span id="pg-case-count" class="muted"></span>
+              </div>
+              <div id="pg-case-list" class="empty-state">Loading playground cases…</div>
+            </section>
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Detail</h2>
+              </div>
+              <div id="pg-case-detail" class="empty-state">Select a case.</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="harness" class="view" aria-labelledby="harness-tab">
+          <div class="toolbar cases-toolbar">
+            <label>
+              Search
+              <input id="hn-search" type="search" placeholder="suite_id, family, path">
+            </label>
+            <label>
+              Family
+              <select id="hn-family">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Runnable
+              <select id="hn-runnable">
+                <option value="all">All</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          </div>
+          <p id="hn-source-status" class="muted viz-source-status"></p>
+          <div class="cases-grid">
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Suites</h2>
+                <span id="hn-case-count" class="muted"></span>
+              </div>
+              <div id="hn-case-list" class="empty-state">Loading harness suites…</div>
+            </section>
+            <section class="surface">
+              <div class="section-heading">
+                <h2>Detail</h2>
+              </div>
+              <div id="hn-case-detail" class="empty-state">Select a suite.</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="visualization" class="view" aria-labelledby="visualization-tab">
+          <div class="toolbar viz-toolbar">
+            <label>
+              Category
+              <select id="viz-category">
+                <option value="harness">harness</option>
+              </select>
+            </label>
+            <label>
+              Harness
+              <select id="viz-harness">
+                <option value="longbench_v2">longbench_v2</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <select id="viz-model">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Hardware
+              <select id="viz-hardware">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Backend
+              <select id="viz-backend">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              Date from
+              <input id="viz-date-from" type="date">
+            </label>
+            <label>
+              Date to
+              <input id="viz-date-to" type="date">
+            </label>
+            <label>
+              Harness preset
+              <select id="viz-preset">
+                <option value="all">All</option>
+              </select>
+            </label>
+            <label>
+              EM min
+              <input id="viz-em-min" type="number" min="0" max="1" step="0.01" value="0">
+            </label>
+            <label>
+              Metric
+              <select id="viz-metric">
+                <option value="total_tok_per_s">total_tok_per_s</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="viz-source-status" class="muted viz-source-status"></p>
+
+          <section class="surface">
+            <div class="section-heading">
+              <h2>Time series</h2>
+              <span id="viz-chart-meta" class="muted"></span>
+            </div>
+            <div id="viz-chart" class="viz-chart empty-state">Loading harness data…</div>
+            <div id="viz-legend" class="viz-legend"></div>
+          </section>
+
+          <section class="surface">
+            <div class="section-heading">
+              <h2>Raw data</h2>
+              <span id="viz-row-count" class="muted"></span>
+            </div>
+            <div id="viz-table" class="empty-state">No rows yet.</div>
+          </section>
+        </section>
+
+        <section id="dashboard" class="view" aria-labelledby="dashboard-tab">
           <div class="toolbar">
             <label>
               Search
@@ -50,6 +219,10 @@
                 <option value="all">All hosts</option>
               </select>
             </label>
+            <div class="toolbar-actions">
+              <a id="grafana-link" class="external-link is-disabled" href="#" target="_blank" rel="noopener">Open Grafana</a>
+              <span id="grafana-note" class="muted"></span>
+            </div>
           </div>
 
           <div class="metrics-strip" id="dashboard-metrics"></div>
@@ -95,111 +268,6 @@
               </table>
             </div>
           </section>
-        </section>
-
-        <section id="benchmark" class="view" aria-labelledby="benchmark-tab">
-          <div class="toolbar">
-            <label>
-              Bench
-              <select id="bench-filter">
-                <option value="all">All benches</option>
-              </select>
-            </label>
-            <label>
-              Model
-              <select id="model-filter">
-                <option value="all">All models</option>
-              </select>
-            </label>
-            <label>
-              Date
-              <input id="date-filter" type="date">
-            </label>
-          </div>
-
-          <div class="benchmark-grid">
-            <section class="surface">
-              <div class="section-heading">
-                <h2>Bench Catalog</h2>
-                <span id="bench-count" class="muted"></span>
-              </div>
-              <div id="bench-catalog" class="catalog-list"></div>
-            </section>
-
-            <section class="surface">
-              <div class="section-heading">
-                <h2>Results</h2>
-                <span id="result-count" class="muted"></span>
-              </div>
-              <div id="benchmark-results" class="empty-state"></div>
-            </section>
-          </div>
-        </section>
-
-        <section id="playground" class="view" aria-labelledby="playground-tab">
-          <div class="playground-grid">
-            <section class="surface">
-              <div class="section-heading">
-                <h2>Launch Intent</h2>
-                <span id="playground-mode" class="status-pill">Fresh</span>
-              </div>
-
-              <div class="segmented" role="group" aria-label="Launch mode">
-                <button class="segment is-active" type="button" data-mode="fresh">Fresh</button>
-                <button class="segment" type="button" data-mode="fork">Fork</button>
-              </div>
-
-              <form id="playground-form" class="form-grid">
-                <label>
-                  Cluster
-                  <input id="pg-cluster" name="cluster" readonly>
-                </label>
-                <label>
-                  Host
-                  <select id="pg-host" name="host"></select>
-                </label>
-                <label>
-                  Traffic
-                  <select id="pg-traffic" name="traffic">
-                    <option value="router">Via router</option>
-                    <option value="direct">Direct server</option>
-                  </select>
-                </label>
-                <label>
-                  Model
-                  <select id="pg-model" name="model"></select>
-                </label>
-                <label>
-                  Template
-                  <input id="pg-template" name="template" value="default-server-template">
-                </label>
-                <label>
-                  Fork source
-                  <select id="pg-fork-source" name="fork_source"></select>
-                </label>
-                <label>
-                  Bench
-                  <select id="pg-bench" name="bench"></select>
-                </label>
-                <label>
-                  Max concurrency
-                  <input id="pg-concurrency" name="concurrency" type="number" min="1" value="16">
-                </label>
-                <label>
-                  Prompts
-                  <input id="pg-prompts" name="prompts" type="number" min="1" value="320">
-                </label>
-              </form>
-            </section>
-
-            <section class="surface">
-              <div class="section-heading">
-                <h2>Plan</h2>
-                <button id="copy-plan" type="button">Copy</button>
-              </div>
-              <pre id="launch-plan" class="plan-output"></pre>
-            </section>
-          </div>
         </section>
       </main>
     </div>

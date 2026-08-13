@@ -1,16 +1,64 @@
 const state = {
   snapshot: null,
-  activeTab: "dashboard",
+  harness: null,
+  playgroundCases: null,
+  harnessCases: null,
+  activeTab: "playground",
   autoRefresh: true,
-  playgroundMode: "fresh",
+  highlightedRowId: null,
+  selectedPlaygroundCaseId: null,
+  selectedHarnessSuiteId: null,
   filters: {
     search: "",
     health: "all",
     host: "all",
-    bench: "all",
+  },
+  playground: {
+    search: "",
+    category: "all",
     model: "all",
+    hw: "all",
+    be: "all",
+  },
+  harnessBrowser: {
+    search: "",
+    family: "all",
+    runnable: "all",
+  },
+  viz: {
+    category: "harness",
+    harness: "longbench_v2",
+    model: "all",
+    hardware: "all",
+    backend: "all",
+    dateFrom: "",
+    dateTo: "",
+    preset: "all",
+    emMin: 0,
+    metric: "total_tok_per_s",
   },
 };
+
+const SERIES_COLORS = [
+  "#1769aa",
+  "#087d8f",
+  "#7158b8",
+  "#14845c",
+  "#b7791f",
+  "#c2413a",
+  "#0f4e82",
+];
+
+const VIZ_BASE_COLUMNS = [
+  "date",
+  "model",
+  "hw",
+  "be",
+  "preset",
+  "lb_em",
+  "total_tok_per_s",
+  "status",
+];
 
 const els = {};
 
@@ -18,9 +66,21 @@ document.addEventListener("DOMContentLoaded", () => {
   bindElements();
   bindEvents();
   loadSnapshot();
+  loadPlaygroundCases();
+  loadHarnessCases();
+  loadHarnessData();
   window.setInterval(() => {
     if (state.autoRefresh) {
       loadSnapshot({ quiet: true });
+      if (state.activeTab === "visualization") {
+        loadHarnessData({ quiet: true });
+      }
+      if (state.activeTab === "playground") {
+        loadPlaygroundCases({ quiet: true });
+      }
+      if (state.activeTab === "harness") {
+        loadHarnessCases({ quiet: true });
+      }
     }
   }, 15000);
 });
@@ -35,6 +95,8 @@ function bindElements() {
     serverSearch: document.querySelector("#server-search"),
     healthFilter: document.querySelector("#health-filter"),
     hostFilter: document.querySelector("#host-filter"),
+    grafanaLink: document.querySelector("#grafana-link"),
+    grafanaNote: document.querySelector("#grafana-note"),
     metrics: document.querySelector("#dashboard-metrics"),
     metricTemplate: document.querySelector("#metric-template"),
     clusterLabel: document.querySelector("#cluster-label"),
@@ -43,38 +105,98 @@ function bindElements() {
     routerDetails: document.querySelector("#router-details"),
     serverCount: document.querySelector("#server-count"),
     serverTable: document.querySelector("#server-table"),
-    benchFilter: document.querySelector("#bench-filter"),
-    modelFilter: document.querySelector("#model-filter"),
-    dateFilter: document.querySelector("#date-filter"),
-    benchCount: document.querySelector("#bench-count"),
-    benchCatalog: document.querySelector("#bench-catalog"),
-    resultCount: document.querySelector("#result-count"),
-    benchmarkResults: document.querySelector("#benchmark-results"),
-    playgroundMode: document.querySelector("#playground-mode"),
-    segments: Array.from(document.querySelectorAll(".segment")),
-    playgroundForm: document.querySelector("#playground-form"),
-    pgCluster: document.querySelector("#pg-cluster"),
-    pgHost: document.querySelector("#pg-host"),
-    pgTraffic: document.querySelector("#pg-traffic"),
+    pgSearch: document.querySelector("#pg-search"),
+    pgCategory: document.querySelector("#pg-category"),
     pgModel: document.querySelector("#pg-model"),
-    pgTemplate: document.querySelector("#pg-template"),
-    pgForkSource: document.querySelector("#pg-fork-source"),
-    pgBench: document.querySelector("#pg-bench"),
-    pgConcurrency: document.querySelector("#pg-concurrency"),
-    pgPrompts: document.querySelector("#pg-prompts"),
-    launchPlan: document.querySelector("#launch-plan"),
-    copyPlan: document.querySelector("#copy-plan"),
+    pgHw: document.querySelector("#pg-hw"),
+    pgBe: document.querySelector("#pg-be"),
+    pgSourceStatus: document.querySelector("#pg-source-status"),
+    pgCaseCount: document.querySelector("#pg-case-count"),
+    pgCaseList: document.querySelector("#pg-case-list"),
+    pgCaseDetail: document.querySelector("#pg-case-detail"),
+    hnSearch: document.querySelector("#hn-search"),
+    hnFamily: document.querySelector("#hn-family"),
+    hnRunnable: document.querySelector("#hn-runnable"),
+    hnSourceStatus: document.querySelector("#hn-source-status"),
+    hnCaseCount: document.querySelector("#hn-case-count"),
+    hnCaseList: document.querySelector("#hn-case-list"),
+    hnCaseDetail: document.querySelector("#hn-case-detail"),
+    vizCategory: document.querySelector("#viz-category"),
+    vizHarness: document.querySelector("#viz-harness"),
+    vizModel: document.querySelector("#viz-model"),
+    vizHardware: document.querySelector("#viz-hardware"),
+    vizBackend: document.querySelector("#viz-backend"),
+    vizDateFrom: document.querySelector("#viz-date-from"),
+    vizDateTo: document.querySelector("#viz-date-to"),
+    vizPreset: document.querySelector("#viz-preset"),
+    vizEmMin: document.querySelector("#viz-em-min"),
+    vizMetric: document.querySelector("#viz-metric"),
+    vizSourceStatus: document.querySelector("#viz-source-status"),
+    vizChart: document.querySelector("#viz-chart"),
+    vizChartMeta: document.querySelector("#viz-chart-meta"),
+    vizLegend: document.querySelector("#viz-legend"),
+    vizRowCount: document.querySelector("#viz-row-count"),
+    vizTable: document.querySelector("#viz-table"),
   });
 }
 
 function bindEvents() {
-  els.refreshButton.addEventListener("click", () => loadSnapshot());
+  els.refreshButton.addEventListener("click", () => {
+    loadSnapshot();
+    loadPlaygroundCases();
+    loadHarnessCases();
+    if (state.activeTab === "visualization") {
+      loadHarnessData();
+    }
+  });
   els.autoRefresh.addEventListener("change", (event) => {
     state.autoRefresh = event.target.checked;
   });
 
   els.tabs.forEach((tab) => {
     tab.addEventListener("click", () => setActiveTab(tab.dataset.tab));
+  });
+
+  const vizControls = [
+    [els.vizCategory, "category"],
+    [els.vizHarness, "harness"],
+    [els.vizModel, "model"],
+    [els.vizHardware, "hardware"],
+    [els.vizBackend, "backend"],
+    [els.vizPreset, "preset"],
+    [els.vizMetric, "metric"],
+  ];
+  vizControls.forEach(([el, key]) => {
+    el.addEventListener("change", (event) => {
+      state.viz[key] = event.target.value;
+      if (key === "harness") {
+        loadHarnessData();
+      } else {
+        renderVisualization();
+      }
+    });
+  });
+  els.vizDateFrom.addEventListener("change", (event) => {
+    state.viz.dateFrom = event.target.value;
+    renderVisualization();
+  });
+  els.vizDateTo.addEventListener("change", (event) => {
+    state.viz.dateTo = event.target.value;
+    renderVisualization();
+  });
+  els.vizEmMin.addEventListener("change", (event) => {
+    state.viz.emMin = Number(event.target.value);
+    if (!Number.isFinite(state.viz.emMin)) {
+      state.viz.emMin = 0;
+    }
+    renderVisualization();
+  });
+  els.vizEmMin.addEventListener("input", (event) => {
+    state.viz.emMin = Number(event.target.value);
+    if (!Number.isFinite(state.viz.emMin)) {
+      state.viz.emMin = 0;
+    }
+    renderVisualization();
   });
 
   els.serverSearch.addEventListener("input", (event) => {
@@ -89,34 +211,39 @@ function bindEvents() {
     state.filters.host = event.target.value;
     renderDashboard();
   });
-  els.benchFilter.addEventListener("change", (event) => {
-    state.filters.bench = event.target.value;
-    renderBenchmark();
-  });
-  els.modelFilter.addEventListener("change", (event) => {
-    state.filters.model = event.target.value;
-    renderBenchmark();
-  });
-  els.dateFilter.addEventListener("change", renderBenchmark);
 
-  els.segments.forEach((segment) => {
-    segment.addEventListener("click", () => {
-      state.playgroundMode = segment.dataset.mode;
-      els.segments.forEach((item) =>
-        item.classList.toggle("is-active", item === segment),
-      );
-      renderPlayground();
-    });
+  els.pgSearch.addEventListener("input", (event) => {
+    state.playground.search = event.target.value.trim().toLowerCase();
+    renderPlayground();
+  });
+  els.pgCategory.addEventListener("change", (event) => {
+    state.playground.category = event.target.value;
+    renderPlayground();
+  });
+  els.pgModel.addEventListener("change", (event) => {
+    state.playground.model = event.target.value;
+    renderPlayground();
+  });
+  els.pgHw.addEventListener("change", (event) => {
+    state.playground.hw = event.target.value;
+    renderPlayground();
+  });
+  els.pgBe.addEventListener("change", (event) => {
+    state.playground.be = event.target.value;
+    renderPlayground();
   });
 
-  els.playgroundForm.addEventListener("input", renderLaunchPlan);
-  els.playgroundForm.addEventListener("change", renderLaunchPlan);
-  els.copyPlan.addEventListener("click", async () => {
-    await copyText(els.launchPlan.textContent);
-    els.copyPlan.textContent = "Copied";
-    window.setTimeout(() => {
-      els.copyPlan.textContent = "Copy";
-    }, 1200);
+  els.hnSearch.addEventListener("input", (event) => {
+    state.harnessBrowser.search = event.target.value.trim().toLowerCase();
+    renderHarnessBrowser();
+  });
+  els.hnFamily.addEventListener("change", (event) => {
+    state.harnessBrowser.family = event.target.value;
+    renderHarnessBrowser();
+  });
+  els.hnRunnable.addEventListener("change", (event) => {
+    state.harnessBrowser.runnable = event.target.value;
+    renderHarnessBrowser();
   });
 }
 
@@ -158,57 +285,489 @@ function setActiveTab(tabName) {
   els.views.forEach((view) => {
     view.classList.toggle("is-active", view.id === tabName);
   });
+  if (tabName === "visualization" && !state.harness) {
+    loadHarnessData();
+  }
+  if (tabName === "playground" && !state.playgroundCases) {
+    loadPlaygroundCases();
+  }
+  if (tabName === "harness" && !state.harnessCases) {
+    loadHarnessCases();
+  }
 }
 
 function renderAll() {
   renderDashboard();
-  renderBenchmark();
   renderPlayground();
+  renderHarnessBrowser();
+  renderVisualization();
+}
+
+async function loadPlaygroundCases(options = {}) {
+  if (!els.pgCaseList) {
+    return;
+  }
+  if (!options.quiet) {
+    els.pgCaseList.className = "empty-state";
+    els.pgCaseList.textContent = "Loading playground cases…";
+  }
+  try {
+    const response = await fetch("/panel/api/cases/playground", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    state.playgroundCases = await response.json();
+    hydratePlaygroundControls();
+    renderPlayground();
+  } catch (error) {
+    console.error(error);
+    state.playgroundCases = null;
+    els.pgSourceStatus.textContent = `Failed to load cases: ${error.message || error}`;
+    els.pgCaseList.className = "empty-state";
+    els.pgCaseList.textContent = "Playground cases unavailable.";
+    els.pgCaseCount.textContent = "";
+  }
+}
+
+async function loadHarnessCases(options = {}) {
+  if (!els.hnCaseList) {
+    return;
+  }
+  if (!options.quiet) {
+    els.hnCaseList.className = "empty-state";
+    els.hnCaseList.textContent = "Loading harness suites…";
+  }
+  try {
+    const response = await fetch("/panel/api/cases/harness", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    state.harnessCases = await response.json();
+    hydrateHarnessControls();
+    renderHarnessBrowser();
+  } catch (error) {
+    console.error(error);
+    state.harnessCases = null;
+    els.hnSourceStatus.textContent = `Failed to load suites: ${error.message || error}`;
+    els.hnCaseList.className = "empty-state";
+    els.hnCaseList.textContent = "Harness suites unavailable.";
+    els.hnCaseCount.textContent = "";
+  }
+}
+
+async function loadHarnessData(options = {}) {
+  if (!els.vizChart) {
+    return;
+  }
+  if (!options.quiet) {
+    els.vizChart.className = "viz-chart empty-state";
+    els.vizChart.textContent = "Loading harness data…";
+  }
+
+  try {
+    const response = await fetch("/panel/api/harness/longbench_v2", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    state.harness = await response.json();
+    if (!state.viz.metric) {
+      state.viz.metric = state.harness.default_metric || "total_tok_per_s";
+    }
+    hydrateVizControls();
+    renderVisualization();
+  } catch (error) {
+    console.error(error);
+    state.harness = null;
+    els.vizSourceStatus.textContent = `Failed to load harness data: ${error.message || error}`;
+    els.vizChart.className = "viz-chart empty-state";
+    els.vizChart.textContent = "Harness data unavailable.";
+    els.vizLegend.replaceChildren();
+    els.vizTable.className = "empty-state";
+    els.vizTable.textContent = "Harness data unavailable.";
+    els.vizRowCount.textContent = "";
+  }
+}
+
+function hydratePlaygroundControls() {
+  const cases = state.playgroundCases?.cases || [];
+  const models = uniqueSorted(cases.map((item) => item.model_id));
+  const hws = uniqueSorted(cases.map((item) => item.hw_abbr));
+  const bes = uniqueSorted(cases.map((item) => item.be_abbr));
+  setOptions(els.pgModel, [["all", "All"], ...models.map((value) => [value, value])]);
+  setOptions(els.pgHw, [["all", "All"], ...hws.map((value) => [value, value])]);
+  setOptions(els.pgBe, [["all", "All"], ...bes.map((value) => [value, value])]);
+  els.pgModel.value = state.playground.model;
+  els.pgHw.value = state.playground.hw;
+  els.pgBe.value = state.playground.be;
+  els.pgCategory.value = state.playground.category;
+}
+
+function hydrateHarnessControls() {
+  const cases = state.harnessCases?.cases || [];
+  const families = uniqueSorted(cases.map((item) => item.family));
+  setOptions(els.hnFamily, [["all", "All"], ...families.map((value) => [value, value])]);
+  els.hnFamily.value = state.harnessBrowser.family;
+  els.hnRunnable.value = state.harnessBrowser.runnable;
+}
+
+function hydrateVizControls() {
+  const harness = state.harness;
+  if (!harness) {
+    return;
+  }
+  const options = harness.filter_options || {};
+  setOptions(els.vizModel, [
+    ["all", "All"],
+    ...(options.models || []).map((value) => [value, value]),
+  ]);
+  setOptions(els.vizHardware, [
+    ["all", "All"],
+    ...(options.hardware || []).map((value) => [value, value]),
+  ]);
+  setOptions(els.vizBackend, [
+    ["all", "All"],
+    ...(options.backends || []).map((value) => [value, value]),
+  ]);
+  setOptions(els.vizPreset, [
+    ["all", "All"],
+    ...(options.presets || []).map((value) => [value, value]),
+  ]);
+  const metrics = harness.metrics || ["total_tok_per_s"];
+  setOptions(
+    els.vizMetric,
+    metrics.map((value) => [value, value]),
+  );
+  if (metrics.includes(state.viz.metric)) {
+    els.vizMetric.value = state.viz.metric;
+  } else {
+    state.viz.metric = harness.default_metric || metrics[0];
+    els.vizMetric.value = state.viz.metric;
+  }
+  els.vizModel.value = state.viz.model;
+  els.vizHardware.value = state.viz.hardware;
+  els.vizBackend.value = state.viz.backend;
+  els.vizPreset.value = state.viz.preset;
+  els.vizDateFrom.value = state.viz.dateFrom;
+  els.vizDateTo.value = state.viz.dateTo;
+  els.vizEmMin.value = String(state.viz.emMin);
+}
+
+function getFilteredHarnessRows() {
+  const harness = state.harness;
+  if (!harness) {
+    return [];
+  }
+  const emMin = Number.isFinite(state.viz.emMin) ? state.viz.emMin : 0;
+  return (harness.rows || []).filter((row) => {
+    const status = String(row.status || "").toUpperCase();
+    const em = Number(row.lb_em);
+    if (status !== "PASS" || !Number.isFinite(em) || !(em > emMin)) {
+      return false;
+    }
+    const model = row.model || row.model_id || "";
+    const hardware = row.hw || "";
+    const backend = row.be || "";
+    const preset = row.preset || "";
+    const date = row.date || "";
+    const modelMatch = state.viz.model === "all" || model === state.viz.model;
+    const hardwareMatch =
+      state.viz.hardware === "all" || hardware === state.viz.hardware;
+    const backendMatch =
+      state.viz.backend === "all" || backend === state.viz.backend;
+    const presetMatch = state.viz.preset === "all" || preset === state.viz.preset;
+    const fromMatch = !state.viz.dateFrom || date >= state.viz.dateFrom;
+    const toMatch = !state.viz.dateTo || date <= state.viz.dateTo;
+    return (
+      modelMatch &&
+      hardwareMatch &&
+      backendMatch &&
+      presetMatch &&
+      fromMatch &&
+      toMatch
+    );
+  });
+}
+
+function renderVisualization() {
+  if (!els.vizChart) {
+    return;
+  }
+  const harness = state.harness;
+  if (!harness) {
+    return;
+  }
+
+  const source = harness.source || {};
+  const emMin = Number.isFinite(state.viz.emMin) ? state.viz.emMin : 0;
+  const sourceLine =
+    source.status === "ok"
+      ? `Source: ${source.repo || ""} (${(source.files || []).length} files)`
+      : `Source: ${source.status || "unavailable"}`;
+  els.vizSourceStatus.textContent = `${sourceLine} · PASS · lb_em > ${emMin}`;
+
+  const rows = getFilteredHarnessRows();
+  els.vizRowCount.textContent = `${rows.length} rows`;
+  renderVizChart(rows);
+  renderVizTable(rows);
+}
+
+function seriesKey(row) {
+  const model = row.model || row.model_id || "unknown";
+  const hw = row.hw || "unknown";
+  const be = row.be || "unknown";
+  const preset = row.preset || "unknown";
+  return `${model} · ${hw} · ${be} · ${preset}`;
+}
+
+function metricLowerIsBetter(metric) {
+  return metric.startsWith("ttft_") || metric.startsWith("itl_") || metric.startsWith("tpot_") || metric.startsWith("srv_");
+}
+
+function isBetterMetric(candidate, incumbent, metric) {
+  if (incumbent == null) {
+    return true;
+  }
+  if (metricLowerIsBetter(metric)) {
+    return candidate < incumbent;
+  }
+  return candidate > incumbent;
+}
+
+function renderVizChart(rows) {
+  const metric = state.viz.metric || "total_tok_per_s";
+  const rawPoints = rows
+    .map((row) => {
+      const y = Number(row[metric]);
+      if (!Number.isFinite(y)) {
+        return null;
+      }
+      const date = row.date || "";
+      const ts = Date.parse(row.started_at || "") || Date.parse(`${date}T00:00:00Z`);
+      if (!Number.isFinite(ts) || !date) {
+        return null;
+      }
+      return {
+        row,
+        x: ts,
+        y,
+        date,
+        series: seriesKey(row),
+        rowId: row.row_id,
+      };
+    })
+    .filter(Boolean);
+
+  const bestBySeriesDate = new Map();
+  rawPoints.forEach((point) => {
+    const key = `${point.series}||${point.date}`;
+    const existing = bestBySeriesDate.get(key);
+    if (!existing || isBetterMetric(point.y, existing.y, metric)) {
+      bestBySeriesDate.set(key, point);
+    }
+  });
+
+  const points = Array.from(bestBySeriesDate.values()).sort((a, b) => a.x - b.x);
+
+  if (!points.length) {
+    els.vizChart.className = "viz-chart empty-state";
+    els.vizChart.textContent =
+      rows.length === 0
+        ? "No rows match the active filters."
+        : `No numeric ${metric} values in the filtered rows.`;
+    els.vizChartMeta.textContent = metric;
+    els.vizLegend.replaceChildren();
+    return;
+  }
+
+  const seriesMap = new Map();
+  points.forEach((point) => {
+    if (!seriesMap.has(point.series)) {
+      seriesMap.set(point.series, []);
+    }
+    seriesMap.get(point.series).push(point);
+  });
+  const seriesNames = Array.from(seriesMap.keys()).sort();
+
+  const width = 920;
+  const height = 320;
+  const pad = { top: 20, right: 24, bottom: 42, left: 64 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const xSpan = Math.max(maxX - minX, 1);
+  const ySpan = Math.max(maxY - minY, Number.EPSILON);
+  const xPos = (x) => pad.left + ((x - minX) / xSpan) * plotW;
+  const yPos = (y) => pad.top + plotH - ((y - minY) / ySpan) * plotH;
+
+  const yTicks = 4;
+  let svg = `<svg viewBox="0 0 ${width} ${height}" class="viz-svg" role="img" aria-label="${escapeAttr(metric)} time series">`;
+  svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>`;
+  for (let i = 0; i <= yTicks; i += 1) {
+    const value = minY + (ySpan * i) / yTicks;
+    const y = yPos(value);
+    svg += `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="viz-grid"></line>`;
+    svg += `<text x="${pad.left - 8}" y="${y + 4}" class="viz-axis" text-anchor="end">${escapeHtml(formatMetric(value))}</text>`;
+  }
+  svg += `<text x="${pad.left}" y="${height - 12}" class="viz-axis">${escapeHtml(formatChartTime(minX))}</text>`;
+  svg += `<text x="${width - pad.right}" y="${height - 12}" class="viz-axis" text-anchor="end">${escapeHtml(formatChartTime(maxX))}</text>`;
+
+  seriesNames.forEach((name, index) => {
+    const color = SERIES_COLORS[index % SERIES_COLORS.length];
+    const series = seriesMap.get(name).sort((a, b) => a.x - b.x);
+    const path = series
+      .map((point, idx) => `${idx === 0 ? "M" : "L"}${xPos(point.x)},${yPos(point.y)}`)
+      .join(" ");
+    svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"></path>`;
+    series.forEach((point) => {
+      svg += `<circle class="viz-dot" data-row-id="${escapeAttr(point.rowId)}" cx="${xPos(point.x)}" cy="${yPos(point.y)}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escapeHtml(name)} · ${escapeHtml(formatMetric(point.y))} · ${escapeHtml(point.date)}</title></circle>`;
+    });
+  });
+  svg += "</svg>";
+
+  els.vizChart.className = "viz-chart";
+  els.vizChart.innerHTML = svg;
+  els.vizChartMeta.textContent = `${metric} · ${points.length} chart points (best/day) · ${seriesNames.length} series`;
+  els.vizLegend.replaceChildren(
+    ...seriesNames.map((name, index) => {
+      const item = document.createElement("span");
+      item.className = "viz-legend-item";
+      item.innerHTML = `<i style="background:${SERIES_COLORS[index % SERIES_COLORS.length]}"></i>${escapeHtml(name)}`;
+      return item;
+    }),
+  );
+
+  els.vizChart.querySelectorAll(".viz-dot").forEach((dot) => {
+    dot.addEventListener("click", () => {
+      highlightVizRow(dot.getAttribute("data-row-id"));
+    });
+  });
+}
+
+function renderVizTable(rows) {
+  if (!rows.length) {
+    els.vizTable.className = "empty-state";
+    els.vizTable.textContent = "No rows match the active filters.";
+    return;
+  }
+
+  const metric = state.viz.metric || "total_tok_per_s";
+  const columns = [...VIZ_BASE_COLUMNS];
+  if (!columns.includes(metric)) {
+    columns.push(metric);
+  }
+  columns.push("source");
+
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const table = document.createElement("table");
+  table.className = "viz-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  columns.forEach((col) => {
+    const th = document.createElement("th");
+    th.textContent = col === "source" ? "Source" : col;
+    headRow.append(th);
+  });
+  thead.append(headRow);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.dataset.rowId = row.row_id || "";
+    if (state.highlightedRowId && state.highlightedRowId === row.row_id) {
+      tr.classList.add("is-highlighted");
+    }
+    columns.forEach((col) => {
+      const td = document.createElement("td");
+      if (col === "source") {
+        const path = row.tsv_path || "";
+        const line = row.tsv_line || "";
+        const label = path && line ? `${path}:${line}` : path || "—";
+        const link = document.createElement("a");
+        link.className = "source-link";
+        link.href = `/panel/api/warehouse/file?path=${encodeURIComponent(path)}&line=${encodeURIComponent(line)}`;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = label;
+        td.append(link);
+      } else {
+        td.textContent = row[col] != null ? row[col] : "";
+      }
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(thead, tbody);
+  wrap.append(table);
+  els.vizTable.className = "";
+  els.vizTable.replaceChildren(wrap);
+}
+
+function highlightVizRow(rowId) {
+  if (!rowId) {
+    return;
+  }
+  state.highlightedRowId = rowId;
+  const rows = els.vizTable.querySelectorAll("tr[data-row-id]");
+  let target = null;
+  rows.forEach((row) => {
+    const match = row.dataset.rowId === rowId;
+    row.classList.toggle("is-highlighted", match);
+    if (match) {
+      target = row;
+    }
+  });
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function formatMetric(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return value == null ? "" : String(value);
+  }
+  if (Math.abs(numeric) >= 100 || Number.isInteger(numeric)) {
+    return numeric.toFixed(Math.abs(numeric) >= 100 ? 1 : 0);
+  }
+  return numeric.toFixed(3);
+}
+
+function formatChartTime(ts) {
+  try {
+    return new Date(ts).toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+  } catch (_error) {
+    return String(ts);
+  }
 }
 
 function hydrateControls() {
   const snapshot = state.snapshot;
   const hosts = snapshot.hosts || [];
-  const benches = snapshot.benches || [];
-  const models = getModelIds(snapshot);
 
   setOptions(els.hostFilter, [
     ["all", "All hosts"],
     ...hosts.map((host) => [host.host_id, host.hostname || host.host_id]),
   ]);
-  setOptions(els.benchFilter, [
-    ["all", "All benches"],
-    ...benches.map((bench) => [bench.bench_id, bench.bench_id]),
-  ]);
-  setOptions(els.modelFilter, [
-    ["all", "All models"],
-    ...models.map((model) => [model, model]),
-  ]);
-  setOptions(
-    els.pgHost,
-    hosts.length ? hosts.map((host) => [host.host_id, host.hostname || host.host_id]) : [["", "default"]],
-  );
-  setOptions(
-    els.pgModel,
-    models.length ? models.map((model) => [model, model]) : [["", "default"]],
-  );
-  setOptions(
-    els.pgForkSource,
-    (snapshot.servers || []).length
-      ? (snapshot.servers || []).map((server) => [
-          server.server_id,
-          server.service_name || server.server_id,
-        ])
-      : [["", "none"]],
-  );
-  setOptions(
-    els.pgBench,
-    benches.map((bench) => [bench.bench_id, bench.bench_id]),
-  );
-  els.pgCluster.value = snapshot.cluster?.cluster_id || "default";
 }
 
 function setOptions(select, options) {
+  if (!select) {
+    return;
+  }
   const previous = select.value;
   select.replaceChildren(
     ...options.map(([value, label]) => {
@@ -249,9 +808,25 @@ function renderDashboard() {
   ]
     .filter(Boolean)
     .join(" | ");
+  renderGrafanaLink(snapshot);
   renderTopology(snapshot, servers);
   renderRouter(snapshot);
   renderServerTable(servers);
+}
+
+function renderGrafanaLink(snapshot) {
+  const url = (snapshot.grafana_url || "").trim();
+  if (!url) {
+    els.grafanaLink.href = "#";
+    els.grafanaLink.classList.add("is-disabled");
+    els.grafanaLink.setAttribute("aria-disabled", "true");
+    els.grafanaNote.textContent = "GRAFANA_URL unset";
+    return;
+  }
+  els.grafanaLink.href = url;
+  els.grafanaLink.classList.remove("is-disabled");
+  els.grafanaLink.removeAttribute("aria-disabled");
+  els.grafanaNote.textContent = url;
 }
 
 function renderMetrics(metrics) {
@@ -407,141 +982,199 @@ function getFilteredServers() {
   });
 }
 
-function renderBenchmark() {
-  const snapshot = state.snapshot;
-  if (!snapshot) {
-    return;
-  }
-
-  const benches = (snapshot.benches || []).filter((bench) => {
-    return state.filters.bench === "all" || bench.bench_id === state.filters.bench;
-  });
-  els.benchCount.textContent = `${benches.length} benches`;
-  els.benchCatalog.replaceChildren(...benches.map(renderBenchCatalogItem));
-
-  const results = (snapshot.bench_results || []).filter((result) => {
-    const benchMatch =
-      state.filters.bench === "all" || result.bench_id === state.filters.bench;
+function getFilteredPlaygroundCases() {
+  const cases = state.playgroundCases?.cases || [];
+  return cases.filter((item) => {
+    const categoryMatch =
+      state.playground.category === "all" || item.category === state.playground.category;
     const modelMatch =
-      state.filters.model === "all" || result.model === state.filters.model;
-    return benchMatch && modelMatch;
+      state.playground.model === "all" || item.model_id === state.playground.model;
+    const hwMatch = state.playground.hw === "all" || item.hw_abbr === state.playground.hw;
+    const beMatch = state.playground.be === "all" || item.be_abbr === state.playground.be;
+    const text = [
+      item.case_id,
+      item.model_id,
+      item.hw_abbr,
+      item.be_abbr,
+      item.worktree,
+      item.case_path,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const searchMatch = !state.playground.search || text.includes(state.playground.search);
+    return categoryMatch && modelMatch && hwMatch && beMatch && searchMatch;
   });
-  els.resultCount.textContent = `${results.length} rows`;
-  if (!results.length) {
-    els.benchmarkResults.textContent =
-      snapshot.source_status?.benchmark || "No BenchResult rows available.";
-  } else {
-    els.benchmarkResults.replaceChildren(renderResultsTable(results));
-  }
-}
-
-function renderBenchCatalogItem(bench) {
-  const item = document.createElement("article");
-  item.className = "catalog-item";
-  const defaults = Object.entries(bench.default_params || {})
-    .map(([key, value]) => `${key}=${value}`)
-    .join(", ");
-  item.innerHTML = `
-    <div>
-      <p class="catalog-title">${escapeHtml(bench.bench_id)}</p>
-      <p class="catalog-meta">${escapeHtml(bench.runner || "")}</p>
-    </div>
-    <span class="model-chip">${escapeHtml(bench.bench_family || bench.source || "")}</span>
-  `;
-  item.title = defaults;
-  return item;
-}
-
-function renderResultsTable(results) {
-  const wrap = document.createElement("div");
-  wrap.className = "table-wrap";
-  wrap.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Bench</th>
-          <th>Server</th>
-          <th>Model</th>
-          <th>Status</th>
-          <th>Started</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  `;
-  wrap.querySelector("tbody").replaceChildren(
-    ...results.map((result) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${escapeHtml(result.bench_id || "")}</td>
-        <td>${escapeHtml(result.server_id || "")}</td>
-        <td>${escapeHtml(result.model || "")}</td>
-        <td>${escapeHtml(result.status || "")}</td>
-        <td>${escapeHtml(result.started_at || "")}</td>
-      `;
-      return row;
-    }),
-  );
-  return wrap;
 }
 
 function renderPlayground() {
-  if (!state.snapshot) {
+  if (!els.pgCaseList) {
     return;
   }
-  els.playgroundMode.textContent = state.playgroundMode === "fresh" ? "Fresh" : "Fork";
-  els.pgForkSource.disabled = state.playgroundMode !== "fork";
-  renderLaunchPlan();
-}
+  const payload = state.playgroundCases;
+  if (!payload) {
+    return;
+  }
+  const source = payload.source || {};
+  els.pgSourceStatus.textContent =
+    source.status === "ok"
+      ? `Source: ${source.root || ""}`
+      : `Source: ${source.status || "unavailable"}`;
 
-function renderLaunchPlan() {
-  const snapshot = state.snapshot || {};
-  const router = (snapshot.routers || [])[0] || {};
-  const traffic = els.pgTraffic.value;
-  const plan = {
-    mode: state.playgroundMode,
-    cluster_id: els.pgCluster.value || snapshot.cluster?.cluster_id || "default",
-    host_id: els.pgHost.value || null,
-    router_id: traffic === "router" ? router.router_id || "router-local" : null,
-    server: {
-      template: els.pgTemplate.value,
-      model: els.pgModel.value || null,
-      forked_from_server_id: state.playgroundMode === "fork" ? selectedForkSource() : null,
-    },
-    bench: {
-      bench_id: els.pgBench.value || null,
-      bench_args: {
-        MAX_CONCURRENCY: number(els.pgConcurrency.value),
-        NUM_PROMPTS: number(els.pgPrompts.value),
-        ROUTER_URL: traffic === "router" ? router.url || window.location.origin : null,
-        BENCH_TARGET_URL: traffic === "direct" ? "<server-url>" : null,
-      },
-    },
-    control_plane_status: snapshot.source_status?.playground || "not configured",
-  };
-
-  els.launchPlan.textContent = JSON.stringify(plan, null, 2);
-}
-
-function selectedForkSource() {
-  return els.pgForkSource.value || null;
-}
-
-async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
+  const cases = getFilteredPlaygroundCases();
+  els.pgCaseCount.textContent = `${cases.length} cases`;
+  if (!cases.length) {
+    els.pgCaseList.className = "empty-state";
+    els.pgCaseList.textContent = "No playground cases match the filters.";
+    els.pgCaseDetail.className = "empty-state";
+    els.pgCaseDetail.textContent = "Select a case.";
     return;
   }
 
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.append(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
+  const list = document.createElement("div");
+  list.className = "catalog-list";
+  list.replaceChildren(
+    ...cases.map((item) => {
+      const article = document.createElement("article");
+      article.className = "catalog-item";
+      if (state.selectedPlaygroundCaseId === item.case_id) {
+        article.classList.add("is-selected");
+      }
+      article.innerHTML = `
+        <div>
+          <p class="catalog-title">${escapeHtml(item.case_id)}</p>
+          <p class="catalog-meta">${escapeHtml(item.category)} · ${escapeHtml(item.model_id)} · ${escapeHtml(item.hw_abbr)}/${escapeHtml(item.be_abbr)}</p>
+        </div>
+        <span class="model-chip">${escapeHtml(item.worktree || "")}</span>
+      `;
+      article.addEventListener("click", () => {
+        state.selectedPlaygroundCaseId = item.case_id;
+        renderPlayground();
+      });
+      return article;
+    }),
+  );
+  els.pgCaseList.className = "";
+  els.pgCaseList.replaceChildren(list);
+
+  const selected =
+    cases.find((item) => item.case_id === state.selectedPlaygroundCaseId) || cases[0];
+  state.selectedPlaygroundCaseId = selected.case_id;
+  renderCaseDetail(els.pgCaseDetail, [
+    ["case_id", selected.case_id],
+    ["category", selected.category],
+    ["n", selected.n],
+    ["model_id", selected.model_id],
+    ["hw_profile_id", selected.hw_profile_id],
+    ["hw_abbr", selected.hw_abbr],
+    ["be_abbr", selected.be_abbr],
+    ["worktree", selected.worktree],
+    ["case_path", selected.case_path],
+    ["has_readme", selected.has_readme],
+    ["has_compose", selected.has_compose],
+  ]);
+}
+
+function getFilteredHarnessSuites() {
+  const cases = state.harnessCases?.cases || [];
+  return cases.filter((item) => {
+    const familyMatch =
+      state.harnessBrowser.family === "all" || item.family === state.harnessBrowser.family;
+    const runnableMatch =
+      state.harnessBrowser.runnable === "all" ||
+      (state.harnessBrowser.runnable === "yes" && item.runnable) ||
+      (state.harnessBrowser.runnable === "no" && !item.runnable);
+    const text = [
+      item.suite_id,
+      item.suite_prefix,
+      item.family,
+      item.case_path,
+      ...(item.metric_columns || []),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const searchMatch =
+      !state.harnessBrowser.search || text.includes(state.harnessBrowser.search);
+    return familyMatch && runnableMatch && searchMatch;
+  });
+}
+
+function renderHarnessBrowser() {
+  if (!els.hnCaseList) {
+    return;
+  }
+  const payload = state.harnessCases;
+  if (!payload) {
+    return;
+  }
+  const source = payload.source || {};
+  els.hnSourceStatus.textContent =
+    source.status === "ok"
+      ? `Source: ${source.root || ""}`
+      : `Source: ${source.status || "unavailable"}`;
+
+  const cases = getFilteredHarnessSuites();
+  els.hnCaseCount.textContent = `${cases.length} suites`;
+  if (!cases.length) {
+    els.hnCaseList.className = "empty-state";
+    els.hnCaseList.textContent = "No harness suites match the filters.";
+    els.hnCaseDetail.className = "empty-state";
+    els.hnCaseDetail.textContent = "Select a suite.";
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "catalog-list";
+  list.replaceChildren(
+    ...cases.map((item) => {
+      const article = document.createElement("article");
+      article.className = "catalog-item";
+      if (state.selectedHarnessSuiteId === item.suite_id) {
+        article.classList.add("is-selected");
+      }
+      article.innerHTML = `
+        <div>
+          <p class="catalog-title">${escapeHtml(item.suite_id)}</p>
+          <p class="catalog-meta">${escapeHtml(item.family || "")} · ${escapeHtml(item.suite_prefix || "")}</p>
+        </div>
+        <span class="model-chip">${item.runnable ? "runnable" : "schema-only"}</span>
+      `;
+      article.addEventListener("click", () => {
+        state.selectedHarnessSuiteId = item.suite_id;
+        renderHarnessBrowser();
+      });
+      return article;
+    }),
+  );
+  els.hnCaseList.className = "";
+  els.hnCaseList.replaceChildren(list);
+
+  const selected =
+    cases.find((item) => item.suite_id === state.selectedHarnessSuiteId) || cases[0];
+  state.selectedHarnessSuiteId = selected.suite_id;
+  renderCaseDetail(els.hnCaseDetail, [
+    ["suite_id", selected.suite_id],
+    ["suite_prefix", selected.suite_prefix],
+    ["family", selected.family],
+    ["model_in_bench_id", selected.model_in_bench_id],
+    ["runnable", selected.runnable],
+    ["case_path", selected.case_path],
+    ["metric_columns", (selected.metric_columns || []).join(", ")],
+  ]);
+}
+
+function renderCaseDetail(target, rows) {
+  const dl = document.createElement("dl");
+  dl.className = "key-values case-detail";
+  dl.replaceChildren(
+    ...rows.flatMap(([key, value]) => [
+      element("dt", key),
+      element("dd", value == null ? "" : String(value)),
+    ]),
+  );
+  target.className = "";
+  target.replaceChildren(dl);
 }
 
 function renderError(error) {
@@ -552,8 +1185,14 @@ function renderError(error) {
     element("dd", error.message || String(error)),
   );
   els.serverTable.replaceChildren();
-  els.benchmarkResults.textContent = "Snapshot unavailable.";
-  els.launchPlan.textContent = "{}";
+  if (els.pgCaseList) {
+    els.pgCaseList.className = "empty-state";
+    els.pgCaseList.textContent = "Snapshot unavailable.";
+  }
+  if (els.hnCaseList) {
+    els.hnCaseList.className = "empty-state";
+    els.hnCaseList.textContent = "Snapshot unavailable.";
+  }
 }
 
 function getModelIds(snapshot) {
@@ -562,6 +1201,10 @@ function getModelIds(snapshot) {
   );
   const fromServers = (snapshot.servers || []).flatMap((server) => server.models || []);
   return Array.from(new Set([...fromRouter, ...fromServers].filter(Boolean))).sort();
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(Boolean))).sort();
 }
 
 function renderModelChips(models) {
