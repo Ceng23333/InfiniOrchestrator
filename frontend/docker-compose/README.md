@@ -11,7 +11,7 @@ Reusable services for Playground Distribution cases. This host uses **docker-com
 | [`observability.yml`](observability.yml) | `observability` | `prometheus`, `grafana` |
 | [`warehouse-sync.yml`](warehouse-sync.yml) | `warehouse-sync` | `warehouse-sync` (git pull → named volume `bench_warehouse`) |
 
-Provisioning assets live under [`observability/`](observability/). Sync script: [`warehouse-sync/sync.sh`](warehouse-sync/sync.sh).
+Provisioning assets live under [`observability/`](observability/). Compose sync script: [`warehouse-sync/sync.sh`](warehouse-sync/sync.sh). Host-native sync script: [`../warehouse-sync-host.sh`](../warehouse-sync-host.sh).
 
 **ops-panel removed** — do not start a second LB-only case. Use an inference case Frontend (e.g. qwen `opt20260811`) with `--profile observability` / `--profile warehouse-sync`.
 
@@ -62,17 +62,27 @@ Warehouse is owned by Frontend fragments (`frontend.yml` sets `BENCH_WAREHOUSE_R
 - **Profile off (default):** volume may be empty → LongBench API empty/`not found` until sync runs.
 - **Profile on:** sidecar writes `bench_warehouse` (rw); Frontend reads it `:ro`. Status file `/warehouse/.warehouse-sync-status` surfaces as LongBench `source.sync`.
 - **Offline / airgap:** use host-native panel ([`run-host-panel.sh`](../run-host-panel.sh) with a sibling `bench-warehouse` clone), or enable sync with a token — not a playground host bind.
+- **Host-native FE:** use [`../warehouse-sync-host.sh`](../warehouse-sync-host.sh) instead of the compose sidecar. It sparse-checks out `raw/` into a sibling live checkout, flips the `bench-warehouse` symlink only after a successful sync, and writes `.warehouse-sync-status` for the panel API.
 
 Prefer `http.extraHeader` bearer auth (as in `sync.sh`) over putting the token in the clone URL.
 
 ### Host-native panel
 
 ```bash
-../frontend/run-host-panel.sh
+frontend/run-host-panel.sh
 # → http://<host-ip>:18880/panel  (default avoids clash with live :8800)
 ```
 
-Script path from repo root: [`frontend/run-host-panel.sh`](../run-host-panel.sh).
+Run from repo root. Script path: [`frontend/run-host-panel.sh`](../run-host-panel.sh).
+
+Host-native warehouse refresh:
+
+```bash
+BENCH_WAREHOUSE_SYNC_INTERVAL_SEC=300 \
+  nohup frontend/warehouse-sync-host.sh > ../warehouse-sync-host.log 2>&1 &
+```
+
+Use `BENCH_WAREHOUSE_GITHUB_TOKEN` or a configured Git credential store for the private `bench-warehouse` repo. The helper forces Git HTTP/1.1 because some lab paths fail GitHub HTTP/2 clones.
 
 ## Reuse rules
 
@@ -96,6 +106,8 @@ Worker discovery knobs (defaults keep same-host Docker DNS):
 - `ADVERTISE_HOST` → address Frontend uses to reach this worker (LAN IP when remote)
 
 Do **not** use `127.0.0.1` for advertise/router from inside containers. Localhost fake multi-node: case scripts `simulate_multinode_localhost.sh` + `validate_multinode_localhost.sh` (two projects `io-frontend` / `io-workers`).
+
+When the worker host cannot reach the Frontend host directly but the operator PC can reach both, use the PC-anchored SSH tunnel fallback in [`../../docs/ops/kunlun-metax9-febe-validation.md`](../../docs/ops/kunlun-metax9-febe-validation.md). The fallback bridges FE-side etcd and router ports to worker containers; keep both SSH channels alive while validating.
 
 **Deprecated:** Master/Slave env (`SLAVE_REGISTRY_URL`, `.env.slave*`, `worker-slave-*`). Prefer this Frontend+Workers contract ([`opt20260811`](../../playground/Distribution/qwen3-32b+9g--x203-inf--opt20260811/)).
 
