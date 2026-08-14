@@ -1,5 +1,7 @@
 # Case: infinilm-metax-deployment-opt-20260714
 
+> **Deprecated topology:** Master/Slave env (`.env.master` / `.env.slave*`, `SLAVE_*`) is superseded by Dynamo **Frontend + Workers** in [`qwen3-32b+9g--x203-inf--opt20260811`](../qwen3-32b+9g--x203-inf--opt20260811/). New multi-host deploys should use that case.
+
 HPCC **3.7.0.38** / torch **2.8** deployment case (forked from [`…-opt-20260611`](../infinilm-metax-deployment-opt-20260611/)). Master + 9g + Qwen-paged + embeddings + optional XiYan slave.
 
 **Image pipeline:** Phase 1 → 1.5 → 2 (`docker run` + `docker commit`). Design doc: [`docs/IMAGE_BUILD_PHASES.md`](../../../../docs/IMAGE_BUILD_PHASES.md).

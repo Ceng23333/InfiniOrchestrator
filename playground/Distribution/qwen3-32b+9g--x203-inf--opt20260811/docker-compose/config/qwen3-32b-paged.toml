@@ -1,8 +1,8 @@
-# Master (Server 1) - 9g_8b_thinking model (paged + flash-attn + graph)
+# Worker (Server 1) - Qwen3-32B model with paged cache
 
-name = "master-9g_8b_thinking"
+name = "master-qwen3-32b-paged"
 host = "0.0.0.0"
-port = 8100
+port = 8200
 
 registry_url = "http://localhost:18000"
 router_url = "http://localhost:8000"
@@ -16,19 +16,20 @@ heartbeat_interval = 30
 type = "command"
 command = "/opt/conda/bin/python"
 args = [
-  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
+  "-m", "infinilm.server.entry",
+  "--phase", "all",
   "--device", "metax",
-  "--model", "/models/9g_8b_thinking",
+  "--model", "/models/Qwen3-32B",
   "--dtype", "bfloat16",
   "--max-batch-size", "4",
-  "--max-new-tokens", "2048",
-  "--num-blocks", "1024",
-  "--tp", "1",
-  "--temperature", "1.0",
+  "--max-new-tokens", "40960",
+  "--num-blocks", "512",
+  "--tp", "4",
+  "--temperature", "0.7",
   "--top-p", "0.8",
-  "--top-k", "1",
+  "--top-k", "20",
   "--host", "0.0.0.0",
-  "--port", "8100",
+  "--port", "8200",
   "--enable-paged-attn",
   "--attn", "flash-attn",
   "--enable-graph",
@@ -45,19 +46,29 @@ MACA_PATH = "/opt/hpcc"
 HPCC_PATH = "/opt/hpcc"
 C_INCLUDE_PATH = "/opt/hpcc/include/hcr:/opt/hpcc/tools/cu-bridge/include"
 XMAKE_ROOT = "y"
-HPCC_VISIBLE_DEVICES = "0"
+HPCC_VISIBLE_DEVICES = "4,5,6,7"
 FLASH_ATTN_2_CUDA_SO = "/opt/conda/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-aarch64-linux-gnu.so"
 INFINI_PREFILL_NATIVE_CG = "1"
-INFINI_COMPILE_MAX_SEQ = "65536"
+INFINI_COMPILE_MAX_SEQ = "40960"
 INFINI_DECODE_CG_TP = "1"
-INFINI_REQUEST_TIMEOUT_S = "600"
-INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096,2048,1024,512"
+INFINI_REQUEST_TIMEOUT_S = "7200"
+# Align to seeded AOT cache on this host (max pre_attn_B2048; no B8192 pkgs present).
+INFINI_NATIVE_CG_CAPTURE_BUCKETS = "2048"
+# Long prompts (LongBench medium / max_input=28672): multi-step prefill when only B2048 is captured.
+# Step budget = INFINI_MAX_NUM_BATCHED_TOKENS (INFINI_PREFILL_CHUNK_SIZE is deprecated).
+# CHUNKED+NATIVE_CG already defaults max_num_batched_tokens() to 2048 if MAX_BATCHED is unset.
 INFINI_PREFILL_CHUNKED = "1"
-INFINI_PREFILL_CHUNK_SIZE = "4096"
+INFINI_MAX_NUM_BATCHED_TOKENS = "2048"
 INFINI_V1_SCHEDULER = "1"
 INFINI_SCHEDULE_HOMOGENEOUS = "1"
 INFINI_DECODE_LIGHT_SYNC = "1"
+# Offline AOT under /workspace/piecewise_inductor_cache (compose volume, rw for cold compile).
+INFINI_PIECEWISE_INDUCTOR_SEGMENT = "1"
+INFINI_PIECEWISE_LAYER_AGNOSTIC = "1"
+# COM deprecated/ignored; entry --phase all compiles missing pkgs before serve.
+INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS = "0"
+INFINI_PIECEWISE_INDUCTOR_CACHE = "/workspace/piecewise_inductor_cache"
 
 [metadata]
-cache_type = "static"
+cache_type = "paged"
 static = false

@@ -35,7 +35,7 @@ Tag name contains `vllm-mars` (HPCC OS/stack). That is **not** the LLM runtime; 
 - Host **cargo** (release build of InfiniOrchestrator `rust/` bins: entrypoint, loadbalancer)
 - InfiniOrchestrator checkout with `rust/` — control plane is **`SVC_ROOT=${IO_ROOT}`**, not InfiniLM-SVC
 - BASE_IMAGE present locally (`docker image inspect 1a3cbde5ff2a`) or pullable
-- Model dirs (see `docker-compose/.env.master.example`): `MODEL1_DIR`, `QWEN3_32B_DIR`, `EMBEDDING_MODEL_DIR`
+- Model dirs (see `docker-compose/.env.frontend.example`): `MODEL1_DIR`, `QWEN3_32B_DIR`, `EMBEDDING_MODEL_DIR`
 - Optional: seed `cache/piecewise_inductor/` for Qwen AOT (separate from ITW identity; `export-bundle.sh` omits it)
 
 ## Phase 0 — empty → identical InfiniTensorWorktree
@@ -97,7 +97,7 @@ After Phase 1/2, `image/.worktree_tag` should read `v2026.08.12` and `image/MANI
 
 ```bash
 cd "${CASE}/docker-compose"
-cp -n .env.master.example .env
+cp -n .env.frontend.example .env
 # Set IMAGE_TAG=$(cat ../image/.image_tag) in .env; confirm model paths
 ./compose.sh --profile frontend --profile workers up -d
 

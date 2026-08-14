@@ -63,13 +63,13 @@ resolve_metadata_url() {
   fi
   case "${model}" in
     Qwen3-32B|Qwen3-32B-*)
-      printf 'http://localhost:%s\n' "${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}"
+      printf 'http://localhost:%s\n' "${WORKER_QWEN_BABYSITTER_PORT:-8201}"
       ;;
     9g_8b_thinking|9g*)
-      printf 'http://localhost:%s\n' "${MASTER_9G_8B_THINKING_BABYSITTER_PORT:-8103}"
+      printf 'http://localhost:%s\n' "${WORKER_9G_BABYSITTER_PORT:-8103}"
       ;;
     *)
-      printf 'http://localhost:%s\n' "${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}"
+      printf 'http://localhost:%s\n' "${WORKER_QWEN_BABYSITTER_PORT:-8201}"
       ;;
   esac
 }

@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
-# Validate infinilm-metax-deployment-opt-20260811 (registry, router, InfiniLM master backends)
+# Validate opt20260811 (Frontend health, InfiniLM workers, embeddings).
 #
-# Offline smoke: probes local compose endpoints only (no HuggingFace / PyPI / registry pulls).
-# Master-only case — no XiYan slave, no vLLM presets.
+# Offline smoke: probes local compose endpoints only (no HuggingFace / PyPI pulls).
 # Usage (from docker-compose/): ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Preserve caller overrides (multinode sim ports) across .env sourcing.
+_OV_WORKER_9G_API_PORT="${WORKER_9G_API_PORT-}"
+_OV_WORKER_9G_BABYSITTER_PORT="${WORKER_9G_BABYSITTER_PORT-}"
+_OV_WORKER_QWEN_API_PORT="${WORKER_QWEN_API_PORT-}"
+_OV_WORKER_QWEN_BABYSITTER_PORT="${WORKER_QWEN_BABYSITTER_PORT-}"
+_OV_EMBEDDING_PORT="${EMBEDDING_PORT-}"
+_OV_SKIP_EMBEDDING="${SKIP_EMBEDDING-}"
+
 if [ -f "${SCRIPT_DIR}/.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -15,16 +23,21 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
   set +a
 fi
 
-# Fail fast if curl would be pointed at missing local services without inventing downloads.
+[[ -n "${_OV_WORKER_9G_API_PORT}" ]] && WORKER_9G_API_PORT="${_OV_WORKER_9G_API_PORT}"
+[[ -n "${_OV_WORKER_9G_BABYSITTER_PORT}" ]] && WORKER_9G_BABYSITTER_PORT="${_OV_WORKER_9G_BABYSITTER_PORT}"
+[[ -n "${_OV_WORKER_QWEN_API_PORT}" ]] && WORKER_QWEN_API_PORT="${_OV_WORKER_QWEN_API_PORT}"
+[[ -n "${_OV_WORKER_QWEN_BABYSITTER_PORT}" ]] && WORKER_QWEN_BABYSITTER_PORT="${_OV_WORKER_QWEN_BABYSITTER_PORT}"
+[[ -n "${_OV_EMBEDDING_PORT}" ]] && EMBEDDING_PORT="${_OV_EMBEDDING_PORT}"
+[[ -n "${_OV_SKIP_EMBEDDING}" ]] && SKIP_EMBEDDING="${_OV_SKIP_EMBEDDING}"
+
 export no_proxy="${no_proxy:-*}"
 export NO_PROXY="${NO_PROXY:-*}"
 
 usage() {
   echo "Usage:"
-  echo "  $0 <REGISTRY_IP>"
+  echo "  $0 <FRONTEND_HOST>"
   echo ""
-  echo "Master-only InfiniLM stack: expects 9g_8b_thinking + Qwen3-32B + embeddings."
-  echo "No slave / vLLM presets in this case."
+  echo "Dynamo Frontend + Workers: expects 9g_8b_thinking + Qwen3-32B + embeddings."
   echo ""
   echo "Examples:"
   echo "  $0 localhost"
@@ -36,20 +49,20 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
-REGISTRY_IP="${1:-localhost}"
+FRONTEND_HOST_ARG="${1:-localhost}"
 
 REGISTRY_PORT="${REGISTRY_PORT:-18000}"
 ROUTER_PORT="${ROUTER_PORT:-8800}"
 EMBEDDING_PORT="${EMBEDDING_PORT:-20003}"
-MASTER_QWEN_PAGED_BABYSITTER_PORT="${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}"
-MASTER_9G_8B_THINKING_BABYSITTER_PORT="${MASTER_9G_8B_THINKING_BABYSITTER_PORT:-8103}"
-REGISTRY_URL="http://${REGISTRY_IP}:${REGISTRY_PORT}"
-ROUTER_URL="http://${REGISTRY_IP}:${ROUTER_PORT}"
-EMBEDDING_URL="http://${REGISTRY_IP}:${EMBEDDING_PORT}"
-QWEN_METADATA_URL="http://${REGISTRY_IP}:${MASTER_QWEN_PAGED_BABYSITTER_PORT}"
-NINEG_METADATA_URL="http://${REGISTRY_IP}:${MASTER_9G_8B_THINKING_BABYSITTER_PORT}"
+WORKER_9G_BABYSITTER_PORT="${WORKER_9G_BABYSITTER_PORT:-8101}"
+WORKER_QWEN_BABYSITTER_PORT="${WORKER_QWEN_BABYSITTER_PORT:-8201}"
+REGISTRY_URL="http://${FRONTEND_HOST_ARG}:${REGISTRY_PORT}"
+ROUTER_URL="http://${FRONTEND_HOST_ARG}:${ROUTER_PORT}"
+EMBEDDING_URL="http://${FRONTEND_HOST_ARG}:${EMBEDDING_PORT}"
+QWEN_METADATA_URL="http://${FRONTEND_HOST_ARG}:${WORKER_QWEN_BABYSITTER_PORT}"
+NINEG_METADATA_URL="http://${FRONTEND_HOST_ARG}:${WORKER_9G_BABYSITTER_PORT}"
 
-CONTAINER_NAME="${CONTAINER_NAME:-infiniorch-master-opt-20260811}"
+CONTAINER_NAME="${CONTAINER_NAME:-infiniorch-frontend-opt-20260811}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -61,11 +74,11 @@ PASSED=0
 FAILED=0
 
 echo "=========================================="
-echo "InfiniOrchestrator infinilm-metax-deployment-opt-20260811 Validation"
+echo "InfiniOrchestrator opt20260811 Validation"
 echo "=========================================="
-echo "Registry IP:  ${REGISTRY_IP}"
-echo "Registry:     ${REGISTRY_URL}"
-echo "Router:       ${ROUTER_URL}"
+echo "Frontend host: ${FRONTEND_HOST_ARG}"
+echo "Registry:      ${REGISTRY_URL}"
+echo "Router:        ${ROUTER_URL}"
 echo ""
 
 check() {
@@ -121,8 +134,8 @@ check_entrypoint_metadata() {
     return 1
   fi
 }
-check_entrypoint_metadata "${QWEN_METADATA_URL}" "Qwen Entrypoint (${MASTER_QWEN_PAGED_BABYSITTER_PORT})"
-check_entrypoint_metadata "${NINEG_METADATA_URL}" "9g Entrypoint (${MASTER_9G_8B_THINKING_BABYSITTER_PORT})"
+check_entrypoint_metadata "${QWEN_METADATA_URL}" "Qwen Entrypoint (${WORKER_QWEN_BABYSITTER_PORT})"
+check_entrypoint_metadata "${NINEG_METADATA_URL}" "9g Entrypoint (${WORKER_9G_BABYSITTER_PORT})"
 echo ""
 
 echo -e "${BLUE}[2] Service discovery${NC}"
@@ -134,8 +147,12 @@ fi
 service_count="$(echo "${services_json}" | grep -o '"name"' | wc -l || echo "0")"
 echo "  Found ${service_count} services"
 
-expected_services=("master-9g_8b_thinking" "master-qwen3-32b-paged" "master-embeddings")
+expected_services=("master-9g_8b_thinking-server" "master-qwen3-32b-paged-server" "master-embeddings")
 for svc in "${expected_services[@]}"; do
+  if [[ "${SKIP_EMBEDDING:-0}" == "1" && "${svc}" == "master-embeddings" ]]; then
+    echo -e "    ${YELLOW}SKIP${NC} ${svc} (SKIP_EMBEDDING=1)"
+    continue
+  fi
   if echo "${services_json}" | grep -q "\"name\":\"${svc}\""; then
     echo -e "    ${GREEN}OK${NC} ${svc}"
   else
@@ -187,26 +204,30 @@ for test_model in ${test_models}; do
 done
 echo ""
 
-echo -e "${BLUE}[5] Embedding endpoint (required)${NC}"
-embedding_registered=0
-if echo "${services_json}" | grep -q "\"name\":\"master-embeddings\""; then
-  embedding_registered=1
-fi
-
-if [ "${embedding_registered}" -eq 0 ]; then
-  echo -e "  ${YELLOW}WARN${NC} master-embeddings-server not found in /services, fallback to endpoint probe"
-fi
-
-echo -n "  Testing embeddings: ${EMBEDDING_URL}/v1/embeddings ... "
-emb_req='{"model":"text-embedding-ada-002","input":"hello"}'
-emb_resp="$(curl -s -X POST --noproxy "*" "${EMBEDDING_URL}/v1/embeddings" -H "Content-Type: application/json" -d "${emb_req}" 2>/dev/null || echo '{}')"
-if echo "${emb_resp}" | grep -Eq '"object"[[:space:]]*:[[:space:]]*"list"'; then
-  echo -e "${GREEN}OK${NC}"
-  PASSED=$((PASSED + 1))
+echo -e "${BLUE}[5] Embedding endpoint${NC}"
+if [[ "${SKIP_EMBEDDING:-0}" == "1" ]]; then
+  echo -e "  ${YELLOW}SKIP${NC} embeddings (SKIP_EMBEDDING=1)"
 else
-  echo -e "${RED}FAIL${NC}"
-  FAILED=$((FAILED + 1))
-  echo "    Response: ${emb_resp}"
+  embedding_registered=0
+  if echo "${services_json}" | grep -q "\"name\":\"master-embeddings\""; then
+    embedding_registered=1
+  fi
+
+  if [ "${embedding_registered}" -eq 0 ]; then
+    echo -e "  ${YELLOW}WARN${NC} master-embeddings not found in /services, fallback to endpoint probe"
+  fi
+
+  echo -n "  Testing embeddings: ${EMBEDDING_URL}/v1/embeddings ... "
+  emb_req='{"model":"text-embedding-ada-002","input":"hello"}'
+  emb_resp="$(curl -s -X POST --noproxy "*" "${EMBEDDING_URL}/v1/embeddings" -H "Content-Type: application/json" -d "${emb_req}" 2>/dev/null || echo '{}')"
+  if echo "${emb_resp}" | grep -Eq '"object"[[:space:]]*:[[:space:]]*"list"'; then
+    echo -e "${GREEN}OK${NC}"
+    PASSED=$((PASSED + 1))
+  else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+    echo "    Response: ${emb_resp}"
+  fi
 fi
 echo ""
 

@@ -38,6 +38,7 @@ const state = {
     emMin: 0,
     metric: "total_tok_per_s",
   },
+  vizSort: { key: "date", dir: "desc" },
 };
 
 const SERIES_COLORS = [
@@ -56,11 +57,16 @@ const VIZ_BASE_COLUMNS = [
   "model",
   "hw",
   "be",
+  "worktree",
   "preset",
   "lb_em",
   "total_tok_per_s",
-  "status",
 ];
+
+const ITW_GITHUB_TREE_BASE =
+  "https://github.com/Ceng23333/InfiniTensorWorktree/tree";
+
+const VIZ_NUMERIC_COLUMNS = new Set(["lb_em", "total_tok_per_s"]);
 
 const els = {};
 
@@ -567,7 +573,80 @@ function renderVisualization() {
   const rows = getFilteredHarnessRows();
   els.vizRowCount.textContent = `${rows.length} rows`;
   renderVizChart(rows);
-  renderVizTable(rows);
+  renderVizTable(sortHarnessRows(rows));
+}
+
+function isVizNumericColumn(key) {
+  if (VIZ_NUMERIC_COLUMNS.has(key)) {
+    return true;
+  }
+  const metric = state.viz.metric || "";
+  if (key && key === metric) {
+    return true;
+  }
+  const metrics = state.harness?.metrics || [];
+  return metrics.includes(key);
+}
+
+function sortHarnessRows(rows) {
+  const key = state.vizSort?.key || "date";
+  const dir = state.vizSort?.dir === "asc" ? "asc" : "desc";
+  const numeric = isVizNumericColumn(key);
+  const mult = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const av = a?.[key];
+    const bv = b?.[key];
+    if (numeric) {
+      const an = Number(av);
+      const bn = Number(bv);
+      const aOk = Number.isFinite(an);
+      const bOk = Number.isFinite(bn);
+      if (!aOk && !bOk) {
+        return 0;
+      }
+      if (!aOk) {
+        return 1;
+      }
+      if (!bOk) {
+        return -1;
+      }
+      if (an === bn) {
+        return 0;
+      }
+      return an < bn ? -mult : mult;
+    }
+    const as = av == null || av === "" ? "" : String(av);
+    const bs = bv == null || bv === "" ? "" : String(bv);
+    if (!as && !bs) {
+      return 0;
+    }
+    if (!as) {
+      return 1;
+    }
+    if (!bs) {
+      return -1;
+    }
+    return as.localeCompare(bs) * mult;
+  });
+}
+
+function setVizSort(key) {
+  if (!key) {
+    return;
+  }
+  if (state.vizSort?.key === key) {
+    state.vizSort.dir = state.vizSort.dir === "asc" ? "desc" : "asc";
+  } else {
+    state.vizSort = {
+      key,
+      dir: isVizNumericColumn(key) ? "desc" : "asc",
+    };
+  }
+  renderVisualization();
+}
+
+function isInfiniLmBackend(be) {
+  return String(be || "").toLowerCase() === "infinilm";
 }
 
 function seriesKey(row) {
@@ -721,6 +800,9 @@ function renderVizTable(rows) {
   }
   columns.push("source");
 
+  const sortKey = state.vizSort?.key || "date";
+  const sortDir = state.vizSort?.dir === "asc" ? "asc" : "desc";
+
   const wrap = document.createElement("div");
   wrap.className = "table-wrap";
   const table = document.createElement("table");
@@ -729,7 +811,22 @@ function renderVizTable(rows) {
   const headRow = document.createElement("tr");
   columns.forEach((col) => {
     const th = document.createElement("th");
-    th.textContent = col === "source" ? "Source" : col;
+    th.className = "sortable";
+    const label = col === "source" ? "Source" : col;
+    const isActive = sortKey === col;
+    if (isActive) {
+      th.classList.add(sortDir === "asc" ? "is-sorted-asc" : "is-sorted-desc");
+      th.setAttribute("aria-sort", sortDir === "asc" ? "ascending" : "descending");
+    } else {
+      th.setAttribute("aria-sort", "none");
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "viz-sort-btn";
+    const marker = isActive ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+    button.textContent = `${label}${marker}`;
+    button.addEventListener("click", () => setVizSort(col));
+    th.append(button);
     headRow.append(th);
   });
   thead.append(headRow);
@@ -758,6 +855,20 @@ function renderVizTable(rows) {
           td.append(link);
         } else {
           td.textContent = label;
+        }
+      } else if (col === "worktree") {
+        const tag = row.worktree != null ? String(row.worktree) : "";
+        if (tag && isInfiniLmBackend(row.be)) {
+          const link = document.createElement("a");
+          link.className = "source-link";
+          link.href = `${ITW_GITHUB_TREE_BASE}/${encodeURIComponent(tag)}`;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.title = link.href;
+          link.textContent = tag;
+          td.append(link);
+        } else {
+          td.textContent = tag;
         }
       } else {
         td.textContent = row[col] != null ? row[col] : "";

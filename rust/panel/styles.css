@@ -621,6 +621,36 @@ tbody tr:hover {
   outline: 2px solid rgba(23, 105, 170, 0.35);
 }
 
+.viz-table th.sortable {
+  padding: 0;
+  white-space: nowrap;
+}
+
+.viz-table th.sortable .viz-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.viz-table th.sortable .viz-sort-btn:hover {
+  color: var(--accent-strong);
+}
+
+.viz-table th.sortable.is-sorted-asc .viz-sort-btn,
+.viz-table th.sortable.is-sorted-desc .viz-sort-btn {
+  color: var(--accent-strong);
+}
+
 .source-link {
   color: var(--accent-strong);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

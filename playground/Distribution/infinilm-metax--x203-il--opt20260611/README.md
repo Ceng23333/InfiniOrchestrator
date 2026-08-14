@@ -1,5 +1,7 @@
 # Case: infinilm-metax-deployment-opt-20260611
 
+> **Deprecated topology:** Master/Slave env (`.env.master` / `.env.slave*`, `SLAVE_*`) is superseded by Dynamo **Frontend + Workers** in [`qwen3-32b+9g--x203-inf--opt20260811`](../qwen3-32b+9g--x203-inf--opt20260811/). New multi-host deploys should use that case.
+
 Current InfiniOrchestrator deployment case for offline Metax hosts. Builds from sibling worktree `InfiniCore/` + `InfiniLM/` on `prefill_profile`, with Phase 3 production flags baked into paged inference workers.
 
 Historical reference: [`infinilm-metax-deployment-opt-20260325`](../infinilm-metax-deployment-opt-20260325/).

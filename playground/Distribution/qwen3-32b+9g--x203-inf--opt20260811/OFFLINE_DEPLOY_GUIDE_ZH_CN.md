@@ -1,9 +1,9 @@
 # Metax 离线友好部署指南 — infinilm-metax-deployment-opt-20260811
 
-Master-only **InfiniLM** case：`qwen3-32b+9g--x203-inf--opt20260811`（`be_abbr=inf`）。
+Dynamo 风格 **InfiniLM** case：`qwen3-32b+9g--x203-inf--opt20260811`（`be_abbr=inf`）。
 
-- 服务：master + 9g + Qwen-paged + embeddings
-- **无** XiYan / slave
+- 服务：**Frontend**（etcd + loadbalancer）+ **Workers**（9g + Qwen-paged + embeddings）
+- **无** XiYan；旧 Master/Slave env 已弃用（见 canonical `opt20260811` 多机配方）
 - **无** vLLM babysitter TOML / validate preset / vLLM bench client
 - 布局：`image/` + `docker-compose/` + `cache/` + `regression/` + `k8s/`（占位）
 - 镜像：Phase 1 runtime-base → Phase 2 product `IMAGE_TAG`
@@ -33,21 +33,18 @@ cd "${CASE}"
 ./export-bundle.sh               # 可选离线打包（不含 cache/piecewise_inductor）
 ```
 
-## Compose（master-only）
+## Compose（Frontend + Workers，同机）
 
 ```bash
 cd docker-compose
-cp .env.master.example .env
+cp .env.frontend.example .env
 # Phase 2 完成后：IMAGE_TAG=$(cat ../image/.image_tag)
-docker-compose up -d master \
-  worker-master-9g-8100 \
-  worker-master-qwen-paged-8200 \
-  worker-master-embeddings-20002
+./compose.sh --profile frontend --profile workers up -d
 ```
 
 默认端口（与模板一致）：router `8800`、registry `18000`、embeddings `20003`、9g API `8102`、Qwen API `8200`。
 
-模型路径（`.env.master.example`）：
+模型路径（`.env.frontend.example`）：
 
 | 变量 | 示例 |
 |------|------|
@@ -58,6 +55,20 @@ docker-compose up -d master \
 
 网络：`172.28.0.0/16`。MetaX devices：`/dev/dri`、`/dev/htcd`、`/dev/infiniband`。
 
+## 多机 / 单机假多机
+
+真实多机：Frontend 主机用 `.env.frontend.example` + `--profile frontend`；Worker 主机用 [`.env.workers.example`](docker-compose/.env.workers.example)（`FRONTEND_HOST` / `ADVERTISE_HOST` 填 LAN IP，勿用 `127.0.0.1`）+ `--profile workers`。
+
+单机验证跨机路径：
+
+```bash
+cd docker-compose
+./simulate_multinode_localhost.sh
+./validate_multinode_localhost.sh
+```
+
+两个 compose 工程：`io-frontend` 与 `io-workers`，经 LAN IP 注册/回连。若 Frontend→worker 经 LAN 不通，检查 bridge/`ip_forward`（与旧 slave-sim 同类问题）。
+
 ## 验收
 
 ```bash
@@ -65,7 +76,7 @@ cd docker-compose
 ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
 ```
 
-期望 registry 服务：`master-9g_8b_thinking`、`master-qwen3-32b-paged`、`master-embeddings`。
+期望 registry 服务名：`master-9g_8b_thinking`、`master-qwen3-32b-paged`、`master-embeddings`（babysitter `name` 字段；compose 服务为 `worker-*`）。
 
 ## LongBench 回归
 
@@ -81,8 +92,8 @@ cd ..   # case root
 
 | 保留 | 已移除 |
 |------|--------|
-| InfiniLM 9g / Qwen / embeddings | XiYan slave compose / `.env.slave*` / slave TOML |
-| `image/` Phase 1/2、`export-bundle.sh`、`phase1-smoke.sh` | `master-9g_8b_thinking-vllm.toml` 及一切 `backend_type=vllm` |
+| InfiniLM 9g / Qwen / embeddings | XiYan / `.env.slave*` / slave TOML；旧 Master/Slave 拓扑 env |
+| `image/` Phase 1/2、`export-bundle.sh`、`phase1-smoke.sh` | `*-vllm.toml` 及一切 `backend_type=vllm` |
 | `cache/piecewise_inductor/`、`regression/run_longbench.sh` | 旧 `bench/`、`offline-deps/`、Phase 1.5 stub、vLLM validate presets |
 
-历史双机 XiYan 说明见上游 case `…-opt20260714`。
+历史双机 XiYan（Master/Slave）说明见上游 case `…-opt20260714`（**已弃用**；新部署请用本 case 的 Frontend+Workers + `.env.workers.example`）。

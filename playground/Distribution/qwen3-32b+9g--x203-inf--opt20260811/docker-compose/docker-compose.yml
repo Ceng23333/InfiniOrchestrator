@@ -1,6 +1,9 @@
-# Case workers + overrides for shared Frontend/etcd fragments.
-# Bring-up:
+# Case workers + overrides for shared Frontend/etcd fragments (Dynamo-style).
+# Bring-up (same host):
 #   ./compose.sh --profile frontend --profile workers up -d
+# Frontend only / workers only (multi-host or localhost sim):
+#   COMPOSE_PROJECT_NAME=io-frontend ./compose.sh --profile frontend up -d
+#   COMPOSE_PROJECT_NAME=io-workers  ./compose.sh --profile workers up -d
 # Optional Prom/Grafana:
 #   ./compose.sh --profile observability up -d
 # Optional bench-warehouse hot sync (named volume; needs GitHub token for private HTTPS):
@@ -11,17 +14,18 @@ networks:
     ipam:
       config:
         # Avoid 172.22.0.0/16 — overlaps site NFS/LAN (172.22.162.46).
-        - subnet: 172.28.0.0/16
+        # Parallel projects on one host (fake multi-node) must override COMPOSE_SUBNET.
+        - subnet: ${COMPOSE_SUBNET:-172.28.0.0/16}
 
 services:
   etcd:
     container_name: infiniorch-etcd-opt-20260811
-    # Debug publish (optional); shared fragment keeps etcd internal by default.
+    # Debug / multi-host publish; shared fragment keeps etcd internal by default.
     ports:
       - "2379:2379"
 
   frontend:
-    container_name: infiniorch-master-opt-20260811
+    container_name: infiniorch-frontend-opt-20260811
     environment:
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
       ROUTER_PORT: ${ROUTER_PORT:-8800}
@@ -33,27 +37,25 @@ services:
       - ${IO_RUST_RELEASE_DIR:-../../../../rust/target/release}/infini-loadbalancer:/usr/local/bin/infini-loadbalancer:ro
       - ${IO_HOST_PATH:-../../../../}:/io:ro
 
-  worker-master-9g-8100:
+  worker-9g-8100:
     profiles: ["workers"]
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-master-9g-8100-20260811
+    container_name: infiniorch-worker-9g-8100-20260811
     restart: unless-stopped
-    depends_on:
-      - frontend
-      - etcd
     environment:
       LAUNCH_COMPONENTS: entrypoint
-      ETCD_ENDPOINTS: http://etcd:2379
+      ETCD_ENDPOINTS: ${ETCD_ENDPOINTS:-http://etcd:2379}
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
-      ROUTER_URL: http://frontend:${ROUTER_PORT:-8800}
-      BABYSITTER_CONFIGS: /config/master-9g_8b_thinking.toml
-      BABYSITTER_HOST: worker-master-9g-8100
+      ROUTER_URL: ${ROUTER_URL:-http://frontend:8800}
+      REGISTRY_URL: ${REGISTRY_URL:-http://frontend:18000}
+      BABYSITTER_CONFIGS: /config/9g_8b_thinking.toml
+      BABYSITTER_HOST: ${ADVERTISE_HOST:-worker-9g-8100}
     volumes:
       - ./config:/config:ro
       - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
     ports:
-      - "${MASTER_9G_8B_THINKING_API_PORT:-8100}:8100"
-      - "${MASTER_9G_8B_THINKING_BABYSITTER_PORT:-8101}:8101"
+      - "${WORKER_9G_API_PORT:-8100}:8100"
+      - "${WORKER_9G_BABYSITTER_PORT:-8101}:8101"
     ipc: host
     shm_size: 100gb
     ulimits:
@@ -70,24 +72,22 @@ services:
     security_opt:
       - apparmor=unconfined
 
-  worker-master-qwen-paged-8200:
+  worker-qwen-paged-8200:
     profiles: ["workers"]
     image: ${IMAGE_TAG}
-    container_name: infiniorch-worker-master-qwen-paged-8200-20260811
+    container_name: infiniorch-worker-qwen-paged-8200-20260811
     restart: unless-stopped
-    depends_on:
-      - frontend
-      - etcd
     environment:
       LAUNCH_COMPONENTS: entrypoint
-      ETCD_ENDPOINTS: http://etcd:2379
+      ETCD_ENDPOINTS: ${ETCD_ENDPOINTS:-http://etcd:2379}
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
-      ROUTER_URL: http://frontend:${ROUTER_PORT:-8800}
-      BABYSITTER_CONFIGS: /config/master-qwen3-32b-paged.toml
-      BABYSITTER_HOST: worker-master-qwen-paged-8200
+      ROUTER_URL: ${ROUTER_URL:-http://frontend:8800}
+      REGISTRY_URL: ${REGISTRY_URL:-http://frontend:18000}
+      BABYSITTER_CONFIGS: /config/qwen3-32b-paged.toml
+      BABYSITTER_HOST: ${ADVERTISE_HOST:-worker-qwen-paged-8200}
     ports:
-      - "${MASTER_QWEN_PAGED_API_PORT:-8200}:8200"
-      - "${MASTER_QWEN_PAGED_BABYSITTER_PORT:-8201}:8201"
+      - "${WORKER_QWEN_API_PORT:-8200}:8200"
+      - "${WORKER_QWEN_BABYSITTER_PORT:-8201}:8201"
     volumes:
       - ./config:/config:ro
       - ${QWEN3_32B_DIR}:/models/Qwen3-32B:ro
@@ -108,22 +108,19 @@ services:
     security_opt:
       - apparmor=unconfined
 
-  worker-master-embeddings-20002:
+  worker-embeddings-20002:
     profiles: ["workers"]
     image: ${EMBEDDING_IMAGE_TAG}
-    container_name: infiniorch-worker-master-embeddings-20002-20260811
+    container_name: infiniorch-worker-embeddings-20002-20260811
     restart: unless-stopped
-    depends_on:
-      - frontend
-      - etcd
     environment:
       LAUNCH_COMPONENTS: babysitter
-      ETCD_ENDPOINTS: http://etcd:2379
+      ETCD_ENDPOINTS: ${ETCD_ENDPOINTS:-http://etcd:2379}
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
-      REGISTRY_URL: http://frontend:${REGISTRY_PORT:-18000}
-      ROUTER_URL: http://frontend:${ROUTER_PORT:-8800}
-      BABYSITTER_CONFIGS: /config/master-embeddings.toml
-      BABYSITTER_HOST: worker-master-embeddings-20002
+      REGISTRY_URL: ${REGISTRY_URL:-http://frontend:18000}
+      ROUTER_URL: ${ROUTER_URL:-http://frontend:8800}
+      BABYSITTER_CONFIGS: /config/embeddings.toml
+      BABYSITTER_HOST: ${ADVERTISE_HOST:-worker-embeddings-20002}
     volumes:
       - ./config:/config:ro
       - ./embeddings_server.py:/app/embeddings_server.py:ro

@@ -10,8 +10,9 @@ export GRAFANA_PROVISIONING_DIR="${GRAFANA_PROVISIONING_DIR:-${FRAG}/observabili
 export WAREHOUSE_SYNC_SCRIPT="${WAREHOUSE_SYNC_SCRIPT:-${FRAG}/warehouse-sync/sync.sh}"
 
 ENV_ARGS=()
-if [[ -f "${SCRIPT_DIR}/.env" ]]; then
-  ENV_ARGS+=(--env-file "${SCRIPT_DIR}/.env")
+COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env}"
+if [[ -f "${COMPOSE_ENV_FILE}" ]]; then
+  ENV_ARGS+=(--env-file "${COMPOSE_ENV_FILE}")
 fi
 
 COMPOSE_FILES=(

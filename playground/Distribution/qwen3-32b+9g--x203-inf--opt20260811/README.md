@@ -1,6 +1,6 @@
 # Case: qwen3-32b+9g--x203-inf--opt20260811
 
-Master-only **InfiniLM** Distribution case (`be_abbr = inf`). Stack: master + 9g + Qwen-paged + embeddings. **No XiYan / slave. No vLLM babysitter TOMLs or validate presets.**
+Dynamo-style **InfiniLM** Distribution case (`be_abbr = inf`): **Frontend** (etcd + `infini-loadbalancer`) + **Workers** (9g + Qwen-paged + embeddings). **No XiYan. No vLLM babysitter TOMLs or validate presets.**
 
 Forked from [`qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714`](../qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714/). `DEPLOYMENT_CASE=infinilm-metax-deployment-opt-20260811`.
 
@@ -9,7 +9,7 @@ Forked from [`qwen3-32b+xiyan+9g--x203-il+x203-vllm--opt20260714`](../qwen3-32b+
 | Dir | Role |
 |-----|------|
 | [`image/`](image/) | Phase 1/2 build scripts, entrypoint, `.image_tag` / `.runtime_base_tag` / `.worktree_tag`, `MANIFEST` |
-| [`docker-compose/`](docker-compose/) | Compose stack, env templates, babysitter `config/`, `validate.sh` |
+| [`docker-compose/`](docker-compose/) | Compose stack, env templates, babysitter `config/`, `validate.sh`, multinode sim |
 | [`cache/piecewise_inductor/`](cache/piecewise_inductor/) | Host AOT seed (mounted rw at `/workspace/piecewise_inductor_cache`) |
 | [`regression/`](regression/) | Post-deploy LongBench-v2 gate |
 | [`k8s/`](k8s/) | Placeholder for future manifests |
@@ -56,7 +56,7 @@ cd playground/Distribution/qwen3-32b+9g--x203-inf--opt20260811
 
 # 2. Compose (shared Frontend fragments + case workers)
 cd docker-compose
-cp -n .env.master.example .env   # or keep existing .env
+cp -n .env.frontend.example .env   # or keep existing .env
 # IMAGE_TAG=$(cat ../image/.image_tag)
 ./compose.sh --profile frontend --profile workers up -d
 # Optional: ./compose.sh --profile observability up -d
@@ -77,37 +77,45 @@ cd ..
 ./export-bundle.sh
 ```
 
-`compose.sh` merges [`frontend/docker-compose/`](../../../../frontend/docker-compose/) `etcd` + `frontend` (+ optional `observability` / `warehouse-sync`) with this case’s workers. Service name **`frontend`** is the Dynamo Frontend (formerly `master`); workers use `ROUTER_URL=http://frontend:${ROUTER_PORT}`.
+`compose.sh` merges [`frontend/docker-compose/`](../../../../frontend/docker-compose/) `etcd` + `frontend` (+ optional `observability` / `warehouse-sync`) with this case’s workers. Service name **`frontend`** is the Dynamo Frontend; same-host workers default to `ROUTER_URL=http://frontend:${ROUTER_PORT}` and `ADVERTISE_HOST=<compose_service_name>`.
+
+**Multi-host / fake multi-node:** see [`.env.workers.example`](docker-compose/.env.workers.example) and [`simulate_multinode_localhost.sh`](docker-compose/simulate_multinode_localhost.sh). Workers override `ROUTER_URL` / `REGISTRY_URL` / `ETCD_ENDPOINTS` / `ADVERTISE_HOST` to LAN IPs (never `127.0.0.1` from inside containers).
 
 **Bench warehouse:** owned by Frontend fragments (`BENCH_WAREHOUSE_REPO=/warehouse` + named volume `bench_warehouse`). Enable `--profile warehouse-sync` to pull the private repo on an interval (set `BENCH_WAREHOUSE_GITHUB_TOKEN`; see fragment README). Without sync the volume may be empty — LongBench viz needs sync+token, or host-native panel via [`frontend/run-host-panel.sh`](../../../../frontend/run-host-panel.sh). Panel LongBench `source.sync` reflects `/warehouse/.warehouse-sync-status` when present.
 
-Default `COMPOSE_PROJECT_NAME` is **`docker-compose`** (matches the historical project on this host). Override only when intentionally creating a parallel project — and then use a non-overlapping compose subnet.
+Default `COMPOSE_PROJECT_NAME` is **`docker-compose`** (matches the historical project on this host). Override for parallel projects (e.g. `io-frontend` / `io-workers` multinode sim) — use a non-overlapping compose subnet when both share one host.
 GPU map: 9g `0`, Qwen `4,5,6,7`, embeddings on free GPU / remap. Network subnet `172.28.0.0/16`. MetaX device blocks unchanged.
 
 Babysitter TOMLs (InfiniLM only):
 
-- `docker-compose/config/master-9g_8b_thinking.toml`
-- `docker-compose/config/master-qwen3-32b-paged.toml`
-- `docker-compose/config/master-embeddings.toml`
+- `docker-compose/config/9g_8b_thinking.toml`
+- `docker-compose/config/qwen3-32b-paged.toml`
+- `docker-compose/config/embeddings.toml`
 
 ## Qwen cold-start inductor + CG
 
-[`docker-compose/config/master-qwen3-32b-paged.toml`](docker-compose/config/master-qwen3-32b-paged.toml) launches `python -m infinilm.server.entry --phase all`. Compose mounts [`cache/piecewise_inductor/`](cache/piecewise_inductor/) **rw** → `/workspace/piecewise_inductor_cache`. Prefer seeding under that host path.
+[`docker-compose/config/qwen3-32b-paged.toml`](docker-compose/config/qwen3-32b-paged.toml) launches `python -m infinilm.server.entry --phase all`. Compose mounts [`cache/piecewise_inductor/`](cache/piecewise_inductor/) **rw** → `/workspace/piecewise_inductor_cache`. Prefer seeding under that host path.
 
 ## Offline validation
 
 ```bash
 cd docker-compose
 ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
-# Expect: master-9g_8b_thinking + master-qwen3-32b-paged + master-embeddings
+# Expect registry names: master-9g_8b_thinking + master-qwen3-32b-paged + master-embeddings
+# (babysitter service name fields; compose services are worker-*)
+
+# Fake multi-node on one host (LAN IP path):
+./simulate_multinode_localhost.sh
+./validate_multinode_localhost.sh
 ```
 
 ## Services
 
-- `master`: registry + router
-- `worker-master-9g-8100`: 9g_8b_thinking (InfiniLM)
-- `worker-master-qwen-paged-8200`: Qwen3-32B paged (InfiniLM)
-- `worker-master-embeddings-20002`: MiniCPM embeddings/rerank
+- `frontend`: Dynamo Frontend (`infini-loadbalancer` + panel)
+- `etcd`: discovery plane
+- `worker-9g-8100`: 9g_8b_thinking (InfiniLM)
+- `worker-qwen-paged-8200`: Qwen3-32B paged (InfiniLM)
+- `worker-embeddings-20002`: MiniCPM embeddings/rerank
 
 See [`COLD_START_GUIDE.md`](COLD_START_GUIDE.md) (fresh ITW) and [`OFFLINE_DEPLOY_GUIDE_ZH_CN.md`](OFFLINE_DEPLOY_GUIDE_ZH_CN.md) (ZH redeploy / offline).
 

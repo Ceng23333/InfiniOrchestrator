@@ -81,6 +81,24 @@ Script path from repo root: [`frontend/run-host-panel.sh`](../run-host-panel.sh)
 3. Host-native panel script defaults to port **18880** so it does not fight a live case Frontend on 8800.
 4. Obs-only = same inference case `compose.sh --profile observability` with `PROM_CONFIG=prometheus-host.yml` when scraping a host Frontend.
 
+## Multi-host (Dynamo Frontend + Workers)
+
+Same compose files on every host; **profiles + `.env`** choose what runs.
+
+| Host | Env template (case `docker-compose/`) | Bring-up |
+|------|----------------------------------------|----------|
+| Frontend | `.env.frontend.example` | `./compose.sh --profile frontend up -d` |
+| Workers | `.env.workers.example` (`FRONTEND_HOST` / `ADVERTISE_HOST` = LAN IPs) | `COMPOSE_PROJECT_NAME=io-workers ./compose.sh --profile workers up -d` |
+
+Worker discovery knobs (defaults keep same-host Docker DNS):
+
+- `ROUTER_URL` / `REGISTRY_URL` / `ETCD_ENDPOINTS` → Frontend host
+- `ADVERTISE_HOST` → address Frontend uses to reach this worker (LAN IP when remote)
+
+Do **not** use `127.0.0.1` for advertise/router from inside containers. Localhost fake multi-node: case scripts `simulate_multinode_localhost.sh` + `validate_multinode_localhost.sh` (two projects `io-frontend` / `io-workers`).
+
+**Deprecated:** Master/Slave env (`SLAVE_REGISTRY_URL`, `.env.slave*`, `worker-slave-*`). Prefer this Frontend+Workers contract ([`opt20260811`](../../playground/Distribution/qwen3-32b+9g--x203-inf--opt20260811/)).
+
 ## Dynamo mapping
 
 | Dynamo | This stack |

@@ -70,7 +70,7 @@ erDiagram
 1. **Cluster** owns zero or more **LoadBalancers** (typically one public OpenAI-compatible entrypoint per production cluster today).
 2. **Primary path:** LoadBalancer discovers and load-balances to Servers (registry poll today; etcd later). Server has `router_id` set.
 3. **Optional shortcut:** Cluster → Server without a LoadBalancer (`router_id` null). Used for direct worker targeting (bench `/metadata` + `/metrics`, single-server smoke, or clusters that omit router). Same `cluster_id` / `host_id`; no LB entrypoint.
-4. Dual-host slave workers usually register into the master’s registry and appear as Servers behind the master’s LoadBalancer — same `cluster_id` / `router_id`. Direct-to-server remains valid when intentionally skipping router.
+4. Multi-host Workers register into the Frontend LoadBalancer registry (same `cluster_id` / `router_id`) via `ROUTER_URL` / `ADVERTISE_HOST` LAN IPs. Direct-to-server remains valid when intentionally skipping router. (Legacy Master/Slave wording is deprecated; see Dynamo Frontend+Workers compose.)
 
 ### Cluster
 
@@ -79,7 +79,7 @@ erDiagram
 | `cluster_id` | Stable id (e.g. deploy case slug or UUID). |
 | `name` | Human label. |
 | `env` | `production` \| `dev` (aligns with warehouse `deploy_tier` where applicable). |
-| `registry_url` | Today’s HTTP registry on master (`REGISTRY_URL`). |
+| `registry_url` | Today’s HTTP registry on the Frontend host (`REGISTRY_URL`). |
 | `deploy_case` | Path/name under `playground/Distribution/…`. |
 | `discovery_prefix` | Optional; future etcd prefix (see discovery-etcd). |
 
@@ -92,11 +92,11 @@ erDiagram
 | `host_id` | Stable id; often hostname / `HOST_ID` / advertise host. |
 | `hostname` | DNS or node name. |
 | `cluster_id` | Owning cluster. |
-| `role` | `master` \| `slave` \| other. |
+| `role` | `frontend` \| `worker` \| other (legacy `master` / `slave` deprecated). |
 | `platform` / `arch` | e.g. `hpcc`, `aarch64` (warehouse partition dims). |
 | `gpu_inventory` | Optional sketch: count, model, driver. |
 
-**Maps to today:** `hostname` / `BABYSITTER_HOST` / `MASTER_ADVERTISE_HOST` / `SLAVE_ADVERTISE_HOST`; warehouse `host` columns in `data.tsv`.
+**Maps to today:** `hostname` / `BABYSITTER_HOST` / `ADVERTISE_HOST`; warehouse `host` columns in `data.tsv`.
 
 ### LoadBalancer
 
@@ -104,7 +104,7 @@ erDiagram
 |-------|--------|
 | `router_id` | Stable id for this router process / endpoint. |
 | `cluster_id` | Owning cluster. |
-| `host_id` | Placement host (usually master). |
+| `host_id` | Placement host (usually the Frontend host). |
 | `url` | Public listen URL (`ROUTER_URL`, e.g. `:8000` / `:8800`). |
 | `lb_policy` | e.g. round-robin / weight (as implemented by `infini-loadbalancer`). |
 | `healthy` | From `/health` or process liveness. |

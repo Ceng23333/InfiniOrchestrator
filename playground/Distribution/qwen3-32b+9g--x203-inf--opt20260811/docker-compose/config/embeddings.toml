@@ -1,4 +1,4 @@
-# Master - Embeddings Server
+# Worker - Embeddings Server
 # Manages the embeddings/reranking server via babysitter
 
 name = "master-embeddings"

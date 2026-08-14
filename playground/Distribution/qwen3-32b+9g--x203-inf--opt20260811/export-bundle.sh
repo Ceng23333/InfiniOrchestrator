@@ -68,7 +68,8 @@ tar -C "${CASE_DIR}" -czf "${CONFIG_TAR}" \
   image/env-set.sh image/proxy-env.sh image/docker_entrypoint.sh \
   docker-compose/docker-compose.yml docker-compose/config \
   docker-compose/embeddings_server.py docker-compose/validate.sh \
-  docker-compose/.env.example docker-compose/.env.master.example \
+  docker-compose/.env.example docker-compose/.env.frontend.example \
+  docker-compose/.env.workers.example docker-compose/.env.workers-sim.example \
   regression/run_longbench.sh
 
 if [[ -f "${IMAGE_DIR}/MANIFEST" ]]; then
