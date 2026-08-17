@@ -118,7 +118,8 @@ def _filter_items(
 
 
 def _middle_truncate(tokenizer, prompt: str, max_input_tokens: int) -> tuple[str, bool]:
-    ids = tokenizer.encode(prompt, add_special_tokens=False)
+    # Match official THUDM/LongBench pred.py: tokenizer.encode(prompt) (default special tokens).
+    ids = tokenizer.encode(prompt)
     if len(ids) <= max_input_tokens:
         return prompt, False
     half = max_input_tokens // 2
@@ -424,13 +425,13 @@ async def _amain(args: argparse.Namespace) -> int:
     prompt_toks = sum(float(r.get("prompt_tokens") or 0) for r in results)
     total_toks = prompt_toks + out_toks
 
-    cot_tag = "cot" if args.enable_thinking else "no_cot"
+    official_tag = "official_cot" if args.enable_thinking else "official_0shot"
     limit_tag = "all" if not args.limit else str(args.limit)
     workload_scale = (
         f"length={args.length};difficulty={args.difficulty};length_n={length_n};"
         f"pool={pool_n};truncated_n={truncated_n};limit={limit_tag};n={n};"
         f"mc={args.max_concurrency};max_gen={args.max_gen_toks};"
-        f"max_input={args.max_input_tokens};{cot_tag};official_0shot"
+        f"max_input={args.max_input_tokens};{official_tag}"
     )
 
     summary = {

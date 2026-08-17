@@ -28,7 +28,7 @@ export BENCH_METRICS_URL="${BENCH_METRICS_URL:-${ROUTER_URL}}"
 export CASE_ID="${CASE_ID:-qwen3-32b+9g--x203-inf--opt20260811}"
 export CASE_PATH="${CASE_PATH:-${CASE_DIR}/case.toml}"
 export HARDWARE_PROFILE_REPO="${HARDWARE_PROFILE_REPO:-$(cd "${CASE_DIR}/../../../../hardware-profile" && pwd)}"
-export LONGBENCH_LENGTH="${LONGBENCH_LENGTH:-short,medium}"
+export LONGBENCH_LENGTH="${LONGBENCH_LENGTH:-all}"
 export LONGBENCH_DIFFICULTY="${LONGBENCH_DIFFICULTY:-all}"
 export ENABLE_THINKING="${ENABLE_THINKING:-0}"
 export LIMIT="${LIMIT:-0}"
@@ -54,6 +54,9 @@ fi
 
 # Optional caller override; otherwise resolve Entrypoint (babysitter) per model.
 _INFERENCE_METADATA_URL_OVERRIDE="${INFERENCE_METADATA_URL:-}"
+# Caller may set MAX_INPUT_TOKENS; otherwise apply per-model serve compile caps
+# (INFINI_COMPILE_MAX_SEQ − overhead). Official LongBench uses ~120k; we cap to serve.
+_MAX_INPUT_TOKENS_OVERRIDE="${MAX_INPUT_TOKENS:-}"
 
 resolve_metadata_url() {
   local model="$1"
@@ -74,11 +77,34 @@ resolve_metadata_url() {
   esac
 }
 
+resolve_max_input_tokens() {
+  local model="$1"
+  if [[ -n "${_MAX_INPUT_TOKENS_OVERRIDE}" ]]; then
+    printf '%s\n' "${_MAX_INPUT_TOKENS_OVERRIDE}"
+    return 0
+  fi
+  case "${model}" in
+    Qwen3-32B|Qwen3-32B-*)
+      # qwen3-32b-paged.toml INFINI_COMPILE_MAX_SEQ=40960 → leave headroom
+      printf '40832\n'
+      ;;
+    9g_8b_thinking|9g*)
+      # 9g_8b_thinking.toml INFINI_COMPILE_MAX_SEQ=65536 → leave headroom
+      printf '65408\n'
+      ;;
+    *)
+      printf '40832\n'
+      ;;
+  esac
+}
+
 run_one() {
   local model="$1"
-  local meta_url
+  local meta_url max_in
   meta_url="$(resolve_metadata_url "${model}")"
+  max_in="$(resolve_max_input_tokens "${model}")"
   export INFERENCE_METADATA_URL="${meta_url}"
+  export MAX_INPUT_TOKENS="${max_in}"
   echo "=========================================="
   echo "LongBench-v2 regression: MODEL=${model}"
   echo "  BENCH_TARGET_URL=${BENCH_TARGET_URL}"
@@ -87,6 +113,8 @@ run_one() {
   echo "  HARDWARE_PROFILE_REPO=${HARDWARE_PROFILE_REPO}"
   echo "  CASE_ID=${CASE_ID} CASE_PATH=${CASE_PATH}"
   echo "  LIMIT=${LIMIT} ENABLE_THINKING=${ENABLE_THINKING}"
+  echo "  LONGBENCH_LENGTH=${LONGBENCH_LENGTH} MAX_INPUT_TOKENS=${MAX_INPUT_TOKENS}"
+  echo "  note: MAX_INPUT_TOKENS is serve-capped (not official ~120k)"
   echo "=========================================="
   MODEL="${model}" bash "${HARNESS}"
 }

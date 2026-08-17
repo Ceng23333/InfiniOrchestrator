@@ -73,7 +73,9 @@ cp -n .env.frontend.example .env   # or keep existing .env
 # (infini-orchestrator-metax:local). Model swap ⇒ compare preference order, not vector equality.
 ./regression_embeddings_vs_baseline.sh
 
-# 4. LongBench regression (official 0-shot)
+# 4. LongBench regression (official 0-shot, length=all)
+#    MAX_INPUT_TOKENS defaults to serve compile caps (Qwen 40832 / 9g 65408),
+#    not official ~120k. Official code: harness/.../longbench_v2/third_party/LongBench
 cd ..
 ./regression/run_longbench.sh
 # LIMIT=8 ./regression/run_longbench.sh   # quick gate

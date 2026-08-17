@@ -4,14 +4,21 @@
 # Usage:
 #   BENCH_TARGET_URL=http://host:port MODEL=minicpm5 ./harness/scenarios/benchmark/cases/longbench_v2/scripts/run.sh
 #
+# Official checkout (pred.py / prompts): CASE_ROOT/third_party/LongBench
+#   (InfiniOrchestrator git submodule THUDM/LongBench). Override LONGBENCH_OFFICIAL_ROOT.
+# Dataset seed stays under bench-warehouse/third_party/LongBench-data (or HF via prefetch).
+#
 # Official-0shot defaults (THUDM/LongBench pred.py alignment):
 #   LONGBENCH_DIFFICULTY=all LONGBENCH_LENGTH=short,medium LIMIT=0
-#   MAX_GEN_TOKS=128  MAX_INPUT_TOKENS=28672  temperature=0.1 (in client)
+#   MAX_GEN_TOKS=128  MAX_INPUT_TOKENS=28672 (harness default; case regressions
+#   often raise to serve compile caps, e.g. Qwen 40832 — still below official ~120k)
 #   middle-truncate over-cap prompts; extract_answer only
 # ENABLE_THINKING=0 (default): no CoT promote — keep MAX_GEN_TOKS=128
 # ENABLE_THINKING=1: auto-promotes MAX_GEN_TOKS 128 -> 2048 (CoT path; unused for official A/Bs)
+# Native chat-template thinking stays off (enable_thinking=false) for scoring — see client.py.
 # Workload scale is printed by the client and stored in longbench_summary.json
-# (lb_pool_n, lb_truncated_n, lb_length, lb_difficulty, workload_scale).
+# (lb_pool_n, lb_truncated_n, lb_length, lb_difficulty, workload_scale=
+#  official_0shot | official_cot).
 
 set -euo pipefail
 
@@ -37,7 +44,7 @@ _bench_client_resolve_paths || exit 1
 
 # Prefer case-owned official adapter; fall back to BENCH_TOOL_ROOT monorepo client.
 HARNESS_CLIENT_PY="${CASE_ROOT}/client.py"
-LONGBENCH_OFFICIAL_ROOT="${LONGBENCH_OFFICIAL_ROOT:-${BENCH_WAREHOUSE_REPO}/third_party/LongBench}"
+LONGBENCH_OFFICIAL_ROOT="${LONGBENCH_OFFICIAL_ROOT:-${CASE_ROOT}/third_party/LongBench}"
 if [[ -f "${HARNESS_CLIENT_PY}" ]]; then
   CLIENT_PY="${HARNESS_CLIENT_PY}"
   if [[ ! -f "${LONGBENCH_OFFICIAL_ROOT}/pred.py" || ! -f "${LONGBENCH_OFFICIAL_ROOT}/prompts/0shot.txt" ]]; then

@@ -1,0 +1,4 @@
+[submodule "harness/scenarios/benchmark/cases/longbench_v2/third_party/LongBench"]
+	path = harness/scenarios/benchmark/cases/longbench_v2/third_party/LongBench
+	url = https://github.com/THUDM/LongBench.git
+	branch = main

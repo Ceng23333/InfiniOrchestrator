@@ -17,5 +17,12 @@ Prefetch (preferred):
 Resolution order when missing: `LONGBENCH_DATA_SEED` →
 `bench-warehouse/third_party/LongBench-data/data.json` → HuggingFace download.
 
-Official THUDM/LongBench checkout (pred.py / prompts) stays at
-`bench-warehouse/third_party/LongBench` via `LONGBENCH_OFFICIAL_ROOT`.
+## Official LongBench code (pred.py / prompts)
+
+Checkout lives in this case as a git submodule:
+
+`harness/scenarios/benchmark/cases/longbench_v2/third_party/LongBench`
+(THUDM/LongBench, branch `main`). Default `LONGBENCH_OFFICIAL_ROOT` → that path.
+
+Dataset (`LongBench-data`) remains under bench-warehouse; only the code submodule
+moved into InfiniOrchestrator.
