@@ -101,8 +101,8 @@ cp -n .env.frontend.example .env
 # Set IMAGE_TAG=$(cat ../image/.image_tag) in .env; confirm model paths
 ./compose.sh --profile frontend --profile workers up -d
 
-ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
-# Expect registry: master-9g_8b_thinking, master-qwen3-32b-paged, master-embeddings
+ROUTER_PORT=8800 EMBEDDING_PORT=20002 ./validate.sh localhost
+# Expect registry: master-9g_8b_thinking-server, master-qwen3-32b-paged-server, master-embeddings-server
 ```
 
 Optional quick regression (not required for cold-start gate):
@@ -137,6 +137,7 @@ LIMIT=8 ./regression/run_longbench.sh
 | Phase 1 | `infini-orchestrator-metax:metax-hpcc-ai370-runtime-base-20260813` + `phase1-smoke.sh` **SMOKE_PASS** |
 | Phase 2 | `infini-orchestrator-metax:4e0fdd7e-6ad5e1c9-20260813` |
 | Compose | frontend + workers on product `IMAGE_TAG` above |
-| `validate.sh` | **Passed: 8 / Failed: 0** (chat 9g + Qwen OK; embeddings endpoint OK; discovery name match warns — registered as `*-server`; embeddings not in `/services` until babysitter can fetch `/v1/models`) |
+| `validate.sh` | **Passed: 13 / Failed: 0** (chat 9g + Qwen OK; `master-embeddings-server` in `/services`; `/v1/models` + `/v1/embeddings` OK on product `IMAGE_TAG`) |
+
 
 Logs: `/tmp/cold-start-phase1.log`, `/tmp/cold-start-phase1-smoke.log`, `/tmp/cold-start-phase2.log`, `/tmp/cold-start-validate.log`.

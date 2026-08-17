@@ -2,7 +2,7 @@
 # Validate opt20260811 (Frontend health, InfiniLM workers, embeddings).
 #
 # Offline smoke: probes local compose endpoints only (no HuggingFace / PyPI pulls).
-# Usage (from docker-compose/): ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
+# Usage (from docker-compose/): ROUTER_PORT=8800 EMBEDDING_PORT=20002 ./validate.sh localhost
 
 set -e
 
@@ -53,7 +53,7 @@ FRONTEND_HOST_ARG="${1:-localhost}"
 
 REGISTRY_PORT="${REGISTRY_PORT:-18000}"
 ROUTER_PORT="${ROUTER_PORT:-8800}"
-EMBEDDING_PORT="${EMBEDDING_PORT:-20003}"
+EMBEDDING_PORT="${EMBEDDING_PORT:-20002}"
 WORKER_9G_BABYSITTER_PORT="${WORKER_9G_BABYSITTER_PORT:-8101}"
 WORKER_QWEN_BABYSITTER_PORT="${WORKER_QWEN_BABYSITTER_PORT:-8201}"
 REGISTRY_URL="http://${FRONTEND_HOST_ARG}:${REGISTRY_PORT}"
@@ -147,16 +147,19 @@ fi
 service_count="$(echo "${services_json}" | grep -o '"name"' | wc -l || echo "0")"
 echo "  Found ${service_count} services"
 
-expected_services=("master-9g_8b_thinking-server" "master-qwen3-32b-paged-server" "master-embeddings")
+# Prefer openai-api managed instance (master-*-server) after /v1/models probe succeeds.
+expected_services=("master-9g_8b_thinking-server" "master-qwen3-32b-paged-server" "master-embeddings-server")
 for svc in "${expected_services[@]}"; do
-  if [[ "${SKIP_EMBEDDING:-0}" == "1" && "${svc}" == "master-embeddings" ]]; then
+  if [[ "${SKIP_EMBEDDING:-0}" == "1" && "${svc}" == "master-embeddings-server" ]]; then
     echo -e "    ${YELLOW}SKIP${NC} ${svc} (SKIP_EMBEDDING=1)"
     continue
   fi
   if echo "${services_json}" | grep -q "\"name\":\"${svc}\""; then
     echo -e "    ${GREEN}OK${NC} ${svc}"
+    PASSED=$((PASSED + 1))
   else
-    echo -e "    ${YELLOW}missing${NC} ${svc}"
+    echo -e "    ${RED}missing${NC} ${svc}"
+    FAILED=$((FAILED + 1))
   fi
 done
 echo ""
@@ -179,7 +182,7 @@ if [ -n "${model_ids}" ] && [ "${model_ids}" != " " ]; then
   test_models=""
   for model_id in ${model_ids}; do
     case "${model_id}" in
-      modelperm-*) ;;
+      modelperm-*|bge-m3|minicpm-embedding|minicpm-reranker|bce-reranker-base_v1|text-embedding-*) ;;
       *) test_models="${test_models} ${model_id}" ;;
     esac
   done
@@ -208,13 +211,24 @@ echo -e "${BLUE}[5] Embedding endpoint${NC}"
 if [[ "${SKIP_EMBEDDING:-0}" == "1" ]]; then
   echo -e "  ${YELLOW}SKIP${NC} embeddings (SKIP_EMBEDDING=1)"
 else
-  embedding_registered=0
-  if echo "${services_json}" | grep -q "\"name\":\"master-embeddings\""; then
-    embedding_registered=1
+  if echo "${services_json}" | grep -q "\"name\":\"master-embeddings-server\""; then
+    echo -e "  ${GREEN}OK${NC} master-embeddings-server in /services"
+    PASSED=$((PASSED + 1))
+  elif echo "${services_json}" | grep -q "\"name\":\"master-embeddings\""; then
+    echo -e "  ${YELLOW}WARN${NC} master-embeddings present but master-embeddings-server missing"
+  else
+    echo -e "  ${YELLOW}WARN${NC} master-embeddings-server not found in /services, fallback to endpoint probe"
   fi
 
-  if [ "${embedding_registered}" -eq 0 ]; then
-    echo -e "  ${YELLOW}WARN${NC} master-embeddings not found in /services, fallback to endpoint probe"
+  echo -n "  Testing embeddings: ${EMBEDDING_URL}/v1/models ... "
+  models_resp="$(curl -s --noproxy "*" "${EMBEDDING_URL}/v1/models" 2>/dev/null || echo '{}')"
+  if echo "${models_resp}" | grep -Eq '"object"[[:space:]]*:[[:space:]]*"list"'; then
+    echo -e "${GREEN}OK${NC}"
+    PASSED=$((PASSED + 1))
+  else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+    echo "    Response: ${models_resp}"
   fi
 
   echo -n "  Testing embeddings: ${EMBEDDING_URL}/v1/embeddings ... "

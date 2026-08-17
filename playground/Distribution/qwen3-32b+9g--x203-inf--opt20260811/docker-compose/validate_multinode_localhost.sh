@@ -56,7 +56,7 @@ fi
 
 ROUTER_PORT="${ROUTER_PORT:-8800}"
 REGISTRY_PORT="${REGISTRY_PORT:-18000}"
-EMBEDDING_PORT="${EMBEDDING_PORT:-20003}"
+EMBEDDING_PORT="${EMBEDDING_PORT:-20002}"
 WORKER_QWEN_API_PORT="${WORKER_QWEN_API_PORT:-8200}"
 WORKER_9G_API_PORT="${WORKER_9G_API_PORT:-8100}"
 WORKER_QWEN_BABYSITTER_PORT="${WORKER_QWEN_BABYSITTER_PORT:-8201}"
@@ -94,9 +94,9 @@ echo ""
 
 echo -e "${BLUE}[2] Registry advertise host == LAN IP${NC}"
 services_json="$(curl -s --noproxy "*" "http://${SIM_IP}:${REGISTRY_PORT}/services" 2>/dev/null || echo '{}')"
-# Accept "host":"<SIM_IP>" anywhere in payload for expected services
-for svc in master-9g_8b_thinking master-qwen3-32b-paged master-embeddings; do
-  if [[ "${SKIP_EMBEDDING:-0}" == "1" && "${svc}" == "master-embeddings" ]]; then
+# Prefer openai-api managed names (*-server); also accept babysitter parent name.
+for svc in master-9g_8b_thinking-server master-qwen3-32b-paged-server master-embeddings-server; do
+  if [[ "${SKIP_EMBEDDING:-0}" == "1" && "${svc}" == "master-embeddings-server" ]]; then
     echo -e "  ${GREEN}SKIP${NC} ${svc} (SKIP_EMBEDDING=1)"
     continue
   fi
@@ -133,6 +133,14 @@ if docker ps --format '{{.Names}}' | grep -qx "${FRONTEND_CONTAINER}"; then
     pass "frontend → ${SIM_IP}:${WORKER_9G_API_PORT}/v1/models"
   else
     fail "frontend → ${SIM_IP}:${WORKER_9G_API_PORT}/v1/models"
+  fi
+  if [[ "${SKIP_EMBEDDING:-0}" != "1" ]]; then
+    if docker exec "${FRONTEND_CONTAINER}" curl -sf --connect-timeout 3 --noproxy "*" \
+      "http://${SIM_IP}:${EMBEDDING_PORT}/v1/models" >/dev/null 2>&1; then
+      pass "frontend → ${SIM_IP}:${EMBEDDING_PORT}/v1/models"
+    else
+      fail "frontend → ${SIM_IP}:${EMBEDDING_PORT}/v1/models"
+    fi
   fi
 else
   fail "frontend container ${FRONTEND_CONTAINER} not running"

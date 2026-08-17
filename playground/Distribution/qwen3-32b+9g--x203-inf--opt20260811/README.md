@@ -33,7 +33,7 @@ Pinned Docker ID **`1a3cbde5ff2a`**:
 mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:0.20.0-hpcc.ai3.7.0.102-torch2.8-py310-kylin2309a-arm64
 ```
 
-The tag name contains `vllm-mars` (HPCC base). That is **not** a case runtime backend — LLM serving is InfiniLM via the SVC entrypoint. Embeddings may use a separate MiniCPM/`embeddings_server.py` image (`EMBEDDING_IMAGE_TAG`), which is also not a vLLM LLM worker.
+The tag name contains `vllm-mars` (HPCC base). That is **not** a case runtime backend — LLM serving is InfiniLM via the SVC entrypoint. Embeddings run as the Flask sidecar `embeddings_server.py` on the **same product `IMAGE_TAG`** (TF5). MiniCPM is attempted with a TF5 `is_torch_fx_available` shim + numeric smoke; on NaN/import failure the server falls back to **bge-m3** (+ BCE rerank). Optional `EMBEDDING_IMAGE_TAG` is emergency rollback only. InfiniLM has no native embeddings HTTP API yet — not folded into InfiniLM here.
 
 Tag prefixes: `infini-orchestrator-metax:metax-hpcc-ai370-runtime-base-<YYYYMMDD>` (Phase 1), `infini-orchestrator-metax:<IL>-<IC>-<YYYYMMDD>` (Phase 2).
 
@@ -68,6 +68,11 @@ cp -n .env.frontend.example .env   # or keep existing .env
 # 3. Smoke
 ./validate.sh localhost
 
+# 3b. Embeddings quality A/B (optional; not part of validate.sh)
+# Live bge-m3 self-gate + ranking agreement vs ephemeral TF4 MiniCPM
+# (infini-orchestrator-metax:local). Model swap ⇒ compare preference order, not vector equality.
+./regression_embeddings_vs_baseline.sh
+
 # 4. LongBench regression (official 0-shot)
 cd ..
 ./regression/run_longbench.sh
@@ -100,13 +105,27 @@ Babysitter TOMLs (InfiniLM only):
 
 ```bash
 cd docker-compose
-ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
-# Expect registry names: master-9g_8b_thinking + master-qwen3-32b-paged + master-embeddings
-# (babysitter service name fields; compose services are worker-*)
+ROUTER_PORT=8800 EMBEDDING_PORT=20002 ./validate.sh localhost
+# Expect openai-api registry names: master-9g_8b_thinking-server + master-qwen3-32b-paged-server + master-embeddings-server
+# (compose services remain worker-*)
 
 # Fake multi-node on one host (LAN IP path):
 ./simulate_multinode_localhost.sh
 ./validate_multinode_localhost.sh
+```
+
+### Embeddings smoke vs quality A/B
+
+`validate.sh` only checks that the embeddings API responds (fast smoke). Product path on TF5 is **bge-m3** (MiniCPM skipped after NaN smoke); old TF4 image `infini-orchestrator-metax:local` served **MiniCPM**. Vectors will not match across that model swap.
+
+For ranking / preference regression (candidate self-consistency + pairwise agreement vs ephemeral MiniCPM baseline on GPU 2, default port `21002`):
+
+```bash
+cd docker-compose
+./validate.sh localhost
+./regression_embeddings_vs_baseline.sh
+# Artifacts: ../results/embeddings-regression-<ts>/{baseline.json,candidate.json,report.json}
+# Pass: bge-m3 gate OK and pairwise agreement ≥ AGREE_THRESHOLD (default 0.75)
 ```
 
 ## Services
@@ -115,7 +134,7 @@ ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
 - `etcd`: discovery plane
 - `worker-9g-8100`: 9g_8b_thinking (InfiniLM)
 - `worker-qwen-paged-8200`: Qwen3-32B paged (InfiniLM)
-- `worker-embeddings-20002`: MiniCPM embeddings/rerank
+- `worker-embeddings-20002`: Flask embeddings/rerank on `IMAGE_TAG` (bge-m3; MiniCPM optional)
 
 See [`COLD_START_GUIDE.md`](COLD_START_GUIDE.md) (fresh ITW) and [`OFFLINE_DEPLOY_GUIDE_ZH_CN.md`](OFFLINE_DEPLOY_GUIDE_ZH_CN.md) (ZH redeploy / offline).
 

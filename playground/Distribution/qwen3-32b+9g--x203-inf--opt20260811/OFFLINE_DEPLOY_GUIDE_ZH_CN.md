@@ -18,7 +18,7 @@ Docker ID 钉死 **`1a3cbde5ff2a`**：
 mx-devops-acr-cn-shanghai.cr.volces.com/pub-registry1/ai-release/hpcc/vllm-mars:0.20.0-hpcc.ai3.7.0.102-torch2.8-py310-kylin2309a-arm64
 ```
 
-标签名含 `vllm-mars`（HPCC 基座），**不是**本 case 的 LLM 运行时后端；推理走 InfiniLM SVC entrypoint。`EMBEDDING_IMAGE_TAG` 可钉 MiniCPM/TF4.51 镜像，同样不是 vLLM LLM worker。
+标签名含 `vllm-mars`（HPCC 基座），**不是**本 case 的 LLM 运行时后端；推理走 InfiniLM SVC entrypoint。Embeddings 与 9g/Qwen 共用产品 `IMAGE_TAG`（TF5 Flask sidecar）；MiniCPM 经 TF5 shim + 数值 smoke，失败则回退 bge-m3（+ BCE rerank）。`EMBEDDING_IMAGE_TAG` 仅作紧急回滚。InfiniLM 暂无原生 embed HTTP，本 case 不并入 InfiniLM。
 
 验收：`docker image inspect 1a3cbde5ff2a` 应解析到上述 tag。
 
@@ -42,7 +42,7 @@ cp .env.frontend.example .env
 ./compose.sh --profile frontend --profile workers up -d
 ```
 
-默认端口（与模板一致）：router `8800`、registry `18000`、embeddings `20003`、9g API `8102`、Qwen API `8200`。
+默认端口（与模板一致）：router `8800`、registry `18000`、embeddings API `20002` / entrypoint `20003`、9g API `8102`、Qwen API `8200`。
 
 模型路径（`.env.frontend.example`）：
 
@@ -73,10 +73,24 @@ cd docker-compose
 
 ```bash
 cd docker-compose
-ROUTER_PORT=8800 EMBEDDING_PORT=20003 ./validate.sh localhost
+ROUTER_PORT=8800 EMBEDDING_PORT=20002 ./validate.sh localhost
 ```
 
-期望 registry 服务名：`master-9g_8b_thinking`、`master-qwen3-32b-paged`、`master-embeddings`（babysitter `name` 字段；compose 服务为 `worker-*`）。
+期望 registry openai-api 服务名：`master-9g_8b_thinking-server`、`master-qwen3-32b-paged-server`、`master-embeddings-server`（compose 服务为 `worker-*`）。
+
+### Embeddings：冒烟 vs 质量 A/B
+
+`validate.sh` 只做 embeddings API 冒烟（快）。产品路径在 TF5 上为 **bge-m3**（MiniCPM 数值 smoke 失败后跳过）；旧 TF4 镜像 `infini-orchestrator-metax:local` 为 **MiniCPM**。跨模型换芯后向量不会 bit 级一致，质量回归比的是 **排序/偏好一致性**，不是向量相等。
+
+```bash
+cd docker-compose
+./validate.sh localhost
+./regression_embeddings_vs_baseline.sh
+# 产物：../results/embeddings-regression-<ts>/{baseline.json,candidate.json,report.json}
+# 通过条件：bge-m3 自洽 gate + pairwise agreement ≥ AGREE_THRESHOLD（默认 0.75）
+```
+
+脚本会临时在空闲 GPU（默认 `BASELINE_GPU=2`，宿主机端口 `BASELINE_PORT=21002`）拉起旧镜像 MiniCPM，与线上 `:20002` 候选对比后自动拆除；**不**并入 `validate.sh`。
 
 ## LongBench 回归
 

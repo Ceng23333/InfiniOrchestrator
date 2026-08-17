@@ -110,11 +110,13 @@ services:
 
   worker-embeddings-20002:
     profiles: ["workers"]
-    image: ${EMBEDDING_IMAGE_TAG}
+    # Same product IMAGE_TAG as 9g/Qwen (TF5). For emergency TF4 rollback, temporarily
+    # override this service image via a compose override file (do not require EMBEDDING_IMAGE_TAG).
+    image: ${IMAGE_TAG}
     container_name: infiniorch-worker-embeddings-20002-20260811
     restart: unless-stopped
     environment:
-      LAUNCH_COMPONENTS: babysitter
+      LAUNCH_COMPONENTS: entrypoint
       ETCD_ENDPOINTS: ${ETCD_ENDPOINTS:-http://etcd:2379}
       DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/orchestrator}
       REGISTRY_URL: ${REGISTRY_URL:-http://frontend:18000}
@@ -127,6 +129,7 @@ services:
       - ${EMBEDDING_MODEL_DIR:-./models}:/workspace/models:ro
     ports:
       - "${EMBEDDING_PORT:-20002}:20002"
+      - "${EMBEDDING_BABYSITTER_PORT:-20003}:20003"
     ipc: host
     shm_size: 100gb
     ulimits:
