@@ -603,17 +603,33 @@ fn load_longbench_v2_payload() -> Value {
     })
 }
 
-/// Sidecar status written by warehouse-sync (`/warehouse/.warehouse-sync-status`).
+/// Prefer InfiniOrchestrator host-native status, then warehouse checkout / Docker volume.
 fn read_warehouse_sync_status(repo: &Path) -> Value {
+    if let Some(value) = read_warehouse_sync_status_from_io_root() {
+        return value;
+    }
     read_warehouse_sync_status_file(&repo.join(".warehouse-sync-status"))
 }
 
 fn read_warehouse_sync_status_from_env() -> Value {
+    if let Some(value) = read_warehouse_sync_status_from_io_root() {
+        return value;
+    }
     let path = std::env::var("BENCH_WAREHOUSE_REPO")
         .ok()
         .map(|root| PathBuf::from(root).join(".warehouse-sync-status"))
         .unwrap_or_else(|| PathBuf::from("/warehouse/.warehouse-sync-status"));
     read_warehouse_sync_status_file(&path)
+}
+
+fn read_warehouse_sync_status_from_io_root() -> Option<Value> {
+    let path = resolve_io_root()?.join(".warehouse-sync-status");
+    let value = read_warehouse_sync_status_file(&path);
+    if value.is_null() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn read_warehouse_sync_status_file(path: &Path) -> Value {

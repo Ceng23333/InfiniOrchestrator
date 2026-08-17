@@ -30,6 +30,9 @@ playground/Distribution/**/cache/**
 .env.slave-sim
 .image_tag
 
+# Host-native warehouse sync runtime status (not warehouse content)
+.warehouse-sync-status
+
 # Rust / build
 rust/target/
 **/target/

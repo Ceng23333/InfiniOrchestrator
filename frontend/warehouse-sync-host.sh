@@ -29,13 +29,10 @@ write_status() {
   local status="$1"
   local sha="${2:-}"
   local message="${3:-}"
-  local pulled_at status_dir
+  local pulled_at
   pulled_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  status_dir="${ROOT}"
-  if [ -d "${LIVE}/.git" ]; then
-    status_dir="${LIVE}"
-  fi
-  cat >"${status_dir}/.warehouse-sync-status.tmp" <<EOF
+  # Keep runtime status under InfiniOrchestrator (not the warehouse checkout).
+  cat >"${IO_ROOT}/.warehouse-sync-status.tmp" <<EOF
 {
   "status": "${status}",
   "ref": "${REF}",
@@ -45,7 +42,7 @@ write_status() {
   "message": "${message}"
 }
 EOF
-  mv "${status_dir}/.warehouse-sync-status.tmp" "${status_dir}/.warehouse-sync-status" 2>/dev/null || true
+  mv "${IO_ROOT}/.warehouse-sync-status.tmp" "${IO_ROOT}/.warehouse-sync-status" 2>/dev/null || true
 }
 
 point_panel_at_live() {

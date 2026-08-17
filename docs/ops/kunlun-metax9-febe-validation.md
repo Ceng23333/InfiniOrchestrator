@@ -111,7 +111,7 @@ BENCH_WAREHOUSE_SYNC_INTERVAL_SEC=300 \
 
 The script sparse-checks out `raw/` from `bench-warehouse`, updates the sibling
 `bench-warehouse` symlink after a successful sync, and writes
-`.warehouse-sync-status`.
+`InfiniOrchestrator/.warehouse-sync-status` (gitignored runtime status).
 
 ## Validation
 

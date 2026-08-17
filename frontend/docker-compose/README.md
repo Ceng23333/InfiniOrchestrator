@@ -62,7 +62,7 @@ Warehouse is owned by Frontend fragments (`frontend.yml` sets `BENCH_WAREHOUSE_R
 - **Profile off (default):** volume may be empty → LongBench API empty/`not found` until sync runs.
 - **Profile on:** sidecar writes `bench_warehouse` (rw); Frontend reads it `:ro`. Status file `/warehouse/.warehouse-sync-status` surfaces as LongBench `source.sync`.
 - **Offline / airgap:** use host-native panel ([`run-host-panel.sh`](../run-host-panel.sh) with a sibling `bench-warehouse` clone), or enable sync with a token — not a playground host bind.
-- **Host-native FE:** use [`../warehouse-sync-host.sh`](../warehouse-sync-host.sh) instead of the compose sidecar. It sparse-checks out `raw/` into a sibling live checkout, flips the `bench-warehouse` symlink only after a successful sync, and writes `.warehouse-sync-status` for the panel API.
+- **Host-native FE:** use [`../warehouse-sync-host.sh`](../warehouse-sync-host.sh) instead of the compose sidecar. It sparse-checks out `raw/` into a sibling live checkout, flips the `bench-warehouse` symlink only after a successful sync, and writes `InfiniOrchestrator/.warehouse-sync-status` for the panel API.
 
 Prefer `http.extraHeader` bearer auth (as in `sync.sh`) over putting the token in the clone URL.
 
