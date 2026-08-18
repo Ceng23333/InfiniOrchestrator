@@ -100,7 +100,19 @@ run_stage() {
 
 echo "${RUN_ROOT}" | tee "${CASE_DIR}/regression/latest_split_metax8_fe_run.txt"
 run_stage short_medium short,medium 0
-run_stage all all 0
-run_stage all_cot all 1
 
-echo "all stages complete $(date -Is)" | tee -a "${RUN_ROOT}/DONE"
+if [[ "${RUN_LONGBENCH_ALL:-0}" == "1" ]]; then
+  run_stage all all 0
+else
+  echo "===== all skipped $(date -Is) =====" | tee -a "${RUN_ROOT}/SKIPPED_STAGES"
+  echo "reason=RUN_LONGBENCH_ALL is not 1" | tee -a "${RUN_ROOT}/SKIPPED_STAGES"
+fi
+
+if [[ "${RUN_LONGBENCH_ALL_COT:-0}" == "1" ]]; then
+  run_stage all_cot all 1
+else
+  echo "===== all_cot skipped $(date -Is) =====" | tee -a "${RUN_ROOT}/SKIPPED_STAGES"
+  echo "reason=RUN_LONGBENCH_ALL_COT is not 1" | tee -a "${RUN_ROOT}/SKIPPED_STAGES"
+fi
+
+echo "requested stages complete $(date -Is)" | tee -a "${RUN_ROOT}/DONE"

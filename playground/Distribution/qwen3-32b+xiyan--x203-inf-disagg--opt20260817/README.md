@@ -25,6 +25,8 @@ The split env templates are:
 - `docker-compose/.env.split-fe.example` for `metax-8`
 - `docker-compose/.env.split-workers.example` for `metax-9`
 
+Detailed operator runbook: [`OPS_DEPLOY_WORKFLOW.md`](OPS_DEPLOY_WORKFLOW.md).
+
 Bring up the target layout manually:
 
 ```bash
