@@ -1,0 +1,8 @@
+case_id = "qwen3-32b+xiyan--x203-inf-disagg--opt20260817"
+category = "Distribution"
+n = 4
+model_id = "qwen3-32b"
+hw_profile_id = "metax-x203-hpcc-metax9"
+hw_abbr = "x203"
+be_abbr = "inf"
+worktree = "v2026.08.12"

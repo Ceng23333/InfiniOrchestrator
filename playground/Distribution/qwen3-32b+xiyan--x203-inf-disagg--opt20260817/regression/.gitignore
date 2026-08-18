@@ -1,7 +1,3 @@
 # Local LongBench / regression run artifacts (do not commit)
-**/*.log
-**/*.pid
-**/*.prom
-**/*.txt
-**/*.json
-**/*.jsonl
+*.log
+*.pid
