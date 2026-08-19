@@ -757,11 +757,14 @@ function isInfiniLmBackend(be) {
 }
 
 function seriesKey(row) {
+  const caseId = row.case_id != null ? String(row.case_id).trim() : "";
+  if (caseId) {
+    return caseId;
+  }
   const model = row.model || row.model_id || "unknown";
   const hw = row.hw || "unknown";
   const be = row.be || "unknown";
-  const preset = row.preset || "unknown";
-  return `${model} · ${hw} · ${be} · ${preset}`;
+  return `${model} · ${hw} · ${be}`;
 }
 
 function metricLowerIsBetter(metric) {
@@ -1011,14 +1014,39 @@ function renderVizTable(rows) {
 }
 
 function worktreeCellValue(row) {
+  const be = String(row.be || "").toLowerCase();
   const worktree = row.worktree != null ? String(row.worktree).trim() : "";
-  if (worktree) {
+  const imageTag = row.image_tag != null ? String(row.image_tag).trim() : "";
+
+  if (be === "infinilm") {
     return worktree;
   }
-  if (isInfiniLmBackend(row.be)) {
+  if (be === "vllm") {
+    const formatted = formatVllmWorktree(imageTag);
+    if (formatted) {
+      return formatted;
+    }
     return worktree;
   }
-  return row.image_tag != null ? String(row.image_tag).trim() : "";
+  // MindIE and other non-inf: never fall back to image name/tag.
+  return worktree;
+}
+
+/** e.g. vllm-mars-entrypoint:0.20.0-hpcc... → "vllm 0.20.0+mars" */
+function formatVllmWorktree(imageTag) {
+  if (!imageTag) {
+    return "";
+  }
+  const name = imageTag.split("/").pop() || imageTag;
+  const match = name.match(
+    /^vllm(?:-([a-z0-9]+))?(?:-[a-z0-9]+)*:([0-9]+\.[0-9]+\.[0-9]+)/i,
+  );
+  if (!match) {
+    return "";
+  }
+  const flavor = (match[1] || "").toLowerCase();
+  const version = match[2];
+  return flavor ? `vllm ${version}+${flavor}` : `vllm ${version}`;
 }
 
 function navigateToPlaygroundCase(caseId) {
