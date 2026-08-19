@@ -225,6 +225,32 @@ h2 {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
+.viz-case-toolbar {
+  display: contents;
+}
+
+.viz-case-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.catalog-github {
+  font-size: 0.72rem;
+  margin-left: 6px;
+}
+
+button.case-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 .toolbar-actions {
   display: flex;
   flex-direction: column;

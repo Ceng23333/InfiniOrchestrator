@@ -2,7 +2,7 @@
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
@@ -28,23 +28,7 @@ struct PlaygroundCaseToml {
 use crate::models::aggregator::ModelAggregator;
 use crate::load_balancer::load_balancer::LoadBalancer;
 
-const LONGBENCH_METRICS: &[&str] = &[
-    "total_tok_per_s",
-    "output_tok_per_s",
-    "req_per_s",
-    "lb_em",
-    "ttft_p50_ms",
-    "ttft_p99_ms",
-    "ttft_mean_ms",
-    "tpot_p50_ms",
-    "tpot_mean_ms",
-    "itl_p50_ms",
-    "itl_p99_ms",
-    "itl_mean_ms",
-    "srv_ttft_p50_ms_mean",
-    "srv_e2e_p50_ms_mean",
-    "srv_itl_p50_ms_mean",
-];
+const HARNESS_ASSET_ALLOWLIST: &[&str] = &["viz.js", "viz.css", "manifest.yaml"];
 
 const INDEX_HTML: &str = include_str!("../../panel/index.html");
 const APP_JS: &str = include_str!("../../panel/app.js");
@@ -189,7 +173,7 @@ pub async fn panel_snapshot_handler(
         "source_status": {
             "dashboard": "live router endpoints",
             "harness": "GET /panel/api/cases/harness",
-            "visualization": "GET /panel/api/harness/longbench_v2",
+            "visualization": "GET /panel/api/harness/{suite_id}",
             "playground": "GET /panel/api/cases/playground"
         }
     }))
@@ -205,9 +189,29 @@ pub async fn panel_cases_harness_handler() -> Json<Value> {
     Json(load_harness_cases_payload())
 }
 
-/// LongBenchV2 harness rows from bench-warehouse `raw/*/longbench_v2.tsv`.
-pub async fn panel_longbench_v2_handler() -> Json<Value> {
-    Json(load_longbench_v2_payload())
+/// Harness viz rows from bench-warehouse `raw/*/{suite_prefix}.tsv`.
+pub async fn panel_harness_handler(AxumPath(suite_id): AxumPath<String>) -> Response {
+    match load_harness_payload(&suite_id) {
+        Ok(payload) => Json(payload).into_response(),
+        Err(status) => (status, format!("harness viz unavailable for {suite_id}")).into_response(),
+    }
+}
+
+/// Back-compat alias for LongBench v2 bookmarks.
+pub async fn panel_longbench_v2_handler() -> Response {
+    panel_harness_handler(AxumPath("longbench_v2".to_string())).await
+}
+
+/// Runtime-served harness viz plugin assets (`panel/viz.js`, etc.).
+pub async fn panel_harness_assets_handler(
+    AxumPath((suite_id, file)): AxumPath<(String, String)>,
+) -> Response {
+    match read_harness_asset(&suite_id, &file) {
+        Ok((body, content_type)) => {
+            ([(header::CONTENT_TYPE, content_type)], body).into_response()
+        }
+        Err(status) => (status, "asset not found").into_response(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -330,6 +334,7 @@ fn load_playground_cases_payload() -> Value {
         });
     };
 
+    let github_tree_base = resolve_io_github_tree_base(&root);
     let playground = root.join("playground");
     let mut cases = Vec::new();
     for category in ["Standalone", "Distribution"] {
@@ -356,6 +361,7 @@ fn load_playground_cases_payload() -> Value {
             };
             let case_id = entry.file_name().to_string_lossy().to_string();
             let rel = format!("playground/{category}/{case_id}/case.toml");
+            let github_dir_url = format!("{github_tree_base}/playground/{category}/{case_id}");
             cases.push(json!({
                 "kind": "playground",
                 "case_id": parsed.case_id,
@@ -367,6 +373,7 @@ fn load_playground_cases_payload() -> Value {
                 "be_abbr": parsed.be_abbr,
                 "worktree": parsed.worktree,
                 "case_path": rel,
+                "github_dir_url": github_dir_url,
                 "has_readme": case_dir.join("README.md").is_file(),
                 "has_compose": case_dir.join("docker-compose").is_dir()
                     || case_dir.join("docker-compose.yml").is_file()
@@ -387,6 +394,7 @@ fn load_playground_cases_payload() -> Value {
         "cases": cases,
         "source": {
             "root": root.display().to_string(),
+            "github_tree_base": github_tree_base,
             "status": "ok"
         }
     })
@@ -433,6 +441,7 @@ fn load_harness_cases_payload() -> Value {
         let suite_id = entry.file_name().to_string_lossy().to_string();
         let runnable = suite_dir.join("scripts/run.sh").is_file();
         let rel = format!("harness/scenarios/benchmark/cases/{suite_id}");
+        let viz = load_harness_viz_metadata(&suite_dir, &suite_id);
         cases.push(json!({
             "kind": "harness",
             "suite_id": suite_id,
@@ -442,6 +451,7 @@ fn load_harness_cases_payload() -> Value {
             "metric_columns": parsed.metric_columns,
             "case_path": rel,
             "runnable": runnable,
+            "viz": viz,
         }));
     }
 
@@ -526,22 +536,57 @@ fn resolve_io_root() -> Option<PathBuf> {
     })
 }
 
-fn load_longbench_v2_payload() -> Value {
+fn load_harness_payload(suite_id: &str) -> Result<Value, StatusCode> {
+    let Some(root) = resolve_io_root() else {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let suite_dir = root.join("harness/scenarios/benchmark/cases").join(suite_id);
+    if !suite_dir.is_dir() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let manifest = load_panel_manifest(&suite_dir);
+    if !manifest.has_viz {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    if !suite_dir.join("panel/viz.js").is_file() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let schema_path = suite_dir.join("schema/warehouse.yaml");
+    let Ok(schema_content) = fs::read_to_string(&schema_path) else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+    let parsed = parse_warehouse_yaml(&schema_content);
+    let suite_prefix = if parsed.suite_prefix.is_empty() {
+        suite_id.to_string()
+    } else {
+        parsed.suite_prefix.clone()
+    };
+    let metrics: Vec<&str> = if parsed.metric_columns.is_empty() {
+        vec!["total_tok_per_s"]
+    } else {
+        parsed.metric_columns.iter().map(String::as_str).collect()
+    };
+    let default_metric = if manifest.default_metric.is_empty() {
+        metrics
+            .iter()
+            .find(|m| **m == "total_tok_per_s")
+            .copied()
+            .or_else(|| metrics.first().copied())
+            .unwrap_or("total_tok_per_s")
+            .to_string()
+    } else {
+        manifest.default_metric.clone()
+    };
+
     let Some(repo) = resolve_warehouse_root() else {
         let sync = read_warehouse_sync_status_from_env();
-        return json!({
+        return Ok(json!({
             "category": "harness",
-            "harness_id": "longbench_v2",
-            "default_metric": "total_tok_per_s",
-            "metrics": LONGBENCH_METRICS,
-            "filter_options": {
-                "models": [],
-                "hardware": [],
-                "backends": [],
-                "dates": [],
-                "presets": [],
-                "deploy_modes": []
-            },
+            "harness_id": suite_id,
+            "default_metric": default_metric,
+            "metrics": metrics,
+            "filter_options": empty_filter_options(),
             "rows": [],
             "source": {
                 "repo": Value::Null,
@@ -550,47 +595,41 @@ fn load_longbench_v2_payload() -> Value {
                 "status": "BENCH_WAREHOUSE_REPO not found (set env or place sibling bench-warehouse)",
                 "sync": sync
             }
-        });
+        }));
     };
 
     let github_blob_base = resolve_warehouse_github_blob_base(&repo);
     let sync = read_warehouse_sync_status(&repo);
-    let (rows, files) = load_longbench_v2_rows(&repo);
+    let tsv_name = format!("{suite_prefix}.tsv");
+    let (rows, files) = load_harness_rows(&repo, &tsv_name);
     if rows.is_empty() {
-        return json!({
+        return Ok(json!({
             "category": "harness",
-            "harness_id": "longbench_v2",
-            "default_metric": "total_tok_per_s",
-            "metrics": LONGBENCH_METRICS,
-            "filter_options": {
-                "models": [],
-                "hardware": [],
-                "backends": [],
-                "dates": [],
-                "presets": [],
-                "deploy_modes": []
-            },
+            "harness_id": suite_id,
+            "default_metric": default_metric,
+            "metrics": metrics,
+            "filter_options": empty_filter_options(),
             "rows": [],
             "source": {
                 "repo": repo.display().to_string(),
                 "files": files,
                 "github_blob_base": github_blob_base,
                 "status": if files.is_empty() {
-                    "no raw/*/longbench_v2.tsv files found"
+                    format!("no raw/*/{tsv_name} files found")
                 } else {
-                    "tsv files found but no data rows"
+                    "tsv files found but no data rows".to_string()
                 },
                 "sync": sync
             }
-        });
+        }));
     }
 
     let filter_options = build_filter_options(&rows);
-    json!({
+    Ok(json!({
         "category": "harness",
-        "harness_id": "longbench_v2",
-        "default_metric": "total_tok_per_s",
-        "metrics": LONGBENCH_METRICS,
+        "harness_id": suite_id,
+        "default_metric": default_metric,
+        "metrics": metrics,
         "filter_options": filter_options,
         "rows": rows,
         "source": {
@@ -600,7 +639,118 @@ fn load_longbench_v2_payload() -> Value {
             "status": "ok",
             "sync": sync
         }
+    }))
+}
+
+#[derive(Debug, Default)]
+struct PanelManifest {
+    has_viz: bool,
+    default_metric: String,
+    title: String,
+}
+
+fn load_panel_manifest(suite_dir: &Path) -> PanelManifest {
+    let path = suite_dir.join("panel/manifest.yaml");
+    let Ok(content) = fs::read_to_string(&path) else {
+        return PanelManifest::default();
+    };
+    parse_panel_manifest(&content)
+}
+
+fn parse_panel_manifest(content: &str) -> PanelManifest {
+    let mut manifest = PanelManifest::default();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("has_viz:") {
+            manifest.has_viz = rest.trim().eq_ignore_ascii_case("true");
+        } else if let Some(rest) = line.strip_prefix("default_metric:") {
+            manifest.default_metric = rest.trim().to_string();
+        } else if let Some(rest) = line.strip_prefix("title:") {
+            manifest.title = rest.trim().to_string();
+        }
+    }
+    manifest
+}
+
+fn load_harness_viz_metadata(suite_dir: &Path, suite_id: &str) -> Value {
+    let manifest = load_panel_manifest(suite_dir);
+    let viz_js = suite_dir.join("panel/viz.js");
+    if !manifest.has_viz || !viz_js.is_file() {
+        return json!({ "enabled": false });
+    }
+    json!({
+        "enabled": true,
+        "default_metric": if manifest.default_metric.is_empty() {
+            Value::Null
+        } else {
+            Value::String(manifest.default_metric.clone())
+        },
+        "title": if manifest.title.is_empty() {
+            Value::Null
+        } else {
+            Value::String(manifest.title.clone())
+        },
+        "assets": format!("/panel/harness-assets/{suite_id}/")
     })
+}
+
+fn empty_filter_options() -> Value {
+    json!({
+        "models": [],
+        "hardware": [],
+        "backends": [],
+        "dates": [],
+        "deploy_modes": []
+    })
+}
+
+fn read_harness_asset(suite_id: &str, file: &str) -> Result<(String, &'static str), StatusCode> {
+    if !HARNESS_ASSET_ALLOWLIST.contains(&file) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    if suite_id.contains("..") || suite_id.contains('/') || suite_id.contains('\\') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let Some(root) = resolve_io_root() else {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let asset_path = root
+        .join("harness/scenarios/benchmark/cases")
+        .join(suite_id)
+        .join("panel")
+        .join(file);
+    if !asset_path.is_file() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let content = fs::read_to_string(&asset_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let content_type = match file {
+        "viz.js" => "application/javascript; charset=utf-8",
+        "viz.css" => "text/css; charset=utf-8",
+        "manifest.yaml" => "text/yaml; charset=utf-8",
+        _ => "text/plain; charset=utf-8",
+    };
+    Ok((content, content_type))
+}
+
+fn resolve_io_github_tree_base(root: &Path) -> String {
+    if let Ok(explicit) = std::env::var("IO_GITHUB_TREE_BASE") {
+        let trimmed = explicit.trim().trim_end_matches('/').to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+    let repo_url = read_git_https_remote(root)
+        .unwrap_or_else(|| "https://github.com/Ceng23333/InfiniOrchestrator".to_string());
+    let git_ref = std::env::var("IO_GITHUB_REF")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| read_git_current_branch(root))
+        .unwrap_or_else(|| "main".to_string());
+    format!("{repo_url}/tree/{git_ref}")
 }
 
 /// Prefer InfiniOrchestrator host-native status, then warehouse checkout / Docker volume.
@@ -735,7 +885,7 @@ fn resolve_warehouse_root() -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.join("raw").is_dir())
 }
 
-fn load_longbench_v2_rows(repo: &Path) -> (Vec<Value>, Vec<String>) {
+fn load_harness_rows(repo: &Path, tsv_name: &str) -> (Vec<Value>, Vec<String>) {
     let raw_dir = repo.join("raw");
     let mut files = Vec::new();
     let mut rows = Vec::new();
@@ -752,12 +902,12 @@ fn load_longbench_v2_rows(repo: &Path) -> (Vec<Value>, Vec<String>) {
     date_dirs.sort_by_key(|entry| entry.file_name());
 
     for date_entry in date_dirs {
-        let tsv_path = date_entry.path().join("longbench_v2.tsv");
+        let tsv_path = date_entry.path().join(tsv_name);
         if !tsv_path.is_file() {
             continue;
         }
         let date_name = date_entry.file_name().to_string_lossy().to_string();
-        let rel = format!("raw/{date_name}/longbench_v2.tsv");
+        let rel = format!("raw/{date_name}/{tsv_name}");
         files.push(rel.clone());
 
         let Ok(content) = fs::read_to_string(&tsv_path) else {
@@ -784,7 +934,6 @@ fn load_longbench_v2_rows(repo: &Path) -> (Vec<Value>, Vec<String>) {
             let model = first_nonempty_map(&map, &["model", "model_id"]);
             let hw = first_nonempty_map(&map, &["hw_abbr", "hw_profile_id"]);
             let be = normalize_backend(first_nonempty_map(&map, &["be_abbr", "frontend"]));
-            let preset = derive_longbench_preset(&map);
             let date = first_nonempty_map(&map, &["date"]).unwrap_or_else(|| date_name.clone());
             let bench_id = first_nonempty_map(&map, &["bench_id"]).unwrap_or_default();
             let server_id = first_nonempty_map(&map, &["server_id"]).unwrap_or_default();
@@ -809,7 +958,6 @@ fn load_longbench_v2_rows(repo: &Path) -> (Vec<Value>, Vec<String>) {
             if let Some(deploy_mode) = first_nonempty_map(&map, &["case_category"]) {
                 map.insert("deploy_mode".to_string(), Value::String(deploy_mode));
             }
-            map.insert("preset".to_string(), Value::String(preset));
             map.insert("date".to_string(), Value::String(date));
             map.insert("row_id".to_string(), Value::String(row_id));
             map.insert("tsv_path".to_string(), Value::String(rel.clone()));
@@ -840,7 +988,6 @@ fn build_filter_options(rows: &[Value]) -> Value {
     let mut hardware = BTreeSet::new();
     let mut backends = BTreeSet::new();
     let mut dates = BTreeSet::new();
-    let mut presets = BTreeSet::new();
     let mut deploy_modes = BTreeSet::new();
 
     for row in rows {
@@ -856,9 +1003,6 @@ fn build_filter_options(rows: &[Value]) -> Value {
         if let Some(value) = nonempty_row(row, "date") {
             dates.insert(value);
         }
-        if let Some(value) = nonempty_row(row, "preset") {
-            presets.insert(value);
-        }
         if let Some(value) = nonempty_row(row, "deploy_mode") {
             deploy_modes.insert(value);
         }
@@ -869,29 +1013,8 @@ fn build_filter_options(rows: &[Value]) -> Value {
         "hardware": hardware.into_iter().collect::<Vec<_>>(),
         "backends": backends.into_iter().collect::<Vec<_>>(),
         "dates": dates.into_iter().collect::<Vec<_>>(),
-        "presets": presets.into_iter().collect::<Vec<_>>(),
         "deploy_modes": deploy_modes.into_iter().collect::<Vec<_>>(),
     })
-}
-
-fn derive_longbench_preset(map: &Map<String, Value>) -> String {
-    let length = first_nonempty_map(map, &["lb_length"])
-        .unwrap_or_else(|| "unknown".to_string())
-        .replace(',', "-");
-    let difficulty = first_nonempty_map(map, &["lb_difficulty"]).unwrap_or_else(|| "all".to_string());
-    let cot = {
-        let scale = first_nonempty_map(map, &["workload_scale"]).unwrap_or_default();
-        let thinking = first_nonempty_map(map, &["bench_args"]).unwrap_or_default();
-        if scale.split(';').any(|part| part == "cot")
-            || thinking.contains("\"enable_thinking\":\"true\"")
-            || thinking.contains("\"enable_thinking\": \"true\"")
-        {
-            "cot"
-        } else {
-            "nocot"
-        }
-    };
-    format!("{length}_{difficulty}_{cot}")
 }
 
 fn normalize_backend(value: Option<String>) -> Option<String> {
@@ -1012,4 +1135,36 @@ fn html_escape(value: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_panel_manifest_reads_viz_flags() {
+        let manifest = parse_panel_manifest(
+            "has_viz: true\ndefault_metric: total_tok_per_s\ntitle: LongBench v2\n",
+        );
+        assert!(manifest.has_viz);
+        assert_eq!(manifest.default_metric, "total_tok_per_s");
+        assert_eq!(manifest.title, "LongBench v2");
+    }
+
+    #[test]
+    fn read_harness_asset_rejects_traversal_suite_id() {
+        let err = read_harness_asset("../secrets", "viz.js").unwrap_err();
+        assert_eq!(err, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn read_harness_asset_rejects_unknown_file() {
+        let err = read_harness_asset("longbench_v2", "evil.sh").unwrap_err();
+        assert_eq!(err, StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn sanitize_raw_rel_path_rejects_parent_segments() {
+        assert!(sanitize_raw_rel_path("raw/../secrets.tsv").is_none());
+    }
 }

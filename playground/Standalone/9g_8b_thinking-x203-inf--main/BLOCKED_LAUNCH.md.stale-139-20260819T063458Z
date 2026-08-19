@@ -1,0 +1,8 @@
+# BLOCKED_LAUNCH --main
+
+Infer service exits with status 139 (SIGSEGV) on first real `/v1/chat/completions`.
+`/v1/models` stays healthy until the first chat POST. Documented for the existing
+9g worktree campaign: skip `--main` and continue with `--refactor` / `--deploy`.
+
+Do not remove this file for the Push Repin Campaign (`run_longbench_v2_worktree_9g.sh`
+full QUALIFIERS) unless `--main` is intentionally being revalidated outside that plan.

@@ -1,0 +1,3 @@
+has_viz: true
+default_metric: total_tok_per_s
+title: LongBench v2

@@ -1,3 +1,6 @@
+// Harness viz plugins register on window.HarnessVizPlugins[suiteId] from cases/<id>/panel/viz.js.
+// Contract: enrichRows, mountToolbar, filterRow, tableColumns, numericColumns, statusLine, defaultPluginFilters.
+
 const state = {
   snapshot: null,
   harness: null,
@@ -27,17 +30,18 @@ const state = {
   },
   viz: {
     category: "harness",
-    harness: "longbench_v2",
+    harness: "",
     model: "all",
     deployMode: "all",
     hardware: "all",
     backend: "all",
     dateFrom: "",
     dateTo: "",
-    preset: "all",
-    emMin: 0,
-    metric: "total_tok_per_s",
+    metric: "",
   },
+  vizPlugin: null,
+  vizPluginFilters: {},
+  vizPluginScriptEl: null,
   vizSort: { key: "date", dir: "desc" },
 };
 
@@ -51,22 +55,8 @@ const SERIES_COLORS = [
   "#0f4e82",
 ];
 
-const VIZ_BASE_COLUMNS = [
-  "date",
-  "deploy_mode",
-  "model",
-  "hw",
-  "be",
-  "worktree",
-  "preset",
-  "lb_em",
-  "total_tok_per_s",
-];
-
 const ITW_GITHUB_TREE_BASE =
   "https://github.com/Ceng23333/InfiniTensorWorktree/tree";
-
-const VIZ_NUMERIC_COLUMNS = new Set(["lb_em", "total_tok_per_s"]);
 
 const els = {};
 
@@ -79,7 +69,6 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSnapshot();
   loadPlaygroundCases();
   loadHarnessCases();
-  loadHarnessData();
   window.setInterval(() => {
     if (state.autoRefresh) {
       loadSnapshot({ quiet: true });
@@ -140,8 +129,7 @@ function bindElements() {
     vizBackend: document.querySelector("#viz-backend"),
     vizDateFrom: document.querySelector("#viz-date-from"),
     vizDateTo: document.querySelector("#viz-date-to"),
-    vizPreset: document.querySelector("#viz-preset"),
-    vizEmMin: document.querySelector("#viz-em-min"),
+    vizCaseToolbar: document.querySelector("#viz-case-toolbar"),
     vizMetric: document.querySelector("#viz-metric"),
     vizSourceStatus: document.querySelector("#viz-source-status"),
     vizChart: document.querySelector("#viz-chart"),
@@ -179,10 +167,12 @@ function bindEvents() {
     [els.vizDeployMode, "deployMode"],
     [els.vizHardware, "hardware"],
     [els.vizBackend, "backend"],
-    [els.vizPreset, "preset"],
     [els.vizMetric, "metric"],
   ];
   vizControls.forEach(([el, key]) => {
+    if (!el) {
+      return;
+    }
     el.addEventListener("change", (event) => {
       state.viz[key] = event.target.value;
       if (key === "harness") {
@@ -198,20 +188,6 @@ function bindEvents() {
   });
   els.vizDateTo.addEventListener("change", (event) => {
     state.viz.dateTo = event.target.value;
-    renderVisualization();
-  });
-  els.vizEmMin.addEventListener("change", (event) => {
-    state.viz.emMin = Number(event.target.value);
-    if (!Number.isFinite(state.viz.emMin)) {
-      state.viz.emMin = 0;
-    }
-    renderVisualization();
-  });
-  els.vizEmMin.addEventListener("input", (event) => {
-    state.viz.emMin = Number(event.target.value);
-    if (!Number.isFinite(state.viz.emMin)) {
-      state.viz.emMin = 0;
-    }
     renderVisualization();
   });
 
@@ -314,8 +290,16 @@ function setActiveTab(tabName, options = {}) {
       history.replaceState(null, "", nextHash);
     }
   }
-  if (nextTab === "visualization" && !state.harness) {
-    loadHarnessData();
+  if (nextTab === "visualization") {
+    if (!state.harnessCases) {
+      loadHarnessCases().then(() => {
+        if (state.viz.harness) {
+          loadHarnessData();
+        }
+      });
+    } else if (state.viz.harness && !state.harness) {
+      loadHarnessData();
+    }
   }
   if (nextTab === "playground" && !state.playgroundCases) {
     loadPlaygroundCases();
@@ -379,6 +363,7 @@ async function loadHarnessCases(options = {}) {
     }
     state.harnessCases = await response.json();
     hydrateHarnessControls();
+    hydrateVizHarnessSelect();
     renderHarnessBrowser();
   } catch (error) {
     console.error(error);
@@ -390,8 +375,122 @@ async function loadHarnessCases(options = {}) {
   }
 }
 
+function getVizEnabledHarnesses() {
+  return (state.harnessCases?.cases || []).filter((item) => item.viz?.enabled);
+}
+
+function hydrateVizHarnessSelect() {
+  if (!els.vizHarness) {
+    return;
+  }
+  const harnesses = getVizEnabledHarnesses();
+  const options = harnesses.map((item) => [item.suite_id, item.viz?.title || item.suite_id]);
+  if (!options.length) {
+    setOptions(els.vizHarness, [["", "No viz-enabled harness"]]);
+    state.viz.harness = "";
+    return;
+  }
+  if (!options.some(([value]) => value === state.viz.harness)) {
+    state.viz.harness = options[0][0];
+  }
+  setOptions(els.vizHarness, options);
+  els.vizHarness.value = state.viz.harness;
+}
+
+function getVizPlugin() {
+  const suiteId = state.viz.harness;
+  if (!suiteId) {
+    return null;
+  }
+  return window.HarnessVizPlugins?.[suiteId] || state.vizPlugin;
+}
+
+function resetVizPluginFilters(plugin) {
+  if (plugin?.defaultPluginFilters) {
+    state.vizPluginFilters = { ...plugin.defaultPluginFilters() };
+  } else {
+    state.vizPluginFilters = {};
+  }
+}
+
+function unloadVizPlugin() {
+  if (els.vizCaseToolbar) {
+    els.vizCaseToolbar.replaceChildren();
+  }
+  if (state.vizPluginScriptEl) {
+    state.vizPluginScriptEl.remove();
+    state.vizPluginScriptEl = null;
+  }
+  state.vizPlugin = null;
+}
+
+async function loadVizPlugin(suiteId) {
+  unloadVizPlugin();
+  if (!suiteId) {
+    return null;
+  }
+  const harnessCase = (state.harnessCases?.cases || []).find((item) => item.suite_id === suiteId);
+  const assetsBase = (harnessCase?.viz?.assets || `/panel/harness-assets/${suiteId}/`).replace(/\/+$/, "");
+  const scriptUrl = `${assetsBase}/viz.js`;
+
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = scriptUrl;
+    script.async = true;
+    script.dataset.harnessViz = suiteId;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`failed to load viz plugin for ${suiteId}`));
+    document.head.append(script);
+    state.vizPluginScriptEl = script;
+  });
+
+  const plugin = window.HarnessVizPlugins?.[suiteId] || null;
+  state.vizPlugin = plugin;
+  resetVizPluginFilters(plugin);
+  return plugin;
+}
+
+function enrichHarnessRows(rows) {
+  const plugin = getVizPlugin();
+  if (plugin?.enrichRows) {
+    return plugin.enrichRows(rows);
+  }
+  return rows;
+}
+
+function mountVizPluginToolbar() {
+  if (!els.vizCaseToolbar) {
+    return;
+  }
+  els.vizCaseToolbar.replaceChildren();
+  const plugin = getVizPlugin();
+  if (!plugin?.mountToolbar) {
+    return;
+  }
+  plugin.mountToolbar(els.vizCaseToolbar, {
+    state,
+    getFilters: () => ({ ...state.viz }),
+    getPluginFilters: () => ({ ...state.vizPluginFilters }),
+    setPluginFilter: (key, value) => {
+      state.vizPluginFilters[key] = value;
+    },
+    rerender: () => renderVisualization(),
+  });
+}
+
 async function loadHarnessData(options = {}) {
   if (!els.vizChart) {
+    return;
+  }
+  const suiteId = state.viz.harness;
+  if (!suiteId) {
+    els.vizChart.className = "viz-chart empty-state";
+    els.vizChart.textContent = "Select a harness with visualization enabled.";
+    els.vizSourceStatus.textContent = "";
+    els.vizLegend.replaceChildren();
+    els.vizTable.className = "empty-state";
+    els.vizTable.textContent = "Select a harness.";
+    els.vizRowCount.textContent = "";
     return;
   }
   if (!options.quiet) {
@@ -400,18 +499,22 @@ async function loadHarnessData(options = {}) {
   }
 
   try {
-    const response = await fetch("/panel/api/harness/longbench_v2", {
+    await loadVizPlugin(suiteId);
+    const response = await fetch(`/panel/api/harness/${encodeURIComponent(suiteId)}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    state.harness = await response.json();
-    if (!state.viz.metric) {
-      state.viz.metric = state.harness.default_metric || "total_tok_per_s";
-    }
+    const payload = await response.json();
+    payload.rows = enrichHarnessRows(payload.rows || []);
+    state.harness = payload;
+    const plugin = getVizPlugin();
+    state.viz.metric =
+      plugin?.defaultMetric || payload.default_metric || payload.metrics?.[0] || "";
     hydrateVizControls();
+    mountVizPluginToolbar();
     renderVisualization();
   } catch (error) {
     console.error(error);
@@ -471,10 +574,6 @@ function hydrateVizControls() {
     ["all", "All"],
     ...(options.backends || []).map((value) => [value, value]),
   ]);
-  setOptions(els.vizPreset, [
-    ["all", "All"],
-    ...(options.presets || []).map((value) => [value, value]),
-  ]);
   const metrics = harness.metrics || ["total_tok_per_s"];
   setOptions(
     els.vizMetric,
@@ -490,10 +589,8 @@ function hydrateVizControls() {
   els.vizDeployMode.value = state.viz.deployMode;
   els.vizHardware.value = state.viz.hardware;
   els.vizBackend.value = state.viz.backend;
-  els.vizPreset.value = state.viz.preset;
   els.vizDateFrom.value = state.viz.dateFrom;
   els.vizDateTo.value = state.viz.dateTo;
-  els.vizEmMin.value = String(state.viz.emMin);
 }
 
 function getFilteredHarnessRows() {
@@ -501,18 +598,12 @@ function getFilteredHarnessRows() {
   if (!harness) {
     return [];
   }
-  const emMin = Number.isFinite(state.viz.emMin) ? state.viz.emMin : 0;
+  const plugin = getVizPlugin();
   return (harness.rows || []).filter((row) => {
-    const status = String(row.status || "").toUpperCase();
-    const em = Number(row.lb_em);
-    if (status !== "PASS" || !Number.isFinite(em) || !(em > emMin)) {
-      return false;
-    }
     const model = row.model || row.model_id || "";
     const deployMode = row.deploy_mode || row.case_category || "";
     const hardware = row.hw || "";
     const backend = row.be || "";
-    const preset = row.preset || "";
     const date = row.date || "";
     const modelMatch = state.viz.model === "all" || model === state.viz.model;
     const deployModeMatch =
@@ -521,18 +612,24 @@ function getFilteredHarnessRows() {
       state.viz.hardware === "all" || hardware === state.viz.hardware;
     const backendMatch =
       state.viz.backend === "all" || backend === state.viz.backend;
-    const presetMatch = state.viz.preset === "all" || preset === state.viz.preset;
     const fromMatch = !state.viz.dateFrom || date >= state.viz.dateFrom;
     const toMatch = !state.viz.dateTo || date <= state.viz.dateTo;
-    return (
-      modelMatch &&
-      deployModeMatch &&
-      hardwareMatch &&
-      backendMatch &&
-      presetMatch &&
-      fromMatch &&
-      toMatch
-    );
+    if (
+      !(
+        modelMatch &&
+        deployModeMatch &&
+        hardwareMatch &&
+        backendMatch &&
+        fromMatch &&
+        toMatch
+      )
+    ) {
+      return false;
+    }
+    if (plugin?.filterRow) {
+      return plugin.filterRow(row, state.viz, state.vizPluginFilters);
+    }
+    return true;
   });
 }
 
@@ -546,7 +643,6 @@ function renderVisualization() {
   }
 
   const source = harness.source || {};
-  const emMin = Number.isFinite(state.viz.emMin) ? state.viz.emMin : 0;
   const sourceLine =
     source.status === "ok"
       ? `Source: ${source.repo || ""} (${(source.files || []).length} files)`
@@ -568,7 +664,11 @@ function renderVisualization() {
       syncPart = ` · sync ${bits.join(" ")}`;
     }
   }
-  els.vizSourceStatus.textContent = `${sourceLine}${syncPart} · PASS · lb_em > ${emMin}`;
+  const plugin = getVizPlugin();
+  const pluginStatus = plugin?.statusLine
+    ? plugin.statusLine({ filters: state.viz, pluginFilters: state.vizPluginFilters })
+    : "";
+  els.vizSourceStatus.textContent = `${sourceLine}${syncPart}${pluginStatus}`;
 
   const rows = getFilteredHarnessRows();
   els.vizRowCount.textContent = `${rows.length} rows`;
@@ -577,10 +677,17 @@ function renderVisualization() {
 }
 
 function isVizNumericColumn(key) {
-  if (VIZ_NUMERIC_COLUMNS.has(key)) {
-    return true;
-  }
+  const plugin = getVizPlugin();
   const metric = state.viz.metric || "";
+  if (plugin?.numericColumns) {
+    const cols = plugin.numericColumns(metric);
+    if (cols instanceof Set) {
+      return cols.has(key);
+    }
+    if (Array.isArray(cols)) {
+      return cols.includes(key);
+    }
+  }
   if (key && key === metric) {
     return true;
   }
@@ -794,7 +901,10 @@ function renderVizTable(rows) {
   }
 
   const metric = state.viz.metric || "total_tok_per_s";
-  const columns = [...VIZ_BASE_COLUMNS];
+  const plugin = getVizPlugin();
+  const columns = plugin?.tableColumns
+    ? [...plugin.tableColumns(metric)]
+    : ["date", "model", "hw", "be", "worktree"];
   if (!columns.includes(metric)) {
     columns.push(metric);
   }
@@ -802,6 +912,9 @@ function renderVizTable(rows) {
 
   const sortKey = state.vizSort?.key || "date";
   const sortDir = state.vizSort?.dir === "asc" ? "asc" : "desc";
+  const playgroundCaseIds = new Set(
+    (state.playgroundCases?.cases || []).map((item) => item.case_id),
+  );
 
   const wrap = document.createElement("div");
   wrap.className = "table-wrap";
@@ -856,8 +969,20 @@ function renderVizTable(rows) {
         } else {
           td.textContent = label;
         }
+      } else if (col === "case_id") {
+        const caseId = row.case_id != null ? String(row.case_id).trim() : "";
+        if (caseId && playgroundCaseIds.has(caseId)) {
+          const link = document.createElement("button");
+          link.type = "button";
+          link.className = "source-link case-link";
+          link.textContent = caseId;
+          link.addEventListener("click", () => navigateToPlaygroundCase(caseId));
+          td.append(link);
+        } else {
+          td.textContent = caseId;
+        }
       } else if (col === "worktree") {
-        const tag = row.worktree != null ? String(row.worktree) : "";
+        const tag = worktreeCellValue(row);
         if (tag && isInfiniLmBackend(row.be)) {
           const link = document.createElement("a");
           link.className = "source-link";
@@ -870,6 +995,8 @@ function renderVizTable(rows) {
         } else {
           td.textContent = tag;
         }
+      } else if (isVizNumericColumn(col)) {
+        td.textContent = formatMetric(row[col]);
       } else {
         td.textContent = row[col] != null ? row[col] : "";
       }
@@ -881,6 +1008,26 @@ function renderVizTable(rows) {
   wrap.append(table);
   els.vizTable.className = "";
   els.vizTable.replaceChildren(wrap);
+}
+
+function worktreeCellValue(row) {
+  const worktree = row.worktree != null ? String(row.worktree).trim() : "";
+  if (worktree) {
+    return worktree;
+  }
+  if (isInfiniLmBackend(row.be)) {
+    return worktree;
+  }
+  return row.image_tag != null ? String(row.image_tag).trim() : "";
+}
+
+function navigateToPlaygroundCase(caseId) {
+  if (!caseId) {
+    return;
+  }
+  state.selectedPlaygroundCaseId = caseId;
+  setActiveTab("playground");
+  renderPlayground();
 }
 
 function warehouseSourceUrl(path, line) {
@@ -1227,6 +1374,18 @@ function renderPlayground() {
         </div>
         <span class="model-chip">${escapeHtml(item.worktree || "")}</span>
       `;
+      if (item.github_dir_url) {
+        const ghLink = document.createElement("a");
+        ghLink.className = "source-link catalog-github";
+        ghLink.href = item.github_dir_url;
+        ghLink.target = "_blank";
+        ghLink.rel = "noopener";
+        ghLink.textContent = "GitHub";
+        ghLink.title = item.github_dir_url;
+        ghLink.addEventListener("click", (event) => event.stopPropagation());
+        article.querySelector(".catalog-title")?.append(document.createTextNode(" "));
+        article.querySelector(".catalog-title")?.append(ghLink);
+      }
       article.addEventListener("click", () => {
         state.selectedPlaygroundCaseId = item.case_id;
         renderPlayground();
@@ -1250,6 +1409,12 @@ function renderPlayground() {
     ["be_abbr", selected.be_abbr],
     ["worktree", selected.worktree],
     ["case_path", selected.case_path],
+    [
+      "github",
+      selected.github_dir_url
+        ? { href: selected.github_dir_url, label: "Open case directory on GitHub" }
+        : "",
+    ],
     ["has_readme", selected.has_readme],
     ["has_compose", selected.has_compose],
   ]);
@@ -1348,10 +1513,23 @@ function renderCaseDetail(target, rows) {
   const dl = document.createElement("dl");
   dl.className = "key-values case-detail";
   dl.replaceChildren(
-    ...rows.flatMap(([key, value]) => [
-      element("dt", key),
-      element("dd", value == null ? "" : String(value)),
-    ]),
+    ...rows.flatMap(([key, value]) => {
+      const dt = element("dt", key);
+      let dd;
+      if (value && typeof value === "object" && value.href) {
+        dd = document.createElement("dd");
+        const link = document.createElement("a");
+        link.className = "source-link";
+        link.href = value.href;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = value.label || value.href;
+        dd.append(link);
+      } else {
+        dd = element("dd", value == null ? "" : String(value));
+      }
+      return [dt, dd];
+    }),
   );
   target.className = "";
   target.replaceChildren(dl);
