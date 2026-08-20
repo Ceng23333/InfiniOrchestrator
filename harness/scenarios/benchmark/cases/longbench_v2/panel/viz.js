@@ -74,7 +74,37 @@
     emInput.addEventListener("input", syncEm);
   }
 
+  /** Harness LIMIT from bench_args / workload_scale (not column lb_limit — full pool stores lb_limit=n). */
+  function harnessLimit(row) {
+    const args = String(row.bench_args || "");
+    let m = args.match(/"limit"\s*:\s*(\d+)/);
+    if (m) {
+      return Number(m[1]);
+    }
+    m = args.match(/(?:^|[,\s;])limit\s*[:=]\s*(\d+)/i);
+    if (m) {
+      return Number(m[1]);
+    }
+    const scale = String(row.workload_scale || "");
+    m = scale.match(/(?:^|[;])limit=([^;]+)/);
+    if (m) {
+      const tag = String(m[1]).trim().toLowerCase();
+      if (tag === "all" || tag === "0") {
+        return 0;
+      }
+      const n = Number(tag);
+      if (Number.isFinite(n)) {
+        return n;
+      }
+    }
+    return 0;
+  }
+
   function filterRow(row, filters, pluginFilters) {
+    // Hide harness LIMIT>0 smoke/qualify rows; viz is full-pool (limit=0) only.
+    if (harnessLimit(row) > 0) {
+      return false;
+    }
     const status = String(row.status || "").toUpperCase();
     const em = Number(row.lb_em);
     const emMin = Number.isFinite(pluginFilters.emMin) ? pluginFilters.emMin : 0;
@@ -117,7 +147,7 @@
 
   function statusLine(ctx) {
     const emMin = Number.isFinite(ctx.pluginFilters?.emMin) ? ctx.pluginFilters.emMin : 0;
-    return ` · PASS · lb_em > ${emMin}`;
+    return ` · PASS · lb_em > ${emMin} · full-pool only (limit=0)`;
   }
 
   function defaultPluginFilters() {

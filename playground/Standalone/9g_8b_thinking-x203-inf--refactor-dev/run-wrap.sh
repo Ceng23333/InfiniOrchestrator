@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Standalone InfiniLM wrap: product IMAGE_TAG + infini-entrypoint for 9g_8b_thinking.
+# Standalone InfiniLM wrap: Mars --refactor-dev IMAGE_TAG + infini-entrypoint.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,13 +11,11 @@ IMAGE_TAG="${IMAGE_TAG:-}"
 if [[ -z "${IMAGE_TAG}" && -f "${SCRIPT_DIR}/image/.image_tag" ]]; then
   IMAGE_TAG="$(cat "${SCRIPT_DIR}/image/.image_tag")"
 fi
-# Default furthest-green infer: ablation step-3 (flash+graph; L0 use MAX_INPUT≤28672).
-# Override for step1/step2/product master. See step3 L0 CAMPAIGN artifacts.
-CONFIG_IN_CONTAINER="${CONFIG_IN_CONTAINER:-/config/ablation/master-step3.toml}"
-# STEP3_L0_MAX_INPUT: L0 must use MAX_INPUT_TOKENS=28672 (RoPE ATU at 65408).
+# Default furthest-green infer: Mars ablation step-1 (eager paged).
+CONFIG_IN_CONTAINER="${CONFIG_IN_CONTAINER:-/config/ablation/master-step1.toml}"
 if [[ -z "${IMAGE_TAG}" ]]; then
   echo "error: IMAGE_TAG unset and ${SCRIPT_DIR}/image/.image_tag missing" >&2
-  echo "  run ${SCRIPT_DIR}/image/build-image.sh first (not for --deploy)" >&2
+  echo "  run ${SCRIPT_DIR}/image/build-image.sh first" >&2
   exit 1
 fi
 
@@ -25,10 +23,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-9g-inf-${QUALIFIER}}"
 MODELS_DIR="${MODELS_DIR:-/root/zenghua/models}"
 API_PORT="${API_PORT:-8100}"
 BABYSITTER_PORT="${BABYSITTER_PORT:-8101}"
-HPCC_VISIBLE_DEVICES="${HPCC_VISIBLE_DEVICES:-}"
-# Pin SOURCE_ROOT (itw-pins); used to overlay llama_processor Strip fix without image rebuild.
-SOURCE_ROOT="${SOURCE_ROOT:-$(cd "${IO_ROOT}/.." && pwd)/itw-pins/v2026.08.19-main-ic1510}"
-LLAMA_PROCESSOR_HOST="${LLAMA_PROCESSOR_HOST:-${SOURCE_ROOT}/InfiniLM/python/infinilm/processors/llama_processor.py}"
+HPCC_VISIBLE_DEVICES="${HPCC_VISIBLE_DEVICES:-0}"
 
 if [[ ! -e "${MODELS_DIR}/9g_8b_thinking" ]]; then
   if [[ -d "${MODELS_DIR}/9g_8b_thinking_llama" ]]; then
@@ -45,30 +40,22 @@ if ! docker image inspect "${IMAGE_TAG}" >/dev/null 2>&1; then
   exit 1
 fi
 
-DOCKER_MOUNTS=(
-  -v "${MODELS_DIR}/9g_8b_thinking:/models/9g_8b_thinking:ro"
-  -v "${SCRIPT_DIR}/config:/config:ro"
-)
-if [[ -f "${LLAMA_PROCESSOR_HOST}" ]]; then
-  DOCKER_MOUNTS+=(
-    -v "${LLAMA_PROCESSOR_HOST}:/workspace/InfiniLM/python/infinilm/processors/llama_processor.py:ro"
-  )
-  echo "Overlay llama_processor from ${LLAMA_PROCESSOR_HOST}"
-fi
-
 echo "Stopping existing ${CONTAINER_NAME} (if any)..."
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+# Exclusive GPU0 :8100/:8101 only when using default ports (qualify gates).
+if [[ "${API_PORT}" == "8100" && "${BABYSITTER_PORT}" == "8101" ]]; then
+  for other in main refactor deploy; do
+    docker rm -f "9g-inf-${other}" >/dev/null 2>&1 || true
+  done
+  for _i in $(seq 1 30); do
+    if ! ss -lptn 2>/dev/null | grep -Eq ':8100|:8101'; then
+      break
+    fi
+    sleep 1
+  done
+fi
 
 echo "Starting ${CONTAINER_NAME} from ${IMAGE_TAG}..."
-DOCKER_ENV=(
-  -e "LAUNCH_COMPONENTS=entrypoint"
-  -e "ENTRYPOINT_CONFIGS=${CONFIG_IN_CONTAINER}"
-  -e "BABYSITTER_CONFIGS=${CONFIG_IN_CONTAINER}"
-)
-if [[ -n "${HPCC_VISIBLE_DEVICES}" ]]; then
-  DOCKER_ENV+=(-e "HPCC_VISIBLE_DEVICES=${HPCC_VISIBLE_DEVICES}")
-  echo "HPCC_VISIBLE_DEVICES=${HPCC_VISIBLE_DEVICES}"
-fi
 docker run -d \
   --name "${CONTAINER_NAME}" \
   --privileged \
@@ -80,8 +67,13 @@ docker run -d \
   --device=/dev/htcd:/dev/htcd \
   -p "${API_PORT}:8100" \
   -p "${BABYSITTER_PORT}:8101" \
-  "${DOCKER_MOUNTS[@]}" \
-  "${DOCKER_ENV[@]}" \
+  -v "${MODELS_DIR}/9g_8b_thinking:/models/9g_8b_thinking:ro" \
+  -v "${SCRIPT_DIR}/config:/config:ro" \
+  -e "LAUNCH_COMPONENTS=entrypoint" \
+  -e "ENTRYPOINT_CONFIGS=${CONFIG_IN_CONTAINER}" \
+  -e "BABYSITTER_CONFIGS=${CONFIG_IN_CONTAINER}" \
+  -e "HPCC_PATH=/opt/hpcc" \
+  -e "HPCC_VISIBLE_DEVICES=${HPCC_VISIBLE_DEVICES}" \
   "${IMAGE_TAG}"
 
 echo "Waiting for http://127.0.0.1:${API_PORT}/v1/models ..."

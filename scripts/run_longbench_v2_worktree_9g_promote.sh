@@ -75,12 +75,10 @@ latest_lb_dir() {
 }
 
 stop_all_9g_wraps() {
-  for other in main refactor deploy; do
-    CONTAINER_NAME="9g-inf-${other}" \
-      "${STAND}/9g_8b_thinking-x203-inf--${other}/stop-wrap.sh" >/dev/null 2>&1 || true
-  done
-  docker rm -f 9g-inf-main 9g-inf-refactor 9g-inf-deploy \
-    9g-vllm-x203 infiniorch-worker-9g-8100-20260811 >/dev/null 2>&1 || true
+  # GPU0 exclusive: stop all 9g wraps (incl. refactor-dev). Do not touch GPU1 Mars build ctn.
+  # shellcheck source=worktree_9g_isolate.sh
+  source "${SCRIPT_DIR}/worktree_9g_isolate.sh"
+  worktree_9g_stop_gpu0_wraps
 }
 
 cleanup_and_exit() {

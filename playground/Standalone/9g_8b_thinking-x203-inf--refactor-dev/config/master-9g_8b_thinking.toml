@@ -1,0 +1,44 @@
+# Product master for --refactor-dev currently matches Mars eager smoke (no paged/flash/graph).
+
+name = "master-9g_8b_thinking"
+host = "0.0.0.0"
+port = 8100
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+command = "/opt/conda/bin/python"
+args = [
+  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
+  "--device", "mars",
+  "--model", "/models/9g_8b_thinking",
+  "--dtype", "bfloat16",
+  "--max-batch-size", "1",
+  "--max-new-tokens", "2048",
+  "--max-cache-len", "65536",
+  "--tp", "1",
+  "--temperature", "1.0",
+  "--top-p", "0.8",
+  "--top-k", "1",
+  "--host", "0.0.0.0",
+  "--port", "8100",
+]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+PATH = "/opt/conda/bin:/workspace/InfiniLM/build/integration/mars/prefix/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python"
+INFINI_ROOT = "/workspace/InfiniLM/build/integration/mars/prefix"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/conda/lib/python3.10/site-packages/torch/lib:/workspace/InfiniLM/python/infinicore/lib:/workspace/InfiniLM/build/integration/mars/prefix/lib:/workspace/InfiniLM/build/integration/mars/prefix/lib64:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+HPCC_PATH = "/opt/hpcc"
+XMAKE_ROOT = "y"
+HPCC_VISIBLE_DEVICES = "0"
+INFINI_REQUEST_TIMEOUT_S = "600"
+
+[metadata]
+cache_type = "static"
+static = false

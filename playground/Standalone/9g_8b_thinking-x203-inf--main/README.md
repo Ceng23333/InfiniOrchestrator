@@ -27,11 +27,14 @@ Does **not** overwrite `--deploy` `runtime-base-20260813`.
 
 ## Launch
 
-Furthest green infer is **ablation step-1** (eager paged). Product `config/master-9g_8b_thinking.toml` still has step-3 flags (flash+graph) pending the ladder.
+`run-wrap.sh` defaults to **ablation step-3** (flash+graph). Full short L0 must use `MAX_INPUT_TOKENS=28672`.
+
+Also bind-mounts the pin’s `llama_processor.py` (Strip decoder fix) so incremental decode keeps inter-word spaces without rebuilding `9g-main-20260819`.
 
 ```bash
 ln -sfn 9g_8b_thinking_llama /root/zenghua/models/9g_8b_thinking
-CONFIG_IN_CONTAINER=/config/ablation/master-step1.toml ./run-wrap.sh
+./run-wrap.sh
+# override: CONFIG_IN_CONTAINER=/config/ablation/master-step3.toml ./run-wrap.sh
 curl -sf http://127.0.0.1:8100/v1/models
 ```
 
@@ -41,5 +44,6 @@ Stop: `./stop-wrap.sh`
 
 ```bash
 LIMIT=8 ./regression/run_longbench.sh   # quick gate
+# full short pool: LIMIT=0 MAX_INPUT_TOKENS=28672 (uncapped 65408 still forbidden on flash)
 ./regression/run_longbench.sh
 ```

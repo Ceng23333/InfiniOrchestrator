@@ -1,16 +1,26 @@
 #!/bin/sh
 # Periodic git pull of bench-warehouse into /warehouse.
-# Auth: BENCH_WAREHOUSE_GITHUB_TOKEN via http.extraHeader (never logged).
+# Default URL is SSH (git@). HTTPS may use BENCH_WAREHOUSE_GITHUB_TOKEN via
+# http.extraHeader (never logged). SSH path uses plain git (no token).
 set -eu
 
-URL="${BENCH_WAREHOUSE_GIT_URL:-https://github.com/InfiniTensor/bench-warehouse.git}"
+URL="${BENCH_WAREHOUSE_GIT_URL:-git@github.com:InfiniTensor/bench-warehouse.git}"
 REF="${BENCH_WAREHOUSE_GIT_REF:-master}"
 INTERVAL="${BENCH_WAREHOUSE_SYNC_INTERVAL_SEC:-300}"
 STATUS_FILE="/warehouse/.warehouse-sync-status"
 TOKEN="${BENCH_WAREHOUSE_GITHUB_TOKEN:-}"
 
+is_ssh_git_url() {
+  case "${URL}" in
+    git@*|ssh://*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 git_auth() {
-  if [ -n "${TOKEN}" ]; then
+  if is_ssh_git_url; then
+    git "$@"
+  elif [ -n "${TOKEN}" ]; then
     git -c "http.extraHeader=AUTHORIZATION: bearer ${TOKEN}" "$@"
   else
     git "$@"
@@ -61,8 +71,8 @@ sync_once() {
 }
 
 echo "[warehouse-sync] interval=${INTERVAL}s url=${URL} ref=${REF}"
-if [ -z "${TOKEN}" ]; then
-  echo "[warehouse-sync] warning: BENCH_WAREHOUSE_GITHUB_TOKEN unset (private HTTPS will fail)" >&2
+if ! is_ssh_git_url && [ -z "${TOKEN}" ]; then
+  echo "[warehouse-sync] warning: HTTPS URL without BENCH_WAREHOUSE_GITHUB_TOKEN (private HTTPS will fail)" >&2
 fi
 
 while true; do

@@ -1,0 +1,8 @@
+case_id = "9g_8b_thinking-x203-inf--refactor-dev"
+category = "Standalone"
+n = 1
+model_id = "9g_8b_thinking"
+hw_profile_id = "metax-x203-hpcc"
+hw_abbr = "x203"
+be_abbr = "inf"
+worktree = "v2026.08.19-refactor-dev-l8"

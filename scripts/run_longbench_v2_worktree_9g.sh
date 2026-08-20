@@ -53,11 +53,10 @@ run_leg() {
     return 0
   fi
 
-  # Exclusive GPU 0: stop sibling wraps.
-  for other in main refactor deploy; do
-    CONTAINER_NAME="9g-inf-${other}" "${STAND}/9g_8b_thinking-x203-inf--${other}/stop-wrap.sh" >/dev/null 2>&1 || true
-  done
-  docker rm -f 9g-vllm-x203 infiniorch-worker-9g-8100-20260811 >/dev/null 2>&1 || true
+  # Exclusive GPU 0: stop sibling wraps (incl. refactor-dev). Leave GPU1 Mars build alone.
+  # shellcheck source=worktree_9g_isolate.sh
+  source "${SCRIPT_DIR}/worktree_9g_isolate.sh"
+  worktree_9g_stop_gpu0_wraps
 
   INFERENCE_SERVER_ID="$(cat /proc/sys/kernel/random/uuid)"
   export INFERENCE_SERVER_ID

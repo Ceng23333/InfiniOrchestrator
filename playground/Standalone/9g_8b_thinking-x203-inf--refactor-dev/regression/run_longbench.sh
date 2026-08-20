@@ -6,7 +6,7 @@ CASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../../../scripts/worktree_env.sh
 source "${CASE_DIR}/../../../scripts/worktree_env.sh"
 
-export CASE_ID="${CASE_ID:-9g_8b_thinking-x203-inf--main}"
+export CASE_ID="${CASE_ID:-9g_8b_thinking-x203-inf--refactor-dev}"
 export CASE_PATH="${CASE_PATH:-${CASE_DIR}/case.toml}"
 export MODEL="${MODEL:-9g_8b_thinking}"
 export TOKENIZER_DIR="${TOKENIZER_DIR:-/root/zenghua/models/9g_8b_thinking_llama}"
@@ -16,7 +16,6 @@ export ROUTER_URL="${ROUTER_URL:-${BENCH_TARGET_URL}}"
 export BENCH_METRICS_URL="${BENCH_METRICS_URL:-${BENCH_TARGET_URL}}"
 export INFERENCE_METADATA_URL="${INFERENCE_METADATA_URL:-http://localhost:8101}"
 export MAX_INPUT_TOKENS="${MAX_INPUT_TOKENS:-65408}"
-# STEP2_L0_MAX_INPUT: step2 flash L0 should use MAX_INPUT_TOKENS=28672 (RoPE ATU at 65408); callers override.
 export LONGBENCH_LENGTH="${LONGBENCH_LENGTH:-short,medium}"
 export LONGBENCH_DIFFICULTY="${LONGBENCH_DIFFICULTY:-all}"
 export ENABLE_THINKING="${ENABLE_THINKING:-0}"

@@ -54,17 +54,17 @@ Warehouse is owned by Frontend fragments (`frontend.yml` sets `BENCH_WAREHOUSE_R
 
 | Env | Default | Role |
 |-----|---------|------|
-| `BENCH_WAREHOUSE_GIT_URL` | `https://github.com/InfiniTensor/bench-warehouse.git` | clone URL |
+| `BENCH_WAREHOUSE_GIT_URL` | `git@github.com:InfiniTensor/bench-warehouse.git` | clone URL (SSH default) |
 | `BENCH_WAREHOUSE_GIT_REF` | `master` | branch |
 | `BENCH_WAREHOUSE_SYNC_INTERVAL_SEC` | `300` | pull period |
-| `BENCH_WAREHOUSE_GITHUB_TOKEN` | (required for private HTTPS) | bearer via `http.extraHeader` — never logged |
+| `BENCH_WAREHOUSE_GITHUB_TOKEN` | (HTTPS only) | bearer via `http.extraHeader` — never logged; unused for SSH |
 
 - **Profile off (default):** volume may be empty → LongBench API empty/`not found` until sync runs.
 - **Profile on:** sidecar writes `bench_warehouse` (rw); Frontend reads it `:ro`. Status file `/warehouse/.warehouse-sync-status` surfaces as LongBench `source.sync`.
-- **Offline / airgap:** use host-native panel ([`run-host-panel.sh`](../run-host-panel.sh) with a sibling `bench-warehouse` clone), or enable sync with a token — not a playground host bind.
+- **Offline / airgap:** use host-native panel ([`run-host-panel.sh`](../run-host-panel.sh) with a sibling `bench-warehouse` clone), or enable sync with SSH keys / HTTPS token — not a playground host bind.
 - **Host-native FE:** use [`../warehouse-sync-host.sh`](../warehouse-sync-host.sh) instead of the compose sidecar. It sparse-checks out `raw/` into a sibling live checkout, flips the `bench-warehouse` symlink only after a successful sync, and writes `InfiniOrchestrator/.warehouse-sync-status` for the panel API.
 
-Prefer `http.extraHeader` bearer auth (as in `sync.sh`) over putting the token in the clone URL.
+SSH URLs use plain `git` (agent/keys). For HTTPS overrides, prefer `http.extraHeader` bearer auth (as in `sync.sh`) over putting the token in the clone URL. Panel still maps SSH remotes → HTTPS blob URLs in `panel.rs`.
 
 ### Host-native panel
 

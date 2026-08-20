@@ -2,10 +2,10 @@
 # Profile: warehouse-sync
 #
 # Env (set in case .env / override):
-#   BENCH_WAREHOUSE_GIT_URL              default https://github.com/InfiniTensor/bench-warehouse.git
+#   BENCH_WAREHOUSE_GIT_URL              default git@github.com:InfiniTensor/bench-warehouse.git (SSH)
 #   BENCH_WAREHOUSE_GIT_REF              default master
 #   BENCH_WAREHOUSE_SYNC_INTERVAL_SEC    default 300
-#   BENCH_WAREHOUSE_GITHUB_TOKEN         required for private HTTPS (bearer via http.extraHeader; never logged)
+#   BENCH_WAREHOUSE_GITHUB_TOKEN         HTTPS only (bearer via http.extraHeader; never logged; unused for SSH)
 #
 # Same named volume as frontend.yml (`bench_warehouse` → /warehouse). Sidecar mounts rw;
 # Frontend mounts :ro via BENCH_WAREHOUSE_REPO=/warehouse.
@@ -18,7 +18,7 @@ services:
     image: ${WAREHOUSE_SYNC_IMAGE:-alpine/git}
     restart: unless-stopped
     environment:
-      BENCH_WAREHOUSE_GIT_URL: ${BENCH_WAREHOUSE_GIT_URL:-https://github.com/InfiniTensor/bench-warehouse.git}
+      BENCH_WAREHOUSE_GIT_URL: ${BENCH_WAREHOUSE_GIT_URL:-git@github.com:InfiniTensor/bench-warehouse.git}
       BENCH_WAREHOUSE_GIT_REF: ${BENCH_WAREHOUSE_GIT_REF:-master}
       BENCH_WAREHOUSE_SYNC_INTERVAL_SEC: ${BENCH_WAREHOUSE_SYNC_INTERVAL_SEC:-300}
       BENCH_WAREHOUSE_GITHUB_TOKEN: ${BENCH_WAREHOUSE_GITHUB_TOKEN:-}

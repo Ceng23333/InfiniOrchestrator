@@ -11,14 +11,24 @@ ROOT="$(cd "${IO_ROOT}/.." && pwd)"
 
 LIVE="${BENCH_WAREHOUSE_LIVE_REPO:-${ROOT}/bench-warehouse-sync-live}"
 PANEL_LINK="${BENCH_WAREHOUSE_PANEL_LINK:-${ROOT}/bench-warehouse}"
-URL="${BENCH_WAREHOUSE_GIT_URL:-https://github.com/InfiniTensor/bench-warehouse.git}"
+URL="${BENCH_WAREHOUSE_GIT_URL:-git@github.com:InfiniTensor/bench-warehouse.git}"
 REF="${BENCH_WAREHOUSE_GIT_REF:-master}"
 INTERVAL="${BENCH_WAREHOUSE_SYNC_INTERVAL_SEC:-300}"
 TOKEN="${BENCH_WAREHOUSE_GITHUB_TOKEN:-}"
 LOCK_DIR="${ROOT}/.warehouse-sync-host.lock"
 
+is_ssh_git_url() {
+  case "${URL}" in
+    git@*|ssh://*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 git_auth() {
-  if [ -n "${TOKEN}" ]; then
+  # SSH clone/fetch: plain git (agent/keys). HTTPS may use bearer token.
+  if is_ssh_git_url; then
+    git "$@"
+  elif [ -n "${TOKEN}" ]; then
     git -c http.version=HTTP/1.1 -c "http.extraHeader=AUTHORIZATION: bearer ${TOKEN}" "$@"
   else
     git -c http.version=HTTP/1.1 -c credential.helper=store "$@"
@@ -58,9 +68,11 @@ point_panel_at_live() {
 clone_sparse_raw() {
   local tmp="$1"
   git_auth clone --depth 1 --filter=blob:none --sparse --branch "${REF}" "${URL}" "${tmp}" || return 1
-  git_auth -C "${tmp}" config http.version HTTP/1.1
-  if [ -z "${TOKEN}" ]; then
-    git_auth -C "${tmp}" config credential.helper store
+  if ! is_ssh_git_url; then
+    git_auth -C "${tmp}" config http.version HTTP/1.1
+    if [ -z "${TOKEN}" ]; then
+      git_auth -C "${tmp}" config credential.helper store
+    fi
   fi
   git_auth -C "${tmp}" sparse-checkout set raw
 }
