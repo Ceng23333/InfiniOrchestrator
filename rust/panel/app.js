@@ -511,8 +511,12 @@ async function loadHarnessData(options = {}) {
     payload.rows = enrichHarnessRows(payload.rows || []);
     state.harness = payload;
     const plugin = getVizPlugin();
-    state.viz.metric =
-      plugin?.defaultMetric || payload.default_metric || payload.metrics?.[0] || "";
+    const metrics = payload.metrics || [];
+    const fallback =
+      plugin?.defaultMetric || payload.default_metric || metrics[0] || "";
+    if (!state.viz.metric || (metrics.length > 0 && !metrics.includes(state.viz.metric))) {
+      state.viz.metric = fallback;
+    }
     hydrateVizControls();
     mountVizPluginToolbar();
     renderVisualization();
