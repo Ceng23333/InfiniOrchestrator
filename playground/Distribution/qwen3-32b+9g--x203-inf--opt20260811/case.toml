@@ -6,3 +6,73 @@ hw_profile_id = "metax-x203-hpcc-metax9"
 hw_abbr = "x203"
 be_abbr = "inf"
 worktree = "v2026.08.12"
+
+[spec]
+version = "0.1"
+topology = "frontend_workers"
+host_env = "FRONTEND_HOST"
+
+[[spec.services]]
+id = "registry"
+role = "registry"
+base_url = "http://{host}:${REGISTRY_PORT:-18000}"
+probes = [{ path = "/health", kind = "http_ok" }]
+
+[[spec.services]]
+id = "router"
+role = "load_balancer"
+base_url = "http://{host}:${ROUTER_PORT:-8800}"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metrics", kind = "prometheus", expect = "infinilm_requests_total" },
+  { path = "/services", kind = "json_snapshot" },
+  { path = "/models", kind = "json_snapshot" },
+  { path = "/stats", kind = "json_snapshot" },
+]
+
+[[spec.services]]
+id = "worker-qwen-ep"
+role = "entrypoint"
+base_url = "http://{host}:${WORKER_QWEN_BABYSITTER_PORT:-8201}"
+probes = [{ path = "/metadata", kind = "metadata_uuid" }]
+
+[[spec.services]]
+id = "worker-9g-ep"
+role = "entrypoint"
+base_url = "http://{host}:${WORKER_9G_BABYSITTER_PORT:-8101}"
+probes = [{ path = "/metadata", kind = "metadata_uuid" }]
+
+[[spec.services]]
+id = "discovery"
+role = "load_balancer"
+base_url = "http://{host}:${ROUTER_PORT:-8800}"
+depends_on = ["router"]
+expect_services = [
+  "master-9g_8b_thinking-server",
+  "master-qwen3-32b-paged-server",
+  "master-embeddings-server",
+]
+probes = [{ path = "/services", kind = "services_expect" }]
+
+[[spec.services]]
+id = "router-routing"
+role = "load_balancer"
+depends_on = ["router"]
+probes = [
+  { path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", models_from = "/models" },
+]
+
+[[spec.services]]
+id = "etcd"
+role = "etcd"
+optional = true
+base_url = "http://{host}:2379"
+probes = [{ path = "/health", kind = "http_ok" }]
+
+[[spec.services]]
+id = "embeddings"
+role = "inference"
+optional = true
+base_url = "http://{host}:${EMBEDDING_PORT:-20002}"
+probes = [{ path = "/v1/models", kind = "json_snapshot", expect_nonempty = "data" }]
+

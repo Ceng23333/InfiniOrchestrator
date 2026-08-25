@@ -68,7 +68,7 @@ Deliverables:
 - Make validation fail with a categorized diagnosis: configuration, process startup, endpoint reachability, backend readiness, routing, streaming, cancellation, or performance.
 - Keep benchmark warehouse emission linked to the case manifest so a result can be reproduced from the case alone.
 
-Current status: Not implemented as a unified contract. The repository has case schemas, validation scripts, harness output, and panel projections, but they are not one diagnostic model.
+Current status: **Alpha implemented** in-tree. See [`case-diagnostic-contract.md`](case-diagnostic-contract.md). Unified `harness/bin/validate-case` reads `case.toml [spec]`, emits `diagnostic-manifest.json` and evidence trees; pilot cases: `Standalone/9g_8b_thinking-c550-vllm` (entrypoint_wrap) and `Distribution/qwen3-32b+9g--x203-inf--opt20260811` (frontend_workers). Full M0 hardening (all cases, streaming/cancel categories, warehouse columns) remains for later milestones.
 
 Exit criteria: one command validates a standalone and a distribution case; failures identify the failing layer and include the relevant evidence paths; two runs of the same case can be compared without manually reconstructing topology.
 

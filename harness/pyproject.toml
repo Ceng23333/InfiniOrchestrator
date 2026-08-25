@@ -15,4 +15,5 @@ dependencies = [
 # No warehouse console scripts here — use warehouse-emit / warehouse-compact from bench-warehouse.
 
 [tool.setuptools]
+packages = ["case_diagnostic"]
 py-modules = ["server_client"]

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stop the C550 wrap container.
+set -euo pipefail
+CONTAINER_NAME="${CONTAINER_NAME:-9g-vllm-c550}"
+docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+echo "Stopped ${CONTAINER_NAME}"

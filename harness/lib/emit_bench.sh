@@ -62,6 +62,9 @@ if [[ -f "${staging_dir}/metadata.json" ]]; then
 elif [[ -f "${staging_dir%/unexpected_behavior}/metadata.json" ]]; then
   args+=(--metadata-json "${staging_dir%/unexpected_behavior}/metadata.json")
 fi
+if [[ -n "${DIAGNOSTIC_MANIFEST:-}" && -f "${DIAGNOSTIC_MANIFEST}" ]]; then
+  args+=(--diagnostic-manifest "${DIAGNOSTIC_MANIFEST}")
+fi
 if [[ ${#extra_args[@]} -gt 0 ]]; then
   args+=("${extra_args[@]}")
 fi

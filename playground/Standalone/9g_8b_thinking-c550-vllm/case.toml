@@ -1,0 +1,32 @@
+case_id = "9g_8b_thinking-c550-vllm"
+category = "Standalone"
+n = 1
+model_id = "9g_8b_thinking"
+hw_profile_id = "metax-c550-node2"
+hw_abbr = "c550"
+be_abbr = "vllm"
+worktree = "v2026.08.12"
+
+[spec]
+version = "0.1"
+topology = "entrypoint_wrap"
+host_env = "BENCH_TARGET_HOST"
+
+[[spec.services]]
+id = "entrypoint"
+role = "entrypoint"
+base_url = "http://{host}:18181"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metadata", kind = "metadata_uuid" },
+]
+
+[[spec.services]]
+id = "inference"
+role = "inference"
+base_url = "http://{host}:18180"
+depends_on = ["entrypoint"]
+probes = [
+  { path = "/v1/models", kind = "json_snapshot", expect_nonempty = "data" },
+  { path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "9g_8b_thinking" },
+]

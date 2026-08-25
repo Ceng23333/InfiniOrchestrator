@@ -63,3 +63,103 @@ type = "string"
 emit = "worktree"
 env = ["WORKTREE", "ITW_TAG"]
 doc = "InfiniTensorWorktree pin label (annotated tag, e.g. v2026.08.12). Matches image/.worktree_tag when the case builds from ITW; source identity for Playground fork / warehouse rows."
+
+# ---------------------------------------------------------------------------
+# Optional [spec] block — case diagnostic contract (M0 alpha).
+# Not consumed by warehouse emit today. See docs/design/case-diagnostic-contract.md
+# ---------------------------------------------------------------------------
+
+[spec]
+required = false
+doc = "Declarative validation plan: topology, service endpoints, probes. Observed run output is diagnostic-manifest.json (status)."
+
+[spec.version]
+required = true
+type = "string"
+doc = "Spec schema revision; maps to diagnostic-manifest.json contract_version."
+
+[spec.host_env]
+required = false
+type = "string"
+doc = "Env var name supplying default --host for validate-case (e.g. FRONTEND_HOST, BENCH_TARGET_HOST)."
+
+[spec.topology]
+required = true
+type = "enum"
+values = ["direct", "entrypoint_wrap", "frontend_workers", "frontend_workers_etcd"]
+doc = "Deployment topology kind."
+
+[[spec.services]]
+doc = "Repeatable service endpoint + probe list."
+
+[spec.services.id]
+required = true
+type = "string"
+doc = "Stable service identifier within the case."
+
+[spec.services.role]
+required = true
+type = "enum"
+values = ["load_balancer", "registry", "entrypoint", "inference", "etcd", "sharepool"]
+doc = "Service role for categorized diagnostics."
+
+[spec.services.base_url]
+required = false
+type = "string"
+doc = "Base URL with {host} and ${ENV:-default} interpolation. Omit when probes are path-only on a shared base."
+
+[spec.services.optional]
+required = false
+type = "bool"
+doc = "When true, probe failures are recorded as skip/warn rather than fail."
+
+[spec.services.depends_on]
+required = false
+type = "array"
+doc = "Service ids that must pass before running this service's probes."
+
+[spec.services.expect_services]
+required = false
+type = "array"
+doc = "For routing probes: expected service names in /services JSON."
+
+[spec.services.probes]
+required = true
+type = "array"
+doc = "Probe definitions run against base_url + path."
+
+[spec.services.probes.path]
+required = true
+type = "string"
+
+[spec.services.probes.kind]
+required = true
+type = "enum"
+values = ["http_ok", "prometheus", "metadata_uuid", "json_snapshot", "chat_smoke", "services_expect"]
+doc = "Probe runner kind."
+
+[spec.services.probes.method]
+required = false
+type = "string"
+doc = "HTTP method (default GET)."
+
+[spec.services.probes.expect]
+required = false
+type = "string"
+doc = "Substring or metric name to match in response body."
+
+[spec.services.probes.expect_nonempty]
+required = false
+type = "string"
+doc = "JSON key that must be a non-empty list/object."
+
+[spec.services.probes.model]
+required = false
+type = "string"
+doc = "Model id for chat_smoke."
+
+[spec.services.probes.models_from]
+required = false
+type = "string"
+doc = "Path to scrape model ids for chat_smoke (e.g. /models)."
+
