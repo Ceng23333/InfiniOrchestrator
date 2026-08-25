@@ -30,7 +30,7 @@ pub fn create_router(load_balancer: Arc<LoadBalancer>) -> Router {
             get(panel::panel_cases_harness_handler),
         )
         .route(
-            "/panel/api/harness/{suite_id}",
+            "/panel/api/harness/:suite_id",
             get(panel::panel_harness_handler),
         )
         .route(
@@ -38,7 +38,7 @@ pub fn create_router(load_balancer: Arc<LoadBalancer>) -> Router {
             get(panel::panel_longbench_v2_handler),
         )
         .route(
-            "/panel/harness-assets/{suite_id}/{file}",
+            "/panel/harness-assets/:suite_id/:file",
             get(panel::panel_harness_assets_handler),
         )
         .route(
