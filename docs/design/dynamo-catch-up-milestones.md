@@ -1,7 +1,7 @@
 # InfiniOrchestrator Milestones: Case-Diagnostic Promotion Path
 
-Date: 2026-08-24
-Upstream baseline: `main` at `76c38c3` (`split harness into data and client`), checked against [Ceng23333/InfiniOrchestrator](https://github.com/Ceng23333/InfiniOrchestrator).
+Date: 2026-08-25
+Upstream baseline: `main` at `8308873` (`define spec contract`), checked against [Ceng23333/InfiniOrchestrator](https://github.com/Ceng23333/InfiniOrchestrator).
 
 ## Goal
 
@@ -18,13 +18,14 @@ Present today:
 - Rust `infini-entrypoint` process manager with health, metadata, probes, and service lifecycle handling.
 - Rust `infini-loadbalancer` with OpenAI-compatible HTTP proxying, streaming, health/status/stats/services/models/metrics endpoints, backend health checks, and model/session/prompt routing helpers.
 - Playground `Standalone` and `Distribution` cases, Docker/offline packaging, validation scripts, and benchmark harness integration.
+- Case-diagnostic **alpha**: `case.toml [spec]` (topology, roles, endpoints, probes), `harness/bin/validate-case`, `diagnostic-manifest.json` + evidence trees; see [`case-diagnostic-contract.md`](case-diagnostic-contract.md). Live Standalone C550 entrypoint-wrap pilot (`9g_8b_thinking-c550-vllm`) validated **pass** on 2026-08-25.
 - etcd lease registration and keepalive in the entrypoint, plus list/watch synchronization in the load balancer. This is useful infrastructure, but it is not yet a desired-state deployment controller.
 - Operations-panel projection and benchmark/warehouse metadata paths.
 - Cancellation and unexpected-behavior test scenarios in the harness.
 
 Not yet present or only skeletal:
 
-- No case-diagnostic contract that makes the actual topology, HTTP endpoints, backend identity, and failure evidence machine-readable.
+- Full M0 hardening: migrate all playground cases to `[spec]`, streaming/cancellation/performance failure categories, sharepool probes, richer PID/generation identity, and warehouse columns for `diagnostic_manifest_path` / `topology_fingerprint`.
 - No typed deployment/workergroup API, desired-state store, reconciliation loop, rollout controller, or replacement scheduler.
 - No first-class prefill/decode pools or request state machine for KV handoff.
 - `infini-sharepool` exposes `/health` only and is not launched by playground cases.
@@ -68,9 +69,28 @@ Deliverables:
 - Make validation fail with a categorized diagnosis: configuration, process startup, endpoint reachability, backend readiness, routing, streaming, cancellation, or performance.
 - Keep benchmark warehouse emission linked to the case manifest so a result can be reproduced from the case alone.
 
-Current status: **Alpha implemented** in-tree. See [`case-diagnostic-contract.md`](case-diagnostic-contract.md). Unified `harness/bin/validate-case` reads `case.toml [spec]`, emits `diagnostic-manifest.json` and evidence trees; pilot cases: `Standalone/9g_8b_thinking-c550-vllm` (entrypoint_wrap) and `Distribution/qwen3-32b+9g--x203-inf--opt20260811` (frontend_workers). Full M0 hardening (all cases, streaming/cancel categories, warehouse columns) remains for later milestones.
+Current status: **Alpha landed**; M1 may start. Detail in [`case-diagnostic-contract.md`](case-diagnostic-contract.md).
+
+**Done (alpha):**
+
+- Spec/status contract: `case.toml [spec]` vs `diagnostic-manifest.json`
+- Live categories: configuration, endpoint_reachability, backend_readiness, routing
+- Evidence under `diagnostics/<case_id>_<ts>/`; CLI `validate-case` (+ `diff`); Distribution `validate.sh` delegates to `validate-case`
+- Pilots: `Standalone/9g_8b_thinking-c550-vllm` (`entrypoint_wrap`) live **pass** 2026-08-25; `Distribution/qwen3-32b+9g--x203-inf--opt20260811` (`frontend_workers`) has `[spec]` in tree
+
+**Partial:**
+
+- Distribution end-to-end live validate against compose not yet recorded as pass (command exists; last dry run was reachability fail without a live stack)
+- Warehouse: `DIAGNOSTIC_MANIFEST` passthrough in `emit_bench.sh`; bench-warehouse columns still future
+
+**Remaining (full M0 / later):**
+
+- Migrate remaining playground cases; reserved categories process_startup, streaming, cancellation, performance
+- Sharepool probes; richer build/PID identity; optional panel `has_spec`
 
 Exit criteria: one command validates a standalone and a distribution case; failures identify the failing layer and include the relevant evidence paths; two runs of the same case can be compared without manually reconstructing topology.
+
+Alpha note: Standalone side of the exit criteria is met for the C550 entrypoint-wrap pilot; Distribution side has the one-command path, with a live compose pass still pending. Full M0 is not a blocker for starting M1.
 
 ### M1 - Pure HTTP load balancer baseline
 
@@ -91,7 +111,7 @@ Deliverables:
 - A minimal `llm-d-benchmark` run-only adapter against the already-running HTTP endpoint. It must not start or stop case services.
 - Adapter output mapped into the case diagnostic manifest, including benchmark profile, client version, server/case revision, and collection configuration.
 
-Current status: Partially implemented. The load balancer already has HTTP proxying, streaming, health checks, service/model/status/metrics handlers, and routing helpers. The native diagnostic path exists only in pieces; the M1 `llm-d-benchmark` run-only adapter is not implemented.
+Current status: Partially implemented; **diagnostic baseline gate open** (M0 alpha). The load balancer already has HTTP proxying, streaming, health checks, service/model/status/metrics handlers, and routing helpers. `validate-case` + diagnostic manifests are available for HTTP cases. Still missing for M1 exit: native diagnostic result schema aligned to LB/bench metrics, etcd-free pure-HTTP (and multi-backend) cases with repeatable smoke/failure tests, and the `llm-d-benchmark` run-only adapter.
 
 Exit criteria: a pure HTTP case can be started, validated, benchmarked, and diagnosed without etcd; one `llm-d-benchmark` run-only profile can target that live endpoint; backend loss, backend recovery, client disconnect, timeout, and malformed model routing have deterministic results; the diagnostic manifest links every result to the exact route and backend.
 
@@ -228,8 +248,9 @@ M7 instrumentation should begin during M1 and M5, but planner/autoscaling must w
 
 ## Priority definition
 
-- P0: M0. Establish the diagnostic contract and case evidence model.
-- P0: M1. Make pure HTTP load balancing the reliable current-state baseline.
+- M0 alpha: **landed** (hardening continues in parallel; not a blocker for M1).
+- Active P0: **M1**. Make pure HTTP load balancing the reliable current-state baseline.
+- P0 residual: M0 full hardening (case matrix migration, reserved failure categories, warehouse columns) where it does not block M1.
 - P1: M2. Turn the baseline into a conformance-tested case family.
 - M1 establishes the minimal `llm-d-benchmark` compatibility path; M2 expands it to the full case matrix. It remains a client/metrics adapter, not a runtime dependency.
 - P1: M3 and M4. Promote dynamic discovery and safe lifecycle management.
@@ -250,7 +271,7 @@ InfiniOrchestrator is at Dynamo-level for a deployment class when a case can be 
 
 ## Reference comparison
 
-The comparison uses the referenced `Choose InfiniOrchestrator benchmark` and `Compare SGLang Dynamo deployments` tasks, upstream `main` at `76c38c3`, and the current source/design files. The selected benchmark strategy is `llm-d-benchmark` as the system-level comparison framework, with native case diagnostics as the required first path. Dynamo's SGLang documentation describes role-specific workers, KV events, disaggregated prefill/decode coordination, health/metrics/traces, and planner/autoscaling capabilities:
+The comparison uses the referenced `Choose InfiniOrchestrator benchmark` and `Compare SGLang Dynamo deployments` tasks, upstream `main` at `8308873`, and the current source/design files. The selected benchmark strategy is `llm-d-benchmark` as the system-level comparison framework, with native case diagnostics as the required first path. Dynamo's SGLang documentation describes role-specific workers, KV events, disaggregated prefill/decode coordination, health/metrics/traces, and planner/autoscaling capabilities:
 
 - [`llm-d-benchmark` repository](https://github.com/llm-d/llm-d-benchmark)
 - [`llm-d-benchmark` metrics collection](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/metrics_collection.md)
