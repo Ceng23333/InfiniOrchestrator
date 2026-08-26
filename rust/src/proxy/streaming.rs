@@ -26,6 +26,10 @@ pub async fn handle_streaming_response(
     service_name: &str,
     metrics: Arc<GatewayMetrics>,
     req_metrics: RequestMetricsHandle,
+    request_id: &str,
+    case_id: Option<&str>,
+    backend_id: &str,
+    route_decision: &str,
 ) -> Response {
     let mut response_builder = Response::builder().status(status);
 
@@ -51,7 +55,7 @@ pub async fn handle_streaming_response(
 
     let body = Body::from_stream(metered);
 
-    let response = match response_builder.body(body) {
+    let mut response = match response_builder.body(body) {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Failed to build streaming response: {}", e);
@@ -61,6 +65,21 @@ pub async fn handle_streaming_response(
                 .unwrap();
         }
     };
+
+    if let Ok(value) = HeaderValue::from_str(request_id) {
+        response.headers_mut().insert("x-request-id", value);
+    }
+    if let Ok(value) = HeaderValue::from_str(backend_id) {
+        response.headers_mut().insert("x-backend-id", value);
+    }
+    if let Ok(value) = HeaderValue::from_str(route_decision) {
+        response.headers_mut().insert("x-route-decision", value);
+    }
+    if let Some(case_id) = case_id {
+        if let Ok(value) = HeaderValue::from_str(case_id) {
+            response.headers_mut().insert("x-case-id", value);
+        }
+    }
 
     info!(
         "Proxied (stream) {} {} -> {} ({})",
@@ -99,6 +118,10 @@ impl<S> MeteredByteStream<S> {
 
 impl<S> Drop for MeteredByteStream<S> {
     fn drop(&mut self) {
+        if !self.finished {
+            self.status_label = "canceled".to_string();
+            info!("Upstream stream canceled before completion");
+        }
         self.finalize();
     }
 }

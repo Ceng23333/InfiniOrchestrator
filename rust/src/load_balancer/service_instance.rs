@@ -5,6 +5,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Contract-visible lifecycle state for a discovered backend.
+pub const SERVICE_STARTUP: &str = "startup";
+pub const SERVICE_READY: &str = "ready";
+pub const SERVICE_UNHEALTHY: &str = "unhealthy";
+pub const SERVICE_DRAINING: &str = "draining";
+pub const SERVICE_REMOVED: &str = "removed";
+
 /// Service instance metadata
 #[derive(Clone, Debug)]
 pub struct ServiceInstance {
@@ -14,6 +21,7 @@ pub struct ServiceInstance {
     pub url: String,
     pub entrypoint_url: String,
     pub healthy: Arc<RwLock<bool>>,
+    pub status: Arc<RwLock<String>>,
     pub models: Arc<RwLock<Vec<String>>>,
     pub metadata: HashMap<String, serde_json::Value>,
     pub request_count: Arc<RwLock<u64>>,
@@ -57,7 +65,8 @@ impl ServiceInstance {
             port,
             url,
             entrypoint_url,
-            healthy: Arc::new(RwLock::new(true)),
+            healthy: Arc::new(RwLock::new(false)),
+            status: Arc::new(RwLock::new(SERVICE_STARTUP.to_string())),
             models: Arc::new(RwLock::new(models)),
             metadata,
             request_count: Arc::new(RwLock::new(0)),
@@ -90,6 +99,25 @@ impl ServiceInstance {
     pub async fn set_healthy(&self, healthy: bool) {
         let mut status = self.healthy.write().await;
         *status = healthy;
+        let mut lifecycle = self.status.write().await;
+        *lifecycle = if healthy {
+            SERVICE_READY.to_string()
+        } else {
+            SERVICE_UNHEALTHY.to_string()
+        };
+    }
+
+    pub async fn lifecycle_status(&self) -> String {
+        self.status.read().await.clone()
+    }
+
+    pub fn backend_id(&self) -> String {
+        self.metadata
+            .get("server_id")
+            .and_then(|v| v.as_str())
+            .filter(|id| !id.is_empty())
+            .unwrap_or(&self.name)
+            .to_string()
     }
 
     /// Update last seen timestamp
@@ -114,6 +142,8 @@ pub struct ServiceInfo {
     pub url: String,
     pub entrypoint_url: String,
     pub healthy: bool,
+    pub status: String,
+    pub backend_id: String,
     pub request_count: u64,
     pub error_count: u32,
     pub response_time: f64,
@@ -132,6 +162,8 @@ impl ServiceInstance {
             url: self.url.clone(),
             entrypoint_url: self.entrypoint_url.clone(),
             healthy: *self.healthy.read().await,
+            status: self.lifecycle_status().await,
+            backend_id: self.backend_id(),
             request_count: *self.request_count.read().await,
             error_count: *self.error_count.read().await,
             response_time: *self.response_time.read().await,

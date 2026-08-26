@@ -1,0 +1,32 @@
+name = "tj-worker-a"
+host = "177.177.171.193"
+port = 18180
+etcd_endpoints = "http://177.177.61.18:2379"
+discovery_prefix = "/infini/orchestrator/qwen3-32b-tj-vllm-m1"
+
+[entrypoint]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "vllm"
+model = "/private/zenghua/Qwen3-32B"
+args = [
+  "--tensor-parallel-size", "4",
+  "--gpu-memory-utilization", "0.80",
+  "--max-model-len", "512",
+  "--host", "0.0.0.0",
+  "--trust-remote-code",
+]
+work_dir = "/private/zenghua"
+
+[backend.env]
+HPCC_VISIBLE_DEVICES = "0,1,2,3"
+
+PYTHONPATH = "/private/zenghua/staging/InfiniOrchestrator/phase2-m1/runtime-overlay"
+[metadata]
+backend_type = "vllm"
+deployment_case = "qwen3-32b+qwen3-32b--tj-vllm--m1"
+role = "worker"
+worker_id = "worker-a"

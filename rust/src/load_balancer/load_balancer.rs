@@ -231,6 +231,19 @@ impl LoadBalancer {
         Some(service)
     }
 
+    /// Return true when any registered backend advertises the model, regardless
+    /// of current health. This distinguishes a model miss (404) from temporary
+    /// backend loss (503) at the HTTP boundary.
+    pub async fn model_exists(&self, model_id: &str) -> bool {
+        let services = self.services.read().await;
+        for service in services.values() {
+            if service.supports_model(model_id).await {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Get service by session key using consistent hashing
     /// Uses hash of session_key to deterministically map to a service from the available healthy services
     /// This ensures the same session always routes to the same service (when healthy)

@@ -1,0 +1,65 @@
+case_id = "qwen3-32b+qwen3-32b--tj-vllm--m1"
+category = "Distribution"
+n = 2
+model_id = "Qwen3-32B"
+hw_profile_id = "tj-hygon-m1"
+hw_abbr = "tj"
+be_abbr = "vllm"
+worktree = "metax-49-main"
+
+[spec]
+version = "0.1"
+topology = "frontend_workers"
+host_env = "FRONTEND_HOST"
+
+[[spec.services]]
+id = "etcd"
+role = "etcd"
+base_url = "http://{host}:2379"
+probes = [{ path = "/health", kind = "http_ok" }]
+
+[[spec.services]]
+id = "router"
+role = "load_balancer"
+base_url = "http://{host}:8800"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/services", kind = "json_snapshot" },
+  { path = "/models", kind = "json_snapshot" },
+  { path = "/metrics", kind = "prometheus", expect = "infinilm_requests_total" },
+]
+
+[[spec.services]]
+id = "worker-a-entrypoint"
+role = "entrypoint"
+base_url = "http://177.177.171.193:18181"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metadata", kind = "metadata_uuid" },
+]
+
+[[spec.services]]
+id = "worker-b-entrypoint"
+role = "entrypoint"
+base_url = "http://177.177.38.20:18181"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metadata", kind = "metadata_uuid" },
+]
+
+[[spec.services]]
+id = "discovery"
+role = "load_balancer"
+base_url = "http://{host}:8800"
+depends_on = ["router"]
+expect_services = ["tj-worker-a-server", "tj-worker-b-server"]
+probes = [{ path = "/services", kind = "services_expect" }]
+
+[[spec.services]]
+id = "routing-smoke"
+role = "load_balancer"
+depends_on = ["router", "discovery"]
+probes = [
+  { path = "/v1/models", kind = "json_snapshot", expect_nonempty = "data" },
+  { path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "Qwen3-32B" },
+]

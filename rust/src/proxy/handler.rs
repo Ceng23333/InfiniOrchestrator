@@ -3,7 +3,7 @@
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{Method, StatusCode},
+    http::{HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -14,6 +14,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info};
+use uuid::Uuid;
 
 use crate::proxy::session_extractor::generate_session_from_ip;
 use crate::proxy::streaming::handle_streaming_response;
@@ -156,6 +157,32 @@ fn extract_routing_fields(body_bytes: &[u8]) -> Option<RoutingFields> {
     })
 }
 
+fn add_contract_headers(
+    mut response: Response,
+    request_id: &str,
+    case_id: Option<&str>,
+    backend_id: Option<&str>,
+    route_decision: &str,
+) -> Response {
+    if let Ok(value) = HeaderValue::from_str(request_id) {
+        response.headers_mut().insert("x-request-id", value);
+    }
+    if let Some(case_id) = case_id {
+        if let Ok(value) = HeaderValue::from_str(case_id) {
+            response.headers_mut().insert("x-case-id", value);
+        }
+    }
+    if let Some(backend_id) = backend_id {
+        if let Ok(value) = HeaderValue::from_str(backend_id) {
+            response.headers_mut().insert("x-backend-id", value);
+        }
+    }
+    if let Ok(value) = HeaderValue::from_str(route_decision) {
+        response.headers_mut().insert("x-route-decision", value);
+    }
+    response
+}
+
 /// Proxy handler - forwards requests to backend services
 pub async fn proxy_handler(
     State(load_balancer): State<Arc<LoadBalancer>>,
@@ -164,6 +191,18 @@ pub async fn proxy_handler(
     let method = request.method().clone();
     let uri = request.uri().clone();
     let headers = request.headers().clone();
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let case_id = headers
+        .get("x-case-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    let route_decision = "selected";
 
     // Read request body first (needed for model extraction and forwarding)
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
@@ -188,6 +227,27 @@ pub async fn proxy_handler(
     let prompt_cache_key = routing_fields
         .as_ref()
         .and_then(|r| r.prompt_cache_key.clone());
+
+    if let Some(model) = model_id.as_deref() {
+        if !load_balancer.model_exists(model).await {
+            return add_contract_headers(
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({
+                        "error": {
+                            "code": "model_not_found",
+                            "message": format!("Unknown model '{model}'")
+                        }
+                    })),
+                )
+                    .into_response(),
+                &request_id,
+                case_id.as_deref(),
+                None,
+                "model_not_found",
+            );
+        }
+    }
 
     // Extract session ID (prompt_cache_key or IP-based)
     // Note: remote_addr is None here since we don't have direct access to it in axum Request.
@@ -363,6 +423,10 @@ pub async fn proxy_handler(
                 );
             } else {
                 info!(
+                    request_id = %request_id,
+                    case_id = ?case_id,
+                    backend_id = %service.backend_id(),
+                    route_decision = %route_decision,
                     "Proxying {} {} (model: {}) -> {}",
                     method,
                     uri.path(),
@@ -381,7 +445,16 @@ pub async fn proxy_handler(
                     max_retries
                 );
             } else {
-                info!("Proxying {} {} -> {}", method, uri.path(), service.name);
+                info!(
+                    request_id = %request_id,
+                    case_id = ?case_id,
+                    backend_id = %service.backend_id(),
+                    route_decision = %route_decision,
+                    "Proxying {} {} -> {}",
+                    method,
+                    uri.path(),
+                    service.name
+                );
             }
         }
 
@@ -497,6 +570,10 @@ pub async fn proxy_handler(
                 &service.name,
                 load_balancer.metrics.clone(),
                 req_metrics,
+                &request_id,
+                case_id.as_deref(),
+                &service.backend_id(),
+                route_decision,
             )
             .await;
         }
@@ -570,7 +647,25 @@ pub async fn proxy_handler(
             status
         );
 
-        return response.into_response();
+        let response = add_contract_headers(
+            response.into_response(),
+            &request_id,
+            case_id.as_deref(),
+            Some(&service.backend_id()),
+            route_decision,
+        );
+        info!(
+            request_id = %request_id,
+            case_id = ?case_id,
+            backend_id = %service.backend_id(),
+            route_decision = %route_decision,
+            "Proxy completed {} {} -> {} ({})",
+            method,
+            uri.path(),
+            service.name,
+            status
+        );
+        return response;
     }
 
     // If we get here, all retries failed

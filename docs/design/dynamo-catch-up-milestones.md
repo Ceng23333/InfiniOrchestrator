@@ -279,3 +279,59 @@ The comparison uses the referenced `Choose InfiniOrchestrator benchmark` and `Co
 - [Dynamo SGLang disaggregation](https://docs.nvidia.com/dynamo/dev/knowledge-base/modular-components/backends/sg-lang/disaggregation)
 - [Dynamo observability](https://docs.nvidia.com/dynamo/kubernetes/operations/observability)
 - [Dynamo autoscaling](https://docs.nvidia.com/dynamo/dev/knowledge-base/kubernetes/kubernetes-operator/autoscaling)
+
+## Appendix A: llm-d and `llm-d-benchmark` usage
+
+### What llm-d is
+
+[llm-d](https://llm-d.ai/) is a Kubernetes-native distributed LLM inference stack built above model servers such as vLLM and SGLang. It targets production patterns including LLM-aware / prefix-cache-aware routing, prefill/decode disaggregation, distributed KV / tiered cache, and autoscaling on Kubernetes primitives (Gateway API Inference Extension, LeaderWorkerSet, and related operators).
+
+[`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark) is the companion benchmarking workflow (standup → run harness → collect metrics → teardown). Upstream it can stand up an `llm-d` or standalone stack; InfiniOrchestrator does **not** adopt that full lifecycle.
+
+### Role in the InfiniOrchestrator target matrix
+
+llm-d the serving stack is **not** a runtime target or control-plane dependency. What belongs in the HTTP case / LB conformance matrix is **`llm-d-benchmark` as an optional, run-only client/metrics adapter** against an already-running InfiniOrchestrator OpenAI-compatible HTTP endpoint.
+
+| Role | Policy |
+|------|--------|
+| Allowed | Optional system-level comparison layer for repeatable load profiles and comparable metrics |
+| Not allowed | Runtime dependency, deployment controller, or owner of server lifecycle |
+| Identity / evidence owner | `InfiniOrchestrator/harness` and `bench-warehouse` |
+| Adapter duty | Hit a live Infini endpoint; collect router, queue, replica, cache, host, and accelerator metrics when available |
+
+Rules of engagement:
+
+1. Case harness and native diagnostics remain mandatory (M0/M1); `llm-d-benchmark` is optional so pure HTTP LB stays testable on a minimal host.
+2. Use **run-only** mode: do not start or stop case services.
+3. Preserve Infini identity (`CASE_PATH`, `server_id`, warehouse emission) and map adapter output into the diagnostic manifest (profile, client version, case/server revision, collection config).
+4. Keep the load balancer backend-agnostic; backend specifics stay in case config or adapters.
+
+Timeline in the matrix:
+
+```text
+M0  native case diagnostics (mandatory)
+ ↓
+M1  pure HTTP LB baseline + minimal llm-d-benchmark run-only profile
+ ↓
+M2  HTTP case / conformance matrix + full metrics profile
+    + compare native diagnostics vs llm-d-benchmark output
+ ↓
+M5/M6  agentic/cache-sensitive workloads as inputs (not a diagnostic replacement)
+```
+
+### Spec to pick
+
+Pick the **`llm-d-benchmark` client/metrics contract**, not the llm-d serving stack.
+
+| Layer | Pick | Skip |
+|-------|------|------|
+| Project | `llm-d-benchmark` | llm-d K8s stack, modelservice, EPP/Gateway standup |
+| Mode | `run` only against a live Infini HTTP endpoint | `standup` / `teardown` / stack ownership |
+| Contract source | [metrics collection](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/metrics_collection.md) + harness load profiles | Hard dependency on llm-d pod labels, EPP scrapers, or K8s replica APIs |
+| Version pin | A released `llm-d-benchmark` tag (e.g. **v0.8.0**, bundled with llm-d **v0.9.0**), recorded in the diagnostic manifest | Floating `main` without recording client version |
+
+**M1 — minimal core client metrics:** request rate; success/error rate; p50/p95/p99 latency; TTFT; ITL/TPOT; endpoint distribution; queue depth when exposed; router overhead. One run-only profile against one pure-HTTP case is enough for M1 exit.
+
+**M2 — full metrics collection profile**, mapped onto Infini surfaces (not copied as vLLM/EPP-only names): harness latency/token timings across the case matrix; router overhead from LB route decisions; queue/running requests from LB or backend exposure; replica/endpoint distribution via `/services`; cache/prefix metrics only when M6-class signals exist; host/accelerator scrapes optional and non-blocking for minimal hosts. Do not require EPP `inference_extension_*` or K8s replica APIs.
+
+Decision rule: compatibility is OpenAI-compatible HTTP plus comparable metric semantics; native diagnostics win when the two disagree; pin and record `llm-d-benchmark` version and harness choice so warehouse rows stay reproducible.
