@@ -15,7 +15,7 @@ shift 2>/dev/null || true
 
 if [[ "${BENCH}" == "-h" || "${BENCH}" == "--help" ]]; then
   echo "Benchmark scene dispatcher (client-only)."
-  echo "Usage: run_bench_client.sh unexpected|throughput|ceval|longbench|all"
+  echo "Usage: run_bench_client.sh unexpected|throughput|ceval|longbench|evalscope-mixed-4096|all"
   exit 0
 fi
 
@@ -86,6 +86,17 @@ run_longbench() {
   "${CASES_ROOT}/longbench_v2/scripts/run.sh"
 }
 
+run_evalscope_mixed_4096() {
+  local model="${MODEL:-}"
+  [[ -n "${model}" ]] || { echo "[bench_client] MODEL required for evalscope-mixed-4096" >&2; return 1; }
+  export MODEL="${model}"
+  export ROUTER_URL
+  export OUT_DIR="${SUITE_DIR}/evalscope-mixed-4096"
+  mkdir -p "${OUT_DIR}"
+  cp -f "${SUITE_DIR}/metadata.json" "${OUT_DIR}/metadata.json" 2>/dev/null || true
+  "${CASES_ROOT}/evalscope_mixed_4096/scripts/run.sh"
+}
+
 case "${BENCH}" in
   unexpected|ub)
     run_unexpected "$@"
@@ -99,13 +110,16 @@ case "${BENCH}" in
   longbench|lbv2)
     run_longbench
     ;;
+  evalscope-mixed-4096|evalscope|es4096)
+    run_evalscope_mixed_4096
+    ;;
   all)
     run_unexpected
     run_throughput
     run_ceval
     ;;
   *)
-    echo "Unknown bench: ${BENCH} (expected unexpected|throughput|ceval|longbench|all)" >&2
+    echo "Unknown bench: ${BENCH} (expected unexpected|throughput|ceval|longbench|evalscope-mixed-4096|all)" >&2
     exit 2
     ;;
 esac

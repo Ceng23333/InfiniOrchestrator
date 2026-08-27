@@ -1,0 +1,15 @@
+suite_prefix: evalscope-mixed-4096
+family: latency
+model_in_bench_id: true
+metric_columns:
+  - ttft_p50_ms
+  - ttft_p99_ms
+  - ttft_mean_ms
+  - tpot_p50_ms
+  - tpot_mean_ms
+  - itl_p50_ms
+  - itl_p99_ms
+  - itl_mean_ms
+  - req_per_s
+  - output_tok_per_s
+  - total_tok_per_s

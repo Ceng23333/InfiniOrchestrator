@@ -12,6 +12,9 @@ dependencies = [
     "bench-warehouse @ file:../../bench-warehouse",
 ]
 
+[project.optional-dependencies]
+evalscope = ["evalscope>=0.8"]
+
 # No warehouse console scripts here — use warehouse-emit / warehouse-compact from bench-warehouse.
 
 [tool.setuptools]
