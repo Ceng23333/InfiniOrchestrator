@@ -44,7 +44,19 @@ esac
 source "${HARNESS_ROOT}/lib/resolve_tokenizer.sh"
 TOKENIZER_DIR="$(resolve_tokenizer_dir "${MODEL}" "${TOKENIZER_DIR}")"
 
-if [[ -z "${TOKENIZER_DIR}" || ! -d "${TOKENIZER_DIR}" ]]; then
+if [[ -n "${BENCH_CTN_URL:-}" && -n "${CONTAINER_TOKENIZER_DIR:-}" ]]; then
+  TOKENIZER_DIR="${CONTAINER_TOKENIZER_DIR}"
+elif [[ -n "${BENCH_CTN_URL:-}" ]]; then
+  case "${MODEL}" in
+    Qwen3-32B) TOKENIZER_DIR="/models/Qwen3-32B" ;;
+  esac
+fi
+
+if [[ -z "${TOKENIZER_DIR}" ]]; then
+  echo "Error: tokenizer dir missing for ${MODEL}" >&2
+  exit 1
+fi
+if [[ -z "${BENCH_CTN_URL:-}" && ! -d "${TOKENIZER_DIR}" ]]; then
   echo "Error: tokenizer dir missing for ${MODEL}: ${TOKENIZER_DIR}" >&2
   exit 1
 fi
