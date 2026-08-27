@@ -11,6 +11,15 @@ This case is daemon-native. Do not use Docker Compose or Kubernetes as the
 process supervisor. The supplied scripts use `nohup`, PID files, explicit
 logs, and a case run directory under `/private/zenghua`.
 
+Deployment scripts are grouped by process supervisor:
+
+- `scripts/daemon/`: supported M1 `nohup` daemon lifecycle.
+- `scripts/docker-compose/`: reserved for a Docker Compose deployment.
+- `scripts/k8s/`: reserved for a Kubernetes deployment.
+
+The Docker Compose and Kubernetes directories are placeholders only; they do
+not change the M1 daemon-native launch contract.
+
 ## Topology
 
 | Role | Host | Address | Ports |
@@ -51,17 +60,18 @@ Run from a new SSH session on the relevant host:
 
 ```bash
 # tj-container
-bash scripts/daemon-start-etcd.sh
-bash scripts/daemon-start-lb.sh
+bash scripts/daemon/daemon-start-etcd.sh
+bash scripts/daemon/daemon-start-lb.sh
 
 # tj-io-node0
-bash scripts/daemon-start-worker.sh worker-a
+bash scripts/daemon/daemon-start-worker.sh worker-a
 
 # tj-io-node1
-bash scripts/daemon-start-worker.sh worker-b
+bash scripts/daemon/daemon-start-worker.sh worker-b
 ```
 
-Inspect and stop with `daemon-status.sh` and `daemon-stop.sh`. Each process
+Inspect and stop with `scripts/daemon/daemon-status.sh` and
+`scripts/daemon/daemon-stop.sh`. Each process
 has a PID file and log under the case run directory. Reconnect after launch
 and verify the PIDs remain alive before validation.
 
