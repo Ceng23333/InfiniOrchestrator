@@ -5,7 +5,7 @@ model_id = "qwen3-32b"
 hw_profile_id = "metax-x203-hpcc-metax9"
 hw_abbr = "x203"
 be_abbr = "inf"
-worktree = "v2026.08.12"
+worktree = "v2026.08.27-fix-issues-1-2"
 
 [spec]
 version = "0.1"
