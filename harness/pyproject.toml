@@ -9,6 +9,7 @@ description = "Bench runners and HTTP scrape client for InfiniOrchestrator (data
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
+    "PyYAML>=6.0",
     "bench-warehouse @ file:../../bench-warehouse",
 ]
 
@@ -18,5 +19,5 @@ evalscope = ["evalscope>=0.8"]
 # No warehouse console scripts here — use warehouse-emit / warehouse-compact from bench-warehouse.
 
 [tool.setuptools]
-packages = ["case_diagnostic"]
+packages = ["case_diagnostic", "adapters", "adapters.llm_d_benchmark"]
 py-modules = ["server_client"]

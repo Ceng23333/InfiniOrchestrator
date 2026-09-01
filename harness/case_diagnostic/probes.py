@@ -279,8 +279,16 @@ def run_all_probes(
     results: list[ProbeResult] = []
     passed_ids: set[str] = set()
     services_json: dict[str, Any] | None = None
+    service_by_id = {svc.id: svc for svc in services}
 
     for svc in services:
+        # Dependency-only probes inherit the endpoint of their first resolved dependency.
+        if not svc.resolved_base_url:
+            for dependency in svc.depends_on:
+                dependency_service = service_by_id.get(dependency)
+                if dependency_service and dependency_service.resolved_base_url:
+                    svc.resolved_base_url = dependency_service.resolved_base_url
+                    break
         if svc.depends_on and not all(d in passed_ids for d in svc.depends_on):
             for probe in svc.probes:
                 results.append(

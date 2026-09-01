@@ -86,7 +86,46 @@ Exit codes: `0` pass, `1` diagnostic failure, `2` configuration/usage error.
 | `Standalone/9g_8b_thinking-c550-vllm` | `entrypoint_wrap` | node2 MetaX C550 |
 | `Distribution/qwen3-32b+9g--x203-inf--opt20260811` | `frontend_workers` | compose localhost |
 
-## Warehouse linkage (future)
+## M1 benchmark linkage
+
+The run-only `llm_d_benchmark` adapter may attach a `bench` block to an
+existing diagnostic manifest. The adapter targets an already-running
+OpenAI-compatible endpoint and does not own case lifecycle.
+
+```json
+{
+  "bench": {
+    "adapter": "llm_d_benchmark",
+    "profile": "m1_http_smoke",
+    "client_version": "v0.8.0",
+    "adapter_mode": "upstream",
+    "collection_config": {},
+    "base_url": "http://host:8800",
+    "case_path": "playground/Distribution/<case>/case.toml",
+    "topology_fingerprint": "<manifest fingerprint>",
+    "metrics": {
+      "request_rate": 0,
+      "success_rate": 0,
+      "error_rate": 0,
+      "latency_p50_ms": 0,
+      "latency_p95_ms": 0,
+      "latency_p99_ms": 0,
+      "ttft_p50_ms": 0,
+      "itl_p50_ms": 0,
+      "tpot_p50_ms": 0
+    },
+    "artifacts": ["evidence/client/llmd_raw.json"]
+  }
+}
+```
+
+`client_version` records the pinned upstream compatibility version. The
+`adapter_mode` value is `upstream` when the pinned `llmdbenchmark` command
+executes, or `http` when the bounded HTTP compatibility driver is used on a
+host without the upstream planner/Kubernetes runtime. Both modes preserve the
+same run-only and manifest contract.
+
+## Warehouse linkage
 
 Set `DIAGNOSTIC_MANIFEST` before harness emit; `emit_bench.sh` forwards `--diagnostic-manifest` when bench-warehouse supports it. Rows should eventually carry `diagnostic_manifest_path` and `topology_fingerprint` for reproducibility.
 
