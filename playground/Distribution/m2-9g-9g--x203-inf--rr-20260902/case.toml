@@ -28,6 +28,10 @@ probes = [
   { path = "/services", kind = "json_snapshot" },
   { path = "/models", kind = "json_snapshot" },
   { path = "/stats", kind = "json_snapshot" },
+  { path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "json_error", method = "POST" },
+  { path = "/v1/chat/completions", kind = "sse_stream", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "token_usage", method = "POST", model = "9g_8b_thinking" },
 ]
 
 [[spec.services]]
