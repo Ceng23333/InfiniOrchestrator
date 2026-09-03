@@ -126,11 +126,32 @@ if [[ "${SKIP_INFINICORE_INFINILM}" != "true" ]]; then
     xmake install
     xmake build _infinicore
     xmake install _infinicore
-    mkdir -p /InfiniCore/python/infinicore/lib
+    mkdir -p /InfiniCore/python/infinicore/lib /root/.infini/lib /root/.infini/include
     cp -a /workspace/InfiniCore/python/infinicore/lib/* /InfiniCore/python/infinicore/lib/ 2>/dev/null || true
+    for _lib in libinfinicore_cpp_api.so libinfiniop.so libinfinirt.so libinfiniccl.so; do
+      if [[ -f "/workspace/InfiniCore/python/infinicore/lib/${_lib}" ]]; then
+        cp -a "/workspace/InfiniCore/python/infinicore/lib/${_lib}" /root/.infini/lib/
+      fi
+    done
+    if [[ -d /workspace/InfiniCore/build/.pkg/infinicore/include ]]; then
+      cp -a /workspace/InfiniCore/build/.pkg/infinicore/include/. /root/.infini/include/
+    fi
 
     echo "[phase1] Building InfiniLM..."
     cd /workspace/InfiniLM
+    rm -rf csrc/infinicore
+    if [[ -f xmake.lua ]] && grep -q 'python\.module' xmake.lua; then
+      if ! grep -q 'rule("python.module")' /root/.local/share/xmake/rules/python/xmake.lua 2>/dev/null; then
+        echo "[phase1] mapping python.module -> python.library for seeded xmake"
+        sed -i 's/python\.module/python.library/g' xmake.lua
+      fi
+    fi
+    mkdir -p third_party
+    if [[ ! -f third_party/spdlog/include/spdlog/spdlog.h && \
+          -f /workspace/InfiniCore/third_party/spdlog/include/spdlog/spdlog.h ]]; then
+      cp -a /workspace/InfiniCore/third_party/spdlog third_party/spdlog
+    fi
+    xmake f -y -cv
     xmake build _infinilm
     xmake install _infinilm
     mkdir -p /InfiniLM/python/infinilm/lib

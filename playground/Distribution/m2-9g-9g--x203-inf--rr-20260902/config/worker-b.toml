@@ -1,0 +1,34 @@
+name = "master-9g_8b_thinking-b"
+host = "0.0.0.0"
+port = 8110
+registry_url = "http://frontend:21800"
+router_url = "http://frontend:28800"
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+command = "/opt/conda/bin/python"
+args = ["/workspace/InfiniLM/python/infinilm/server/inference_server.py", "--device", "metax", "--model", "/models/9g_8b_thinking", "--dtype", "bfloat16", "--max-batch-size", "4", "--max-new-tokens", "2048", "--num-blocks", "1024", "--tp", "1", "--temperature", "1.0", "--top-p", "0.8", "--top-k", "1", "--host", "0.0.0.0", "--port", "8110", "--enable-paged-attn", "--attn", "flash-attn", "--enable-graph"]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+PATH = "/opt/conda/bin:/root/.infini/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python:/workspace/InfiniCore/python"
+INFINI_ROOT = "/root/.infini"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/conda/lib/python3.10/site-packages/torch/lib:/root/.infini/lib:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+MACA_HOME = "/opt/hpcc"
+MACA_PATH = "/opt/hpcc"
+HPCC_PATH = "/opt/hpcc"
+HPCC_VISIBLE_DEVICES = "3"
+INFINI_PREFILL_NATIVE_CG = "1"
+INFINI_DECODE_CG_TP = "1"
+INFINI_SCHEDULE_HOMOGENEOUS = "1"
+
+[metadata]
+cache_type = "static"
+static = false
+

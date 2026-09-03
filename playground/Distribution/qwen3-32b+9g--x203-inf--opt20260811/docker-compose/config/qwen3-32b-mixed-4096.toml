@@ -1,0 +1,71 @@
+# Issue #2 repro: mixed batch 20×4096 with 4096-bucket AOT cache.
+# Use with xiyan piecewise_inductor cache (pre_attn_B4096).
+
+name = "master-qwen3-32b-paged"
+host = "0.0.0.0"
+port = 8220
+
+registry_url = "http://localhost:18000"
+router_url = "http://localhost:8000"
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+command = "/opt/conda/bin/python"
+args = [
+  "-m", "infinilm.server.entry",
+  "--phase", "all",
+  "--device", "metax",
+  "--model", "/models/Qwen3-32B",
+  "--dtype", "bfloat16",
+  "--max-batch-size", "20",
+  "--max-new-tokens", "40960",
+  "--num-blocks", "512",
+  "--tp", "4",
+  "--temperature", "0.7",
+  "--top-p", "0.8",
+  "--top-k", "20",
+  "--host", "0.0.0.0",
+  "--port", "8220",
+  "--enable-paged-attn",
+  "--attn", "flash-attn",
+  "--enable-graph",
+]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+PATH = "/opt/conda/bin:/root/.infini/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python:/workspace/InfiniCore/python"
+INFINI_ROOT = "/root/.infini"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/conda/lib/python3.10/site-packages/torch/lib:/root/.infini/lib:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+MACA_HOME = "/opt/hpcc"
+MACA_PATH = "/opt/hpcc"
+HPCC_PATH = "/opt/hpcc"
+C_INCLUDE_PATH = "/opt/hpcc/include/hcr:/opt/hpcc/tools/cu-bridge/include"
+XMAKE_ROOT = "y"
+HPCC_VISIBLE_DEVICES = "4,5,6,7"
+FLASH_ATTN_2_CUDA_SO = "/opt/conda/lib/python3.10/site-packages/flash_attn_2_cuda.cpython-310-aarch64-linux-gnu.so"
+INFINI_PREFILL_NATIVE_CG = "1"
+INFINI_COMPILE_MAX_SEQ = "40960"
+INFINI_DECODE_CG_TP = "1"
+INFINI_REQUEST_TIMEOUT_S = "7200"
+INFINI_NATIVE_CG_CAPTURE_BUCKETS = "4096"
+INFINI_DECODE_CG_BATCHES = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20"
+INFINI_PREFILL_CHUNKED = "1"
+INFINI_MAX_NUM_BATCHED_TOKENS = "4096"
+INFINI_V1_SCHEDULER = "1"
+INFINI_SCHEDULE_HOMOGENEOUS = "0"
+INFINI_SCHEDULE_NO_MIXED = "0"
+INFINI_DECODE_LIGHT_SYNC = "1"
+INFINI_PIECEWISE_INDUCTOR_SEGMENT = "1"
+INFINI_PIECEWISE_LAYER_AGNOSTIC = "1"
+INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS = "0"
+INFINI_PIECEWISE_INDUCTOR_CACHE = "/workspace/piecewise_inductor_cache"
+
+[metadata]
+cache_type = "paged"
+static = false

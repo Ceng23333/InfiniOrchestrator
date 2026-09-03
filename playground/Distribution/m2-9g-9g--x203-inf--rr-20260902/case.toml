@@ -1,0 +1,63 @@
+case_id = "m2-9g-9g--x203-inf--rr-20260902"
+category = "Distribution"
+n = 2
+model_id = "9g_8b_thinking"
+hw_profile_id = "metax-x203-hpcc-metax9"
+hw_abbr = "x203"
+be_abbr = "inf"
+worktree = "m2-9g-9g-rr-20260902"
+
+[spec]
+version = "0.1"
+topology = "frontend_workers"
+host_env = "FRONTEND_HOST"
+
+[[spec.services]]
+id = "registry"
+role = "registry"
+base_url = "http://{host}:${REGISTRY_PORT:-21800}"
+probes = [{ path = "/health", kind = "http_ok" }]
+
+[[spec.services]]
+id = "router"
+role = "load_balancer"
+base_url = "http://{host}:${ROUTER_PORT:-28800}"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metrics", kind = "prometheus", expect = "infinilm_requests_total" },
+  { path = "/services", kind = "json_snapshot" },
+  { path = "/models", kind = "json_snapshot" },
+  { path = "/stats", kind = "json_snapshot" },
+]
+
+[[spec.services]]
+id = "worker-9g-a"
+role = "entrypoint"
+base_url = "http://{host}:28103"
+probes = [{ path = "/metadata", kind = "metadata_uuid" }]
+
+[[spec.services]]
+id = "worker-9g-b"
+role = "entrypoint"
+base_url = "http://{host}:28113"
+probes = [{ path = "/metadata", kind = "metadata_uuid" }]
+
+[[spec.services]]
+id = "discovery"
+role = "load_balancer"
+base_url = "http://{host}:${ROUTER_PORT:-28800}"
+expect_services = ["master-9g_8b_thinking-a-server", "master-9g_8b_thinking-b-server"]
+probes = [{ path = "/services", kind = "services_expect" }]
+
+[[spec.services]]
+id = "router-routing"
+role = "load_balancer"
+base_url = "http://{host}:${ROUTER_PORT:-28800}"
+probes = [{ path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "9g_8b_thinking" }]
+
+[[spec.services]]
+id = "etcd"
+role = "etcd"
+optional = true
+base_url = "http://{host}:2379"
+probes = [{ path = "/health", kind = "http_ok" }]

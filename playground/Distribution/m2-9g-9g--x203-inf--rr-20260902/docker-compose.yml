@@ -1,0 +1,58 @@
+version: "2.4"
+services:
+  worker-9g-a:
+    profiles: ["workers"]
+    image: ${IMAGE_TAG}
+    container_name: m2-9g-9g-worker-a-20260902
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: entrypoint
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/m2-9g-9g-20260902}
+      ROUTER_URL: http://frontend:${ROUTER_PORT:-28800}
+      REGISTRY_URL: http://frontend:${REGISTRY_PORT:-21800}
+      BABYSITTER_CONFIGS: /config/worker-a.toml
+      BABYSITTER_HOST: worker-9g-a
+    volumes:
+      - ./config:/config:ro
+      - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ports:
+      - "28102:8100"
+      - "28103:8101"
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    devices: ["/dev/dri", "/dev/htcd", "/dev/infiniband"]
+    group_add: ["video"]
+    privileged: true
+    security_opt: ["apparmor=unconfined"]
+
+  worker-9g-b:
+    profiles: ["workers"]
+    image: ${IMAGE_TAG}
+    container_name: m2-9g-9g-worker-b-20260902
+    restart: unless-stopped
+    environment:
+      LAUNCH_COMPONENTS: entrypoint
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/m2-9g-9g-20260902}
+      ROUTER_URL: http://frontend:${ROUTER_PORT:-28800}
+      REGISTRY_URL: http://frontend:${REGISTRY_PORT:-21800}
+      BABYSITTER_CONFIGS: /config/worker-b.toml
+      BABYSITTER_HOST: worker-9g-b
+    volumes:
+      - ./config:/config:ro
+      - ${MODEL1_DIR}:/models/9g_8b_thinking:ro
+    ports:
+      - "28112:8110"
+      - "28113:8111"
+    ipc: host
+    shm_size: 100gb
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    devices: ["/dev/dri", "/dev/htcd", "/dev/infiniband"]
+    group_add: ["video"]
+    privileged: true
+    security_opt: ["apparmor=unconfined"]
+

@@ -39,6 +39,9 @@ SVC_ROOT="${SVC_ROOT:-${IO_ROOT}}"
 RUST_DIR="${RUST_DIR:-${IO_ROOT}/rust}"
 DEV_CONTAINER="${DEV_CONTAINER:-infinilm-dev-hpcc37}"
 BIN_SEED_IMAGE="${BIN_SEED_IMAGE:-}"
+# Read-only header seed when pin snapshots lack third_party submodules.
+THIRD_PARTY_SEED_IMAGE="${THIRD_PARTY_SEED_IMAGE:-infini-orchestrator-metax:metax-hpcc-ai370-runtime-base-20260813}"
+PHASE1_GPU="${PHASE1_GPU:-1}"
 
 # shellcheck source=proxy-env.sh
 source "${SCRIPT_DIR}/proxy-env.sh"
@@ -147,11 +150,19 @@ fi
 
 echo "Step 1: Create Phase 1 build container (sleep entrypoint)..."
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-docker run -d \
-  --name "${CONTAINER_NAME}" \
-  --network host \
-  --workdir /app \
-  --entrypoint /bin/bash \
+_phase1_run_args=(
+  -d
+  --name "${CONTAINER_NAME}"
+  --network host
+  --workdir /app
+  --entrypoint /bin/bash
+  -e XMAKE_ROOT=y
+)
+if [[ "${PHASE1_GPU}" == "1" ]]; then
+  echo "  Attaching GPU devices (/dev/dri /dev/htcd) for MetaX xmake..."
+  _phase1_run_args+=(--privileged --ipc=shareable --device=/dev/dri:/dev/dri --device=/dev/htcd:/dev/htcd)
+fi
+docker run "${_phase1_run_args[@]}" \
   "${BASE_IMAGE}" \
   -c "sleep infinity"
 
@@ -210,9 +221,92 @@ echo "  Streaming InfiniTensorWorktree InfiniCore/InfiniLM → /workspace ..."
 stream_tree "${SOURCE_ROOT}/InfiniCore" /workspace/InfiniCore
 stream_tree "${SOURCE_ROOT}/InfiniLM" /workspace/InfiniLM
 
+# Vendor BASE has no xmake. Copy binary + program files from dev container or host.
+seed_xmake() {
+  echo "  Seeding xmake (vendor BASE has none)..."
+  docker exec "${CONTAINER_NAME}" mkdir -p \
+    /root/.local/bin /root/.local/share/xmake /usr/local/bin /root/.xmake
+  local _xstage
+  _xstage="$(mktemp -d)"
+  mkdir -p "${_xstage}/share" "${_xstage}/dotxmake"
+  if docker ps --format '{{.Names}}' | grep -qx "${DEV_CONTAINER}"; then
+    echo "    binary/share from running ${DEV_CONTAINER}"
+    docker cp "${DEV_CONTAINER}:/root/.local/bin/xmake" "${_xstage}/xmake" 2>/dev/null || true
+    docker cp "${DEV_CONTAINER}:/usr/local/bin/xmake" "${_xstage}/xmake" 2>/dev/null || true
+    docker cp "${DEV_CONTAINER}:/root/.local/share/xmake/." "${_xstage}/share/" 2>/dev/null || true
+    docker cp "${DEV_CONTAINER}:/root/.xmake/." "${_xstage}/dotxmake/" 2>/dev/null || true
+  fi
+  if [[ ! -f "${_xstage}/xmake" && -x /root/.local/bin/xmake ]]; then
+    echo "    binary from host /root/.local/bin/xmake"
+    cp -a /root/.local/bin/xmake "${_xstage}/xmake"
+  fi
+  if [[ ! -d "${_xstage}/share" || -z "$(ls -A "${_xstage}/share" 2>/dev/null || true)" ]]; then
+    if [[ -d /root/.local/share/xmake ]]; then
+      mkdir -p "${_xstage}/share"
+      cp -a /root/.local/share/xmake/. "${_xstage}/share/"
+    fi
+  fi
+  if [[ ! -f "${_xstage}/xmake" ]]; then
+    echo "error: could not seed xmake (need ${DEV_CONTAINER} or /root/.local/bin/xmake)" >&2
+    rm -rf "${_xstage}"
+    return 1
+  fi
+  docker cp "${_xstage}/xmake" "${CONTAINER_NAME}:/root/.local/bin/xmake"
+  docker cp "${_xstage}/xmake" "${CONTAINER_NAME}:/usr/local/bin/xmake"
+  if [[ -d "${_xstage}/share" ]]; then
+    docker cp "${_xstage}/share/." "${CONTAINER_NAME}:/root/.local/share/xmake/"
+  fi
+  if [[ -d "${_xstage}/dotxmake" ]]; then
+    docker cp "${_xstage}/dotxmake/." "${CONTAINER_NAME}:/root/.xmake/"
+  fi
+  rm -rf "${_xstage}"
+  docker exec "${CONTAINER_NAME}" chmod +x /root/.local/bin/xmake /usr/local/bin/xmake
+  docker exec "${CONTAINER_NAME}" bash -lc '
+    export PATH="/root/.local/bin:/usr/local/bin:${PATH}"
+    export XMAKE_ROOT=y
+    command -v xmake
+    xmake --version
+  '
+}
+
+seed_infinicore_third_party() {
+  if ! docker image inspect "${THIRD_PARTY_SEED_IMAGE}" >/dev/null 2>&1; then
+    echo "warning: ${THIRD_PARTY_SEED_IMAGE} missing; cannot seed third_party headers" >&2
+    return 0
+  fi
+  echo "  Seeding InfiniCore/InfiniLM third_party headers from ${THIRD_PARTY_SEED_IMAGE}..."
+  local _seed _stage
+  _seed="$(docker create "${THIRD_PARTY_SEED_IMAGE}")"
+  _stage="$(mktemp -d)"
+  docker cp "${_seed}:/workspace/InfiniCore/third_party/spdlog" "${_stage}/spdlog" 2>/dev/null || true
+  docker cp "${_seed}:/workspace/InfiniLM/third_party/json" "${_stage}/json" 2>/dev/null || true
+  docker rm -f "${_seed}" >/dev/null
+  docker exec "${CONTAINER_NAME}" mkdir -p /workspace/InfiniCore/third_party /workspace/InfiniLM/third_party
+  if [[ -f "${_stage}/spdlog/include/spdlog/spdlog.h" ]]; then
+    if ! docker exec "${CONTAINER_NAME}" test -f /workspace/InfiniCore/third_party/spdlog/include/spdlog/spdlog.h; then
+      docker cp "${_stage}/spdlog" "${CONTAINER_NAME}:/workspace/InfiniCore/third_party/spdlog"
+    fi
+    if ! docker exec "${CONTAINER_NAME}" test -f /workspace/InfiniLM/third_party/spdlog/include/spdlog/spdlog.h; then
+      docker cp "${_stage}/spdlog" "${CONTAINER_NAME}:/workspace/InfiniLM/third_party/spdlog"
+    fi
+  fi
+  if [[ -d "${_stage}/json/single_include" ]]; then
+    if ! docker exec "${CONTAINER_NAME}" test -d /workspace/InfiniLM/third_party/json/single_include; then
+      docker cp "${_stage}/json" "${CONTAINER_NAME}:/workspace/InfiniLM/third_party/json"
+    fi
+  fi
+  rm -rf "${_stage}"
+}
+
+seed_infinicore_third_party
+if [[ "${FORCE_XMAKE_BUILD:-false}" == "true" ]]; then
+  seed_xmake
+fi
+
 # Prefer /root/.infini natives from running HPCC 3.7 dev container (host-staged;
-# docker cp between containers is unsupported). Keeps flash-attn ABI aligned.
-if docker ps -a --format '{{.Names}}' | grep -qx "${DEV_CONTAINER}"; then
+# docker cp between containers is unsupported). Skip when FORCE_XMAKE_BUILD —
+# those libs are deploy-era and would mix with the pin we are compiling.
+if [[ "${FORCE_XMAKE_BUILD:-false}" != "true" ]] && docker ps -a --format '{{.Names}}' | grep -qx "${DEV_CONTAINER}"; then
   echo "  Overlay /root/.infini libs from ${DEV_CONTAINER} via host stage..."
   _libstage="$(mktemp -d)"
   docker cp "${DEV_CONTAINER}:/root/.infini/lib/." "${_libstage}/" 2>/dev/null || true
@@ -227,6 +321,22 @@ if docker ps -a --format '{{.Names}}' | grep -qx "${DEV_CONTAINER}"; then
       docker cp "${_libstage}/${_so}" \
         "${CONTAINER_NAME}:/workspace/InfiniCore/python/infinicore/lib/"
     done
+    # Bake full native extensions from dev-container xmake (not runtime hot-patch).
+    _extstage="$(mktemp -d)"
+    docker cp "${DEV_CONTAINER}:/workspace/InfiniCore/python/infinicore/lib/." "${_extstage}/ic/" 2>/dev/null || true
+    docker cp "${DEV_CONTAINER}:/workspace/InfiniLM/python/infinilm/lib/." "${_extstage}/il/" 2>/dev/null || true
+    if ls "${_extstage}/ic"/_infinicore*.so >/dev/null 2>&1; then
+      docker cp "${_extstage}/ic/." "${CONTAINER_NAME}:/workspace/InfiniCore/python/infinicore/lib/"
+    fi
+    if ls "${_extstage}/il"/_infinilm*.so >/dev/null 2>&1; then
+      docker cp "${_extstage}/il/." "${CONTAINER_NAME}:/workspace/InfiniLM/python/infinilm/lib/"
+    fi
+    if docker exec "${DEV_CONTAINER}" test -d /workspace/InfiniCore/build/.pkg/infinicore/include 2>/dev/null; then
+      docker exec "${CONTAINER_NAME}" mkdir -p /root/.infini/include
+      docker cp "${DEV_CONTAINER}:/workspace/InfiniCore/build/.pkg/infinicore/include/." \
+        "${CONTAINER_NAME}:/root/.infini/include/" 2>/dev/null || true
+    fi
+    rm -rf "${_extstage}"
   fi
   rm -rf "${_libstage}"
 fi
