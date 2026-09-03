@@ -1,0 +1,10 @@
+name: m2_pressure
+requests: 16
+concurrency: 8
+timeout_sec: 120
+stream: true
+max_tokens: 32
+prompt: Reply with exactly OK under bounded M2 pressure.
+upstream:
+  harness: vllm-benchmark
+  workload: sanity_random.yaml
