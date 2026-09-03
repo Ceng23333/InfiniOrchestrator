@@ -1,0 +1,28 @@
+case_id = "9g_8b_thinking-x203-vllm-m2-direct-20260903"
+category = "Standalone"
+n = 1
+model_id = "9g_8b_thinking"
+hw_profile_id = "metax-x203-hpcc-metax9"
+hw_abbr = "x203"
+be_abbr = "vllm"
+worktree = "m2-vllm-direct-20260903"
+
+[spec]
+version = "0.1"
+topology = "direct"
+host_env = "VLLM_DIRECT_HOST"
+
+[[spec.services]]
+id = "vllm-backend"
+role = "inference"
+base_url = "http://{host}:${VLLM_PORT:-19100}"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/metrics", kind = "prometheus" },
+  { path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "json_error", method = "POST" },
+  { path = "/v1/chat/completions", kind = "sse_stream", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "token_usage", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "cancellation", method = "POST", model = "9g_8b_thinking" },
+  { path = "/health", kind = "deadline", deadline_seconds = 5.0 },
+]
