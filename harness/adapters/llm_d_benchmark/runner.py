@@ -316,7 +316,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             case_path=args.case_path,
             topology_fingerprint=str(manifest.get("topology_fingerprint", "")),
             metrics=raw.get("metrics", {}),
-            artifacts=[str(raw_path.relative_to(manifest_path.parent))],
+            artifacts=[os.path.relpath(raw_path, manifest_path.parent)],
             adapter_mode=adapter_mode,
         )
         update_manifest(manifest_path, block)
