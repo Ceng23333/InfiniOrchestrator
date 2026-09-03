@@ -13,12 +13,6 @@ topology = "frontend_workers"
 host_env = "FRONTEND_HOST"
 
 [[spec.services]]
-id = "registry"
-role = "registry"
-base_url = "http://{host}:${REGISTRY_PORT:-21800}"
-probes = [{ path = "/health", kind = "http_ok" }]
-
-[[spec.services]]
 id = "router"
 role = "load_balancer"
 base_url = "http://{host}:${ROUTER_PORT:-28800}"
