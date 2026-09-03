@@ -111,7 +111,11 @@ Deliverables:
 - A minimal `llm-d-benchmark` run-only adapter against the already-running HTTP endpoint. It must not start or stop case services.
 - Adapter output mapped into the case diagnostic manifest, including benchmark profile, client version, server/case revision, and collection configuration.
 
-Current status: Partially implemented; **diagnostic baseline gate open** (M0 alpha). The load balancer already has HTTP proxying, streaming, health checks, service/model/status/metrics handlers, and routing helpers. `validate-case` + diagnostic manifests are available for HTTP cases. Still missing for M1 exit: native diagnostic result schema aligned to LB/bench metrics, etcd-free pure-HTTP (and multi-backend) cases with repeatable smoke/failure tests, and the `llm-d-benchmark` run-only adapter.
+Current status: **TJ M1 case baseline passed; full M1 milestone remains open.** The load balancer has HTTP proxying, streaming, health checks, service/model/status/metrics handlers, and routing helpers. The `qwen3-32b+qwen3-32b--tj-vllm--m1` Distribution case was launched and validated on 2026-08-26 with two Qwen3-32B X203 workers in TP4 graph mode. Its M1 case gate passed: `/health` and `/v1/models` returned successfully, direct and load-balanced completions succeeded, streaming client cancellation succeeded, worker loss drained the LB to `1/1`, worker recovery returned it to `2/2`, and bounded smoke-load at concurrency 4 and 8 completed with zero request errors. The daemon process-group stop fix and the accepted case evidence are recorded in the case documentation.
+
+Delivered for M1: the minimal run-only `llm-d-benchmark` adapter, bounded `m1_http_smoke` profile, core result metrics, and diagnostic-manifest `bench` linkage. The HTTP compatibility driver was validated against the live metax-9 Qwen3-32B router on 2026-09-01 with 10/10 successful streaming requests and zero request errors. The upstream planner-backed driver is prepared but not live-validated because metax-9 provides Python 3.9 and the optional planner install on metax-49 was blocked by GitHub TLS.
+
+Still missing for the full M1 exit: a first-class etcd-free pure-HTTP case, completion of the native diagnostic result schema and conformance coverage, and deterministic timeout/malformed-model tests tied into the diagnostic manifest. The TJ case uses etcd-backed discovery and a custom smoke-load probe, so it remains the reference operational case but does not by itself satisfy those remaining full-M1 deliverables.
 
 Exit criteria: a pure HTTP case can be started, validated, benchmarked, and diagnosed without etcd; one `llm-d-benchmark` run-only profile can target that live endpoint; backend loss, backend recovery, client disconnect, timeout, and malformed model routing have deterministic results; the diagnostic manifest links every result to the exact route and backend.
 
@@ -122,17 +126,25 @@ Promote the baseline from one working case to a reliable case family.
 Deliverables:
 
 - Case matrix covering direct backend, one load balancer plus one backend, and one load balancer plus multiple backends.
-- Explicit routing policies: round-robin, weighted, model-pinned, and session/prompt-affinity where supported.
+- Supported routing policies for M2: round-robin and explicit model matching. Weighted, model-pinned, and session/prompt-affinity routing are deprecated as M2 requirements; they are not part of the conformance gate unless a later case adds a documented implementation and owner.
 - Admission limits, per-backend concurrency, queue/request accounting, and bounded retry behavior.
 - Contract tests for HTTP status, JSON errors, SSE streaming, token usage, cancellation, and deadlines.
 - Golden diagnostic snapshots for `/services`, `/models`, `/stats`, and `/metrics`.
 - Regression thresholds for request success, TTFT, ITL, throughput, and routing overhead.
-- Expand the M1 adapter to cover multiple routing policies, backend replicas, queue pressure, and the full `llm-d-benchmark` metrics collection profile.
+- Expand the M1 adapter to cover the supported routing policies, backend replicas, queue pressure, and the full `llm-d-benchmark` metrics collection profile.
 - Add the complete HTTP load-balancer conformance matrix and compare native case diagnostics against `llm-d-benchmark` output.
 
-Current status: Partial. Existing harness and unexpected-behavior scenarios provide useful pieces, but there is no complete HTTP load-balancer conformance matrix and the M1 adapter has not yet been expanded to the full profile.
+Current status: Partial. The direct, single-backend, and two-replica round-robin paths have been exercised, including a vLLM two-replica baseline on metax-9. Existing harness and unexpected-behavior scenarios provide useful pieces, but there is no complete HTTP load-balancer conformance matrix and the M1 adapter has not yet been expanded to the full profile.
 
-Exit criteria: all supported HTTP cases pass the same diagnostic and conformance suite; every routing policy has a reproducible test; no retry duplicates an in-generation request.
+Remaining plan:
+
+1. Freeze the M2 case matrix around direct HTTP, one backend behind the load balancer, and multiple backends behind the load balancer; use round-robin and explicit model matching as the only supported policy gates.
+2. Add admission-limit, per-backend concurrency, queue-accounting, and bounded-retry probes, including a test that proves an in-generation request is never duplicated.
+3. Build one shared HTTP conformance suite for status/JSON errors, SSE streaming, token usage, cancellation, deadlines, and model selection; run it against every matrix case.
+4. Capture golden `/services`, `/models`, `/stats`, and `/metrics` snapshots and define regression thresholds for success rate, TTFT, ITL, throughput, and routing overhead.
+5. Expand the M1 `llm-d-benchmark` adapter to emit the full metrics profile and compare its results with native case diagnostics; keep this as the final M2 integration gate.
+
+Exit criteria: all supported HTTP cases pass the same diagnostic and conformance suite; round-robin and explicit model matching each have a reproducible test; admission, queue, retry, and deadline behavior meet the thresholds; and no retry duplicates an in-generation request.
 
 ### M3 - Discovery promotion
 
@@ -249,7 +261,8 @@ M7 instrumentation should begin during M1 and M5, but planner/autoscaling must w
 ## Priority definition
 
 - M0 alpha: **landed** (hardening continues in parallel; not a blocker for M1).
-- Active P0: **M1**. Make pure HTTP load balancing the reliable current-state baseline.
+- Active P0: **M1 remaining exit work**. Complete the etcd-free pure-HTTP case, diagnostic result schema/conformance coverage, and deterministic failure tests; the minimal run-only benchmark adapter is delivered.
+- Delivered M1 case baseline: TJ Qwen3-32B TP4 graph deployment is validated and operational; keep it as the reference multi-backend case while the full M1 exit work lands.
 - P0 residual: M0 full hardening (case matrix migration, reserved failure categories, warehouse columns) where it does not block M1.
 - P1: M2. Turn the baseline into a conformance-tested case family.
 - M1 establishes the minimal `llm-d-benchmark` compatibility path; M2 expands it to the full case matrix. It remains a client/metrics adapter, not a runtime dependency.
