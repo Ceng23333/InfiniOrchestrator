@@ -32,6 +32,8 @@ probes = [
   { path = "/v1/chat/completions", kind = "json_error", method = "POST" },
   { path = "/v1/chat/completions", kind = "sse_stream", method = "POST", model = "9g_8b_thinking" },
   { path = "/v1/chat/completions", kind = "token_usage", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "cancellation", method = "POST", model = "9g_8b_thinking" },
+  { path = "/health", kind = "deadline", deadline_seconds = 5.0 },
 ]
 
 [[spec.services]]

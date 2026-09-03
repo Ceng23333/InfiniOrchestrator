@@ -182,6 +182,26 @@ class ProbeTests(unittest.TestCase):
                 result = run_probe(self._service(), ProbeSpec(path="/v1/models", kind="model_match", model="m1"), self._ctx(Path(tmp)))
             self.assertEqual(result.status, "pass")
 
+    def test_deadline_probe_enforces_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._request", return_value=(200, "ok", 20)):
+                result = run_probe(
+                    self._service(),
+                    ProbeSpec(path="/health", kind="deadline", deadline_seconds=0.1),
+                    self._ctx(Path(tmp)),
+                )
+            self.assertEqual(result.status, "pass")
+
+    def test_cancellation_probe_requires_initial_stream_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._cancel_stream", return_value=(200, "data: {}\n", 7)):
+                result = run_probe(
+                    self._service(),
+                    ProbeSpec(path="/v1/chat/completions", kind="cancellation", model="m1"),
+                    self._ctx(Path(tmp)),
+                )
+            self.assertEqual(result.status, "pass")
+
     def test_metadata_uuid_fail_on_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_root = Path(tmp)

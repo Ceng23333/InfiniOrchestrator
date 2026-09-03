@@ -42,6 +42,8 @@ VALID_PROBE_KINDS = frozenset(
         "sse_stream",
         "token_usage",
         "model_match",
+        "cancellation",
+        "deadline",
     }
 )
 
@@ -60,6 +62,7 @@ class ProbeSpec:
     expect_nonempty: str = ""
     model: str = ""
     models_from: str = ""
+    deadline_seconds: float = 0.0
 
 
 @dataclass
@@ -113,6 +116,7 @@ def _parse_probe(raw: dict[str, Any]) -> ProbeSpec:
         expect_nonempty=str(raw.get("expect_nonempty", "")),
         model=str(raw.get("model", "")),
         models_from=str(raw.get("models_from", "")),
+        deadline_seconds=float(raw.get("deadline_seconds", 0.0)),
     )
 
 

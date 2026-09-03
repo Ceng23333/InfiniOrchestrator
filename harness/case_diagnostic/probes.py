@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import http.client
 import re
 import time
+from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -29,6 +31,8 @@ CATEGORY_BY_KIND: dict[str, str] = {
     "sse_stream": "streaming",
     "token_usage": "routing",
     "model_match": "routing",
+    "cancellation": "cancellation",
+    "deadline": "cancellation",
 }
 
 
@@ -106,6 +110,50 @@ def _chat_request(
         headers={"Content-Type": "application/json"},
         timeout=timeout,
     )
+
+
+def _cancel_stream(
+    url: str,
+    *,
+    model: str,
+    timeout: float,
+) -> tuple[int, str, int]:
+    """Read the first streaming bytes, then close the client connection."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError(f"unsupported cancellation URL: {url}")
+    connection_type = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    conn = connection_type(parts.hostname, port, timeout=timeout)
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": "m2 cancellation"}],
+            "stream": True,
+            "max_tokens": 128,
+        }
+    ).encode("utf-8")
+    path = parts.path or "/"
+    if parts.query:
+        path = f"{path}?{parts.query}"
+    start = time.perf_counter()
+    try:
+        conn.request(
+            "POST",
+            path,
+            body=body,
+            headers={
+                "Accept": "text/event-stream",
+                "Content-Type": "application/json",
+                "User-Agent": "infini-validate-case/0.1",
+            },
+        )
+        response = conn.getresponse()
+        first_chunk = response.read(256).decode("utf-8", errors="replace")
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        return response.status, first_chunk, elapsed_ms
+    finally:
+        conn.close()
 
 
 def _evidence_path(ctx: ProbeContext, svc: ServiceSpec, probe: ProbeSpec, suffix: str) -> str:
@@ -327,6 +375,35 @@ def run_probe(
                 result.status = "pass"
             else:
                 result.message = f"model {expected!r} missing from model listing"
+
+        elif probe.kind == "deadline":
+            deadline = probe.deadline_seconds or ctx.timeout
+            status, body, latency = _request(url, timeout=deadline)
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "txt")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            if status < 400 and latency <= int(deadline * 1000):
+                result.status = "pass"
+            else:
+                result.message = f"request exceeded {deadline:.3f}s deadline or returned HTTP {status}"
+
+        elif probe.kind == "cancellation":
+            status, body, latency = _cancel_stream(
+                url,
+                model=probe.model or "9g_8b_thinking",
+                timeout=max(ctx.timeout, 10.0),
+            )
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "sse")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            if status < 400 and body:
+                result.status = "pass"
+            else:
+                result.message = "stream did not yield bytes before client cancellation"
 
         elif probe.kind == "chat_smoke":
             models: list[str] = []
