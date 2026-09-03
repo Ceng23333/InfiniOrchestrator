@@ -77,6 +77,7 @@ def assemble_manifest(
     evidence_root: Path,
     io_root: Path,
     environment_extra: dict[str, Any] | None = None,
+    bench_block: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     assert doc.spec is not None
     failures = [r for r in probe_results if r.status == "fail"]
@@ -139,6 +140,8 @@ def assemble_manifest(
     }
     if failure_block:
         manifest["failure"] = failure_block
+    if bench_block:
+        manifest["bench"] = bench_block
     return manifest
 
 

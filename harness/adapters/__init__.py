@@ -1,0 +1,1 @@
+"""Optional harness adapters."""

@@ -1,0 +1,10 @@
+name: m1_http_smoke
+requests: 10
+concurrency: 2
+timeout_sec: 120
+stream: true
+max_tokens: 32
+prompt: Reply with exactly OK.
+upstream:
+  harness: vllm-benchmark
+  workload: sanity_random.yaml

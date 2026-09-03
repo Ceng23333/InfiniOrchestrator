@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HARNESS_ROOT="/home/zenghua/workspace/massive_hetero_inference/InfiniOrchestrator/harness"
+TRIE_ROOT="${TRIE_ROOT:?set TRIE_ROOT to the Applied Compute trie checkout}"
+OUTPUT_DIR="${OUTPUT_DIR:?set OUTPUT_DIR for trie staging artifacts}"
+exec python3 "${HARNESS_ROOT}/adapters/trie/run_trie_agentic.py" \
+  --trie-root "${TRIE_ROOT}" \
+  --endpoint "${BENCH_TARGET_URL:?set BENCH_TARGET_URL}" \
+  --model "${MODEL:?set MODEL}" \
+  --tokenizer-model "${TOKENIZER_MODEL:?set TOKENIZER_MODEL}" \
+  --output-dir "${OUTPUT_DIR}" \
+  --concurrency "${CONCURRENCY:-2}" \
+  --duration "${DURATION:-30}" \
+  --num-gpus "${NUM_GPUS:-2}" \
+  --trace-count "${TRACE_COUNT:-8}"
