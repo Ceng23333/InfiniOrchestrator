@@ -25,6 +25,10 @@ CATEGORY_BY_KIND: dict[str, str] = {
     "json_snapshot": "backend_readiness",
     "chat_smoke": "routing",
     "services_expect": "routing",
+    "json_error": "routing",
+    "sse_stream": "streaming",
+    "token_usage": "routing",
+    "model_match": "routing",
 }
 
 
@@ -77,6 +81,31 @@ def _full_url(base: str, path: str) -> str:
     if path.startswith("http://") or path.startswith("https://"):
         return path
     return f"{base.rstrip('/')}{path}"
+
+
+def _chat_request(
+    base: str,
+    path: str,
+    *,
+    model: str,
+    stream: bool,
+    timeout: float,
+) -> tuple[int, str, int]:
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": "m2 conformance"}],
+            "stream": stream,
+            "max_tokens": 8,
+        }
+    ).encode("utf-8")
+    return _request(
+        _full_url(base, path),
+        method="POST",
+        body=body,
+        headers={"Content-Type": "application/json"},
+        timeout=timeout,
+    )
 
 
 def _evidence_path(ctx: ProbeContext, svc: ServiceSpec, probe: ProbeSpec, suffix: str) -> str:
@@ -207,6 +236,97 @@ def run_probe(
                 result.message = f"missing services: {', '.join(missing)}"
             else:
                 result.status = "pass"
+
+        elif probe.kind == "json_error":
+            status, body, latency = _chat_request(
+                base,
+                probe.path,
+                model=probe.model or "__m2_invalid_model__",
+                stream=False,
+                timeout=ctx.timeout,
+            )
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "json")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = None
+            if status >= 400 and isinstance(payload, dict) and payload.get("error"):
+                result.status = "pass"
+            else:
+                result.message = "expected HTTP error with JSON error object"
+
+        elif probe.kind == "sse_stream":
+            status, body, latency = _chat_request(
+                base,
+                probe.path,
+                model=probe.model or "9g_8b_thinking",
+                stream=True,
+                timeout=max(ctx.timeout, 120.0),
+            )
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "sse")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            if status < 400 and "data:" in body and "[DONE]" in body:
+                result.status = "pass"
+            else:
+                result.message = "expected SSE data chunks and [DONE]"
+
+        elif probe.kind == "token_usage":
+            status, body, latency = _chat_request(
+                base,
+                probe.path,
+                model=probe.model or "9g_8b_thinking",
+                stream=False,
+                timeout=max(ctx.timeout, 120.0),
+            )
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "json")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            try:
+                payload = json.loads(body)
+                usage = payload.get("usage", {})
+            except json.JSONDecodeError:
+                usage = {}
+            if status < 400 and all(
+                isinstance(usage.get(key), int)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            ):
+                result.status = "pass"
+            else:
+                result.message = "usage.prompt_tokens/completion_tokens/total_tokens missing"
+
+        elif probe.kind == "model_match":
+            status, body, latency = _request(
+                _full_url(base, probe.path), timeout=ctx.timeout
+            )
+            result.latency_ms = latency
+            result.body_preview = body[:500]
+            ev = _evidence_path(ctx, svc, probe, "json")
+            write_text(ctx.run_root / ev, body)
+            result.evidence = ev
+            expected = probe.model
+            try:
+                payload = json.loads(body)
+                models = payload.get("data", payload.get("models", []))
+                ids = {
+                    str(item.get("id"))
+                    for item in models
+                    if isinstance(item, dict) and item.get("id")
+                }
+            except json.JSONDecodeError:
+                ids = set()
+            if status < 400 and expected and expected in ids:
+                result.status = "pass"
+            else:
+                result.message = f"model {expected!r} missing from model listing"
 
         elif probe.kind == "chat_smoke":
             models: list[str] = []

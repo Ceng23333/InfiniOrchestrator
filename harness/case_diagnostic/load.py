@@ -38,6 +38,10 @@ VALID_PROBE_KINDS = frozenset(
         "json_snapshot",
         "chat_smoke",
         "services_expect",
+        "json_error",
+        "sse_stream",
+        "token_usage",
+        "model_match",
     }
 )
 

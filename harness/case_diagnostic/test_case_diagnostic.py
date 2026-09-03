@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from case_diagnostic.load import (
     interpolate_url,
@@ -149,6 +150,38 @@ class ManifestTests(unittest.TestCase):
 
 
 class ProbeTests(unittest.TestCase):
+    def _ctx(self, root: Path) -> ProbeContext:
+        evidence = root / "evidence"
+        evidence.mkdir(parents=True)
+        return ProbeContext(run_root=root, evidence_dirs={"evidence": evidence}, timeout=0.1)
+
+    def _service(self) -> ServiceSpec:
+        return ServiceSpec(id="router", role="load_balancer", resolved_base_url="http://127.0.0.1:1", probes=[])
+
+    def test_json_error_probe_requires_json_error_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._request", return_value=(503, '{"error":"unknown model"}', 4)):
+                result = run_probe(self._service(), ProbeSpec(path="/v1/chat/completions", kind="json_error"), self._ctx(Path(tmp)))
+            self.assertEqual(result.status, "pass")
+
+    def test_sse_probe_requires_done_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._request", return_value=(200, 'data: {"choices":[]}\n\ndata: [DONE]\n\n', 5)):
+                result = run_probe(self._service(), ProbeSpec(path="/v1/chat/completions", kind="sse_stream"), self._ctx(Path(tmp)))
+            self.assertEqual(result.status, "pass")
+
+    def test_token_usage_probe_requires_core_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._request", return_value=(200, '{"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}', 6)):
+                result = run_probe(self._service(), ProbeSpec(path="/v1/chat/completions", kind="token_usage"), self._ctx(Path(tmp)))
+            self.assertEqual(result.status, "pass")
+
+    def test_model_match_probe_checks_listed_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("case_diagnostic.probes._request", return_value=(200, '{"data":[{"id":"m1"}]}', 2)):
+                result = run_probe(self._service(), ProbeSpec(path="/v1/models", kind="model_match", model="m1"), self._ctx(Path(tmp)))
+            self.assertEqual(result.status, "pass")
+
     def test_metadata_uuid_fail_on_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_root = Path(tmp)
