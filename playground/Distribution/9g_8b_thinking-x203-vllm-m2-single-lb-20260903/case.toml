@@ -15,7 +15,7 @@ host_env = "VLLM_LB_HOST"
 [[spec.services]]
 id = "router"
 role = "load_balancer"
-base_url = "http://{host}:${ROUTER_PORT:-29910}"
+base_url = "http://127.0.0.1:${ROUTER_PORT:-29910}"
 probes = [
   { path = "/health", kind = "http_ok" },
   { path = "/metrics", kind = "prometheus" },
@@ -33,7 +33,7 @@ probes = [
 [[spec.services]]
 id = "vllm-backend"
 role = "inference"
-base_url = "http://{host}:${VLLM_BACKEND_PORT:-19100}"
+base_url = "http://172.17.0.2:${VLLM_BACKEND_PORT:-19100}"
 probes = [
   { path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" },
 ]
@@ -41,5 +41,5 @@ probes = [
 [[spec.services]]
 id = "router-routing"
 role = "load_balancer"
-base_url = "http://{host}:${ROUTER_PORT:-29910}"
+base_url = "http://127.0.0.1:${ROUTER_PORT:-29910}"
 probes = [{ path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "9g_8b_thinking" }]
