@@ -1,7 +1,52 @@
 version: "2.4"
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${COMPOSE_SUBNET:-172.31.249.0/24}
+
 services:
+  etcd:
+    image: ${ETCD_IMAGE_TAG:-quay.io/coreos/etcd:v3.7.0}
+    container_name: m2-9g-9g-etcd-20260902
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      - --name=m2-etcd
+      - --data-dir=/etcd-data
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-cluster=m2-etcd=http://etcd:2380
+      - --initial-cluster-state=new
+    volumes:
+      - m2-etcd-data:/etcd-data
+    ports:
+      - "2379:2379"
+
+  frontend:
+    image: ${IMAGE_TAG}
+    container_name: m2-9g-9g-frontend-20260902
+    restart: unless-stopped
+    depends_on:
+      - etcd
+    environment:
+      LAUNCH_COMPONENTS: registry,router
+      REGISTRY_PORT: ${REGISTRY_PORT:-21800}
+      ROUTER_PORT: ${ROUTER_PORT:-28800}
+      ROUTER_REGISTRY_URL: http://localhost:${REGISTRY_PORT:-21800}
+      ETCD_ENDPOINTS: http://etcd:2379
+      DISCOVERY_PREFIX: ${DISCOVERY_PREFIX:-/infini/m2-9g-9g-20260902}
+    ports:
+      - "${FRONTEND_HOST_PORT:-28800}:${ROUTER_PORT:-28800}"
+      - "${REGISTRY_PORT:-21800}:${REGISTRY_PORT:-21800}"
+
   worker-9g-a:
     profiles: ["workers"]
+    depends_on:
+      - frontend
+      - etcd
     image: ${IMAGE_TAG}
     container_name: m2-9g-9g-worker-a-20260902
     restart: unless-stopped
@@ -30,6 +75,9 @@ services:
 
   worker-9g-b:
     profiles: ["workers"]
+    depends_on:
+      - frontend
+      - etcd
     image: ${IMAGE_TAG}
     container_name: m2-9g-9g-worker-b-20260902
     restart: unless-stopped
@@ -56,3 +104,5 @@ services:
     privileged: true
     security_opt: ["apparmor=unconfined"]
 
+volumes:
+  m2-etcd-data:
