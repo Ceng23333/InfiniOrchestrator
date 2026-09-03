@@ -134,17 +134,19 @@ Deliverables:
 - Expand the M1 adapter to cover the supported routing policies, backend replicas, queue pressure, and the full `llm-d-benchmark` metrics collection profile.
 - Add the complete HTTP load-balancer conformance matrix and compare native case diagnostics against `llm-d-benchmark` output.
 
-Current status: Partial. The direct, single-backend, and two-replica round-robin paths have been exercised, including a vLLM two-replica baseline on metax-9. Existing harness and unexpected-behavior scenarios provide useful pieces, but there is no complete HTTP load-balancer conformance matrix and the M1 adapter has not yet been expanded to the full profile.
+Current status: Partial, with the HTTP case and benchmark baseline operational on metax-9. The two-backend InfiniLM round-robin case is live and passed the shared diagnostic gate on 2026-09-03. New vLLM cases are also defined and live-validated: `9g_8b_thinking-x203-vllm-m2-direct-20260903` passed as a direct backend, and `9g_8b_thinking-x203-vllm-m2-single-lb-20260903` passed through a single-backend router on port 29910. The vLLM backend is the preferred M2 implementation path; the InfiniLM case remains the two-replica discovery reference.
+
+Delivered for M2: shared probes for JSON errors, SSE framing, token usage, client cancellation, deadlines, and model matching; an etcd-backed two-replica compose topology; reproducible `m1_http_smoke` and `m2_pressure` HTTP profiles; and benchmark-to-diagnostic manifest linkage. The 10-request baseline passed 10/10 with zero errors, and the 16-request concurrency-8 pressure profile passed 16/16 with zero errors at 6.52 requests/second. Diagnostic evidence is stored under the dated `bench-warehouse/bench_results/diagnostics/` directories and benchmark staging was copied to metax-49 without changing warehouse raw data.
 
 Remaining plan:
 
-1. Freeze the M2 case matrix around direct HTTP, one backend behind the load balancer, and multiple backends behind the load balancer; use round-robin and explicit model matching as the only supported policy gates.
+1. Add self-contained vLLM launch/teardown ownership for the direct and single-backend cases; their manifests currently validate against explicitly supplied live endpoints.
 2. Add admission-limit, per-backend concurrency, queue-accounting, and bounded-retry probes, including a test that proves an in-generation request is never duplicated.
-3. Build one shared HTTP conformance suite for status/JSON errors, SSE streaming, token usage, cancellation, deadlines, and model selection; run it against every matrix case.
-4. Capture golden `/services`, `/models`, `/stats`, and `/metrics` snapshots and define regression thresholds for success rate, TTFT, ITL, throughput, and routing overhead.
-5. Expand the M1 `llm-d-benchmark` adapter to emit the full metrics profile and compare its results with native case diagnostics; keep this as the final M2 integration gate.
+3. Add a multi-model case so explicit model matching is tested as routing, not only as same-model discovery validation.
+4. Promote the current `/services`, `/models`, `/stats`, and `/metrics` evidence to golden snapshots and define regression thresholds for success rate, TTFT, ITL, throughput, and routing overhead.
+5. Expand the M1 `llm-d-benchmark` adapter to emit the full metrics profile, populate ITL/router-overhead fields, and compare results with native diagnostics; publish rows only through the metax-49 warehouse workflow when explicitly requested.
 
-Exit criteria: all supported HTTP cases pass the same diagnostic and conformance suite; round-robin and explicit model matching each have a reproducible test; admission, queue, retry, and deadline behavior meet the thresholds; and no retry duplicates an in-generation request.
+Exit criteria: all supported HTTP cases pass the same diagnostic and conformance suite; round-robin and explicit model matching each have reproducible tests; admission, queue, retry, and deadline behavior meet the thresholds; and no retry duplicates an in-generation request. Current direct, single-LB, multi-backend, conformance, deadline, benchmark-smoke, and bounded-pressure gates pass; admission/queue/retry, multi-model routing, formal thresholds, and full metrics publication remain open.
 
 ### M3 - Discovery promotion
 
