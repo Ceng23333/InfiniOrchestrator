@@ -196,43 +196,50 @@ Current status: Distribution cases demonstrate multiple services, but the orches
 
 Exit criteria: a diagnostic P/D case completes one request through separate prefill and decode workers and produces evidence for every transition; failure falls back or fails with a categorized reason.
 
-### Pre-M6 - Aggregated vLLM inference baseline
+### Pre-M6 - Aggregated vLLM cache-aware router
 
-Establish a stable aggregated vLLM serving path as the controlled baseline for
-M6 cache-aware routing work. This is a bridge milestone: it does not implement
-prefill/decode disaggregation, KV transfer, or cache-aware route selection.
+Implement and validate cache-aware routing on an aggregated vLLM backend before
+promoting the behavior to P/D and shared-pool deployments. This milestone does
+not implement prefill/decode disaggregation or cross-tier KV transfer.
 
 Deliverables:
 
 - Runnable vLLM case shapes for direct backend, one vLLM backend behind the
   load balancer, and multiple vLLM backends behind the load balancer.
 - One fixed workload and trace format used across all shapes, with round-robin
-  routing as the comparison baseline.
+  and load-only routing as comparison baselines.
 - OpenAI-compatible conformance for health, model discovery, non-streaming
   completions, SSE, usage accounting, client cancellation, and deadlines.
+- Aggregated-vLLM cache-event adapter and router cache index keyed by model,
+  tokenizer, page size, and worker generation.
+- Prefix-overlap route scoring with bounded cache-index memory, stale-event
+  fencing, cache-miss fallback, and explicit cache-aware route diagnostics.
+- Restart and recovery behavior that reconstructs safe routing state without
+  routing requests to stale or unknown cache generations.
 - Captured vLLM model, image, device, port, runtime, and diagnostic-manifest
   metadata for every run.
-- Baseline metrics for success rate, TTFT, ITL, throughput, routing overhead,
-  and per-backend request distribution; prefix-cache-enabled runs are recorded
-  as M6 preparation, not as cache-aware promotion evidence.
+- Comparative metrics for success rate, TTFT, ITL, throughput, routing
+  overhead, cache hit/miss, and per-backend request distribution.
 
 Current status: Direct vLLM and single-backend-behind-LB vLLM cases passed the
 shared diagnostic suite on metax-9 on 2026-09-03. The existing two-replica vLLM
 round-robin baseline also passed bounded trie workload execution with zero
 request errors, but KV-event collection did not yet produce a promotable cache
-signal. The aggregated vLLM path is therefore suitable for M6 prototype work,
-while the case lifecycle and complete metric profile still need to be made
-reproducible.
+signal. The aggregated vLLM serving path is available, while the cache-event
+adapter, cache-aware placement, restart reconstruction, and complete metric
+profile remain to be implemented and validated.
 
 Exit criteria: all three vLLM case shapes start, validate, benchmark, and stop
-reproducibly with the same workload; diagnostic evidence and runtime metadata
-are complete; success, TTFT, ITL, throughput, and routing-overhead thresholds
-are defined; and no result is presented as M6 cache-aware improvement until
-cache events and cache-aware placement are independently validated.
+reproducibly with the same workload; cache-aware routing beats round-robin and
+load-only placement on a prefix-reuse trace; cache events are fenced and
+reconstructed safely after router restart; diagnostic evidence and runtime
+metadata are complete; and success, TTFT, ITL, throughput, cache hit/miss, and
+routing-overhead thresholds are defined.
 
 ### M6 - KV-aware routing and shared pool
 
-Promote cache locality only after P/D behavior is diagnosable.
+Promote the validated aggregated-vLLM cache-aware router to P/D behavior and
+shared GPU, host, and remote cache tiers only after P/D behavior is diagnosable.
 
 Deliverables:
 
