@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{error, info, warn};
 
 /// Load balancer for managing service instances
@@ -106,6 +106,85 @@ impl LoadBalancer {
     }
 
     /// Get next healthy service using weighted round-robin
+    ///
+    /// KV-aware routing is explicitly opt-in and returns `None` when the
+    /// sharepool query cannot provide a positive overlap score, allowing the
+    /// caller to preserve the existing round-robin fallback.
+    pub async fn get_next_healthy_service_by_kv_overlap(
+        &self,
+        model_id: Option<&str>,
+        sharepool_url: &str,
+        page_size: u32,
+        block_keys: &[String],
+    ) -> Option<ServiceInstance> {
+        if block_keys.is_empty() {
+            return None;
+        }
+        let services = self.services.read().await;
+        let candidates: Vec<_> = services.values().cloned().collect();
+        drop(services);
+        let healthy =
+            futures::future::join_all(candidates.iter().map(|service| service.is_healthy())).await;
+        let mut candidates: Vec<_> = candidates
+            .into_iter()
+            .zip(healthy)
+            .filter_map(|(service, is_healthy)| is_healthy.then_some(service))
+            .collect();
+        if let Some(model_id) = model_id {
+            let mut matching = Vec::new();
+            for service in candidates {
+                if service
+                    .models
+                    .read()
+                    .await
+                    .iter()
+                    .any(|model| model == model_id)
+                {
+                    matching.push(service);
+                }
+            }
+            candidates = matching;
+        }
+        if candidates.is_empty() {
+            return None;
+        }
+        candidates.sort_by(|left, right| left.name.cmp(&right.name));
+        let endpoint = format!("{}/v1/kv_overlap", sharepool_url.trim_end_matches('/'));
+        let response = reqwest::Client::new()
+            .post(endpoint)
+            .json(&serde_json::json!({
+                "model_id": model_id.unwrap_or("default"),
+                "page_size": page_size,
+                "block_keys": block_keys,
+            }))
+            .send()
+            .await
+            .ok()?
+            .json::<serde_json::Value>()
+            .await
+            .ok()?;
+        let scores = response.get("longest_prefix_by_worker")?.as_object()?;
+        let best_score = candidates
+            .iter()
+            .filter_map(|service| scores.get(&service.name).and_then(|value| value.as_u64()))
+            .max()
+            .unwrap_or(0);
+        if best_score == 0 {
+            return None;
+        }
+        let best: Vec<_> = candidates
+            .into_iter()
+            .filter(|service| {
+                scores.get(&service.name).and_then(|value| value.as_u64()) == Some(best_score)
+            })
+            .collect();
+        let mut index = self.current_index.write().await;
+        let service = best[*index % best.len()].clone();
+        *index += 1;
+        service.increment_request_count().await;
+        Some(service)
+    }
+
     #[allow(dead_code)]
     pub async fn get_next_healthy_service(&self) -> Option<ServiceInstance> {
         let services = self.services.read().await;
@@ -329,10 +408,8 @@ impl LoadBalancer {
         // Filter by cache_type metadata
         let mut filtered_services = Vec::new();
         for service in &healthy_services {
-            if let Some(metadata_cache_type) = service
-                .metadata
-                .get("cache_type")
-                .and_then(|v| v.as_str())
+            if let Some(metadata_cache_type) =
+                service.metadata.get("cache_type").and_then(|v| v.as_str())
             {
                 if metadata_cache_type == cache_type {
                     filtered_services.push(service.clone());
@@ -554,9 +631,7 @@ impl LoadBalancer {
                 existing_service.host = instance.host.clone();
                 existing_service.port = instance.port;
                 existing_service.url = instance.url.clone();
-                existing_service
-                    .set_healthy(instance.is_healthy())
-                    .await;
+                existing_service.set_healthy(instance.is_healthy()).await;
                 existing_service.metadata = service_metadata.clone();
                 existing_service.update_last_seen().await;
 
@@ -572,10 +647,8 @@ impl LoadBalancer {
                 *existing_service.models.write().await = models;
 
                 let entrypoint_port = existing_service.port + 1;
-                existing_service.entrypoint_url = format!(
-                    "http://{}:{}",
-                    existing_service.host, entrypoint_port
-                );
+                existing_service.entrypoint_url =
+                    format!("http://{}:{}", existing_service.host, entrypoint_port);
             } else {
                 let models: Vec<String> = service_metadata
                     .get("models")

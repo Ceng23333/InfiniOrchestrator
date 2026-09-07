@@ -1,0 +1,53 @@
+case_id = "9g_8b_thinking-x203-vllm-prem6-2x-rr-20260904"
+category = "Distribution"
+n = 2
+model_id = "9g_8b_thinking"
+hw_profile_id = "metax-x203-hpcc-metax9"
+hw_abbr = "x203"
+be_abbr = "vllm"
+worktree = "prem6-vllm-2x-rr-20260904"
+
+[spec]
+version = "0.1"
+topology = "frontend_workers"
+host_env = "VLLM_LB_HOST"
+
+[[spec.services]]
+id = "router"
+role = "load_balancer"
+base_url = "http://127.0.0.1:${ROUTER_PORT:-29920}"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/models", kind = "json_snapshot" },
+  { path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "json_error", method = "POST" },
+  { path = "/v1/chat/completions", kind = "sse_stream", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "token_usage", method = "POST", model = "9g_8b_thinking" },
+  { path = "/v1/chat/completions", kind = "cancellation", method = "POST", model = "9g_8b_thinking" },
+  { path = "/health", kind = "deadline", deadline_seconds = 5.0 },
+]
+
+[[spec.services]]
+id = "vllm-backend-a"
+role = "inference"
+base_url = "http://172.17.0.2:${VLLM_A_PORT:-19100}"
+probes = [{ path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" }]
+
+[[spec.services]]
+id = "vllm-backend-b"
+role = "inference"
+base_url = "http://172.17.0.2:${VLLM_B_PORT:-19110}"
+probes = [{ path = "/v1/models", kind = "model_match", model = "9g_8b_thinking" }]
+
+[[spec.services]]
+id = "router-routing"
+role = "load_balancer"
+base_url = "http://127.0.0.1:${ROUTER_PORT:-29920}"
+expect_services = ["vllm-a", "vllm-b"]
+probes = [{ path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "9g_8b_thinking" }]
+
+[[spec.services]]
+id = "sharepool"
+role = "sharepool"
+base_url = "http://127.0.0.1:${SHAREPOOL_PORT:-29820}"
+probes = [{ path = "/health", kind = "http_ok" }]

@@ -124,7 +124,7 @@ def main() -> int:
         "latency_p95_ms": percentile([x * 1000 for x in result.latencies], 95),
     }
     (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    return result.returncode
+    return 0 if completed > 0 and failed == 0 else 1
 
 
 if __name__ == "__main__":

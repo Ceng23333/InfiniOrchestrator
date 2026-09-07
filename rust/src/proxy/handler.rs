@@ -1,25 +1,27 @@
 //! Request/response proxy handler
 
 use axum::{
+    Json,
     body::Body,
     extract::{Request, State},
     http::{HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use reqwest::Client;
-use serde::Deserialize;
-use std::borrow::Cow;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
+use tokenizers::Tokenizer;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::load_balancer::load_balancer::LoadBalancer;
+use crate::metrics::{RequestMetricsHandle, now_secs, parse_usage_tokens};
 use crate::proxy::session_extractor::generate_session_from_ip;
 use crate::proxy::streaming::handle_streaming_response;
-use crate::load_balancer::load_balancer::LoadBalancer;
-use crate::metrics::{now_secs, parse_usage_tokens, RequestMetricsHandle};
 
 /// Get proxy timeout from environment variable or use default (30 minutes)
 fn get_proxy_timeout() -> Duration {
@@ -63,6 +65,83 @@ fn get_routing_threshold() -> usize {
         .unwrap_or(DEFAULT_CACHE_TYPE_ROUTING_THRESHOLD)
 }
 
+lazy_static::lazy_static! {
+    static ref ROUTER_TOKENIZER: std::sync::Mutex<Option<Tokenizer>> = std::sync::Mutex::new(None);
+}
+
+fn render_tokenizer_input(body: &[u8]) -> Option<String> {
+    let request: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let messages = request.get("messages")?.as_array()?;
+    let enable_thinking = request
+        .get("extra_body")
+        .and_then(|value| value.get("chat_template_kwargs"))
+        .and_then(|value| value.get("enable_thinking"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let mut rendered = String::new();
+    for message in messages {
+        let role = message.get("role")?.as_str()?;
+        let content = message.get("content")?.as_str()?;
+        rendered.push_str("<|im_start|>");
+        rendered.push_str(role);
+        rendered.push('\n');
+        rendered.push_str(content);
+        rendered.push_str("<|im_end|>\n");
+    }
+    rendered.push_str("<|im_start|>assistant\n");
+    if !enable_thinking {
+        rendered.push_str("<think>\n\n</think>\n");
+    }
+    Some(rendered)
+}
+
+fn cbor_sha256<T: Serialize>(value: &T) -> Option<[u8; 32]> {
+    let mut encoded = Vec::new();
+    ciborium::ser::into_writer(value, &mut encoded).ok()?;
+    let digest = Sha256::digest(encoded);
+    let mut output = [0u8; 32];
+    output.copy_from_slice(&digest);
+    Some(output)
+}
+
+fn cbor_block_sha256(parent: &[u8], token_ids: &[u32]) -> Option<[u8; 32]> {
+    let value = ciborium::value::Value::Array(vec![
+        ciborium::value::Value::Bytes(parent.to_vec()),
+        ciborium::value::Value::Array(
+            token_ids
+                .iter()
+                .map(|token_id| ciborium::value::Value::Integer((*token_id).into()))
+                .collect(),
+        ),
+        ciborium::value::Value::Null,
+    ]);
+    cbor_sha256(&value)
+}
+
+fn derive_kv_block_keys(body: &[u8], page_size: u32) -> Option<Vec<String>> {
+    let path = std::env::var("ROUTER_TOKENIZER_PATH").ok()?;
+    let input = render_tokenizer_input(body)?;
+    let mut guard = ROUTER_TOKENIZER.lock().ok()?;
+    if guard.is_none() {
+        *guard = Some(Tokenizer::from_file(path).ok()?);
+    }
+    let encoding = guard.as_ref()?.encode(input, false).ok()?;
+    let ids = encoding.get_ids();
+    let block_size = page_size.max(1) as usize;
+    let mut parent = cbor_sha256(&"0")?;
+    let mut keys = Vec::new();
+    for chunk in ids.chunks(block_size) {
+        if chunk.len() != block_size {
+            break;
+        }
+        let digest = cbor_block_sha256(&parent, chunk)?;
+        let low64 = u64::from_be_bytes(digest[24..32].try_into().ok()?);
+        keys.push(low64.to_string());
+        parent = digest;
+    }
+    Some(keys)
+}
+
 /// Routing-relevant fields extracted from a request body.
 /// We intentionally do NOT deserialize the full JSON into `serde_json::Value` for efficiency.
 #[derive(Debug, Clone)]
@@ -93,8 +172,10 @@ impl<'a> Content<'a> {
             Content::Str(s) => s.len(),
             Content::Parts(parts) => parts
                 .iter()
-                .map(|p| p.text.as_ref().map(|s| s.len()).unwrap_or(0)
-                    + p.content.as_ref().map(|s| s.len()).unwrap_or(0))
+                .map(|p| {
+                    p.text.as_ref().map(|s| s.len()).unwrap_or(0)
+                        + p.content.as_ref().map(|s| s.len()).unwrap_or(0)
+                })
                 .sum(),
         }
     }
@@ -202,7 +283,7 @@ pub async fn proxy_handler(
         .and_then(|v| v.to_str().ok())
         .filter(|v| !v.is_empty())
         .map(str::to_string);
-    let route_decision = "selected";
+    let mut route_decision;
 
     // Read request body first (needed for model extraction and forwarding)
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
@@ -262,6 +343,21 @@ pub async fn proxy_handler(
         None
     };
 
+    let kv_page_size = std::env::var("KV_PAGE_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(16);
+    let kv_block_keys = if std::env::var("KV_AWARE_ROUTING").as_deref() == Ok("1") {
+        model_id
+            .as_deref()
+            .and_then(|_| derive_kv_block_keys(&body_bytes, kv_page_size))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let sharepool_url =
+        std::env::var("SHAREPOOL_URL").unwrap_or_else(|_| "http://127.0.0.1:29820".to_string());
+
     // Try multiple services if one fails (retry logic for multi-server scenarios)
     let max_retries = 3;
     let mut last_error: Option<(StatusCode, String)> = None;
@@ -281,7 +377,22 @@ pub async fn proxy_handler(
 
     for attempt in 0..max_retries {
         // Get service: size-based routing if enabled, else session-aware routing, else round-robin
-        let service = if let Some(ref rf) = routing_fields {
+        let kv_service = if !kv_block_keys.is_empty() {
+            load_balancer
+                .get_next_healthy_service_by_kv_overlap(
+                    model_id.as_deref(),
+                    &sharepool_url,
+                    kv_page_size,
+                    &kv_block_keys,
+                )
+                .await
+        } else {
+            None
+        };
+        let used_kv = kv_service.is_some();
+        let service = if let Some(service) = kv_service {
+            service
+        } else if let Some(ref rf) = routing_fields {
             // Calculate message body size for size-based routing
             let message_size = rf.message_size.unwrap_or(0);
             let threshold = get_routing_threshold();
@@ -323,7 +434,10 @@ pub async fn proxy_handler(
                                     Some(s) => s,
                                     None => {
                                         let error_msg = if let Some(model) = &model_id {
-                                            format!("No healthy services available for model '{}'", model)
+                                            format!(
+                                                "No healthy services available for model '{}'",
+                                                model
+                                            )
                                         } else {
                                             "No healthy services available".to_string()
                                         };
@@ -402,6 +516,7 @@ pub async fn proxy_handler(
                 }
             }
         };
+        route_decision = if used_kv { "kv_aware" } else { "selected" };
 
         // Build target URL
         let target_url = format!(

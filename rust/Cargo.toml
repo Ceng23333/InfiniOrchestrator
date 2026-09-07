@@ -47,6 +47,8 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Hashing
 sha2 = "0.10"
+tokenizers = "0.21"
+ciborium = "0.2"
 
 # Base64 encoding for etcd HTTP API
 base64 = "0.22"
