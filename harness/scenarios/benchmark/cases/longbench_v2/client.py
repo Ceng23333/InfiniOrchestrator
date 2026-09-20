@@ -271,12 +271,16 @@ async def _run_one(
                 .replace("$C_D$", item["choice_D"].strip())
             )
             prompt, truncated = _middle_truncate(tokenizer, prompt, args.max_input_tokens)
+            cot_max_gen = int(
+                os.environ.get("LONGBENCH_COT_MAX_GEN", "1024")
+                or "1024"
+            )
             cot_text, m1 = await _chat_completion(
                 session,
                 args.base_url,
                 args.model,
                 prompt,
-                1024,
+                cot_max_gen,
                 args.timeout_sec,
                 extra_body,
             )
@@ -335,7 +339,49 @@ async def _run_one(
             )
             if not metrics.get("prompt_tokens"):
                 metrics["prompt_tokens"] = float(len(tokenizer.encode(prompt)))
-        pred = extract_answer(response.strip() if response else "")
+        response_text = response.strip() if response else ""
+        pred = extract_answer(response_text)
+        # Nonempty-pred fixup: some models burn max_gen on free-form reasoning and
+        # never emit the official "The correct answer is (X)" phrase. One short
+        # format-only retry recovers extractable letters without enabling CoT.
+        if pred is None and not args.enable_thinking:
+            fixup = (
+                prompt.rstrip()
+                + "\n\nYour previous reply did not follow the required format. "
+                + 'Reply with exactly one sentence of the form: '
+                + '"The correct answer is (A)" (or B/C/D). Do not explain.'
+            )
+            fixup, trunc_fix = _middle_truncate(
+                tokenizer, fixup, args.max_input_tokens
+            )
+            truncated = truncated or trunc_fix
+            response2, m2 = await _chat_completion(
+                session,
+                args.base_url,
+                args.model,
+                fixup,
+                min(32, max(16, args.max_gen_toks)),
+                args.timeout_sec,
+                extra_body,
+            )
+            if not m2.get("prompt_tokens"):
+                m2["prompt_tokens"] = float(len(tokenizer.encode(fixup)))
+            pred2 = extract_answer(response2.strip() if response2 else "")
+            metrics = {
+                "ttft_ms": metrics["ttft_ms"],
+                "e2e_ms": metrics["e2e_ms"] + m2["e2e_ms"],
+                "tpot_ms": m2["tpot_ms"],
+                "itl_ms": m2["itl_ms"],
+                "completion_tokens": metrics["completion_tokens"]
+                + m2["completion_tokens"],
+                "prompt_tokens": metrics.get("prompt_tokens", 0.0)
+                + m2.get("prompt_tokens", 0.0),
+            }
+            if pred2 is not None:
+                pred = pred2
+                response = (response or "") + "\n" + (response2 or "")
+            elif response2:
+                response = (response or "") + "\n" + response2
         return {
             "_id": item.get("_id"),
             "answer": item.get("answer"),

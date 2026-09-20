@@ -1,0 +1,36 @@
+# Standalone stock vLLM OpenAI server for MiniCPM5-2B on Denglin QY (dlrt).
+# 2B is LlamaForCausalLM — no vllm_minicpm5 MoE plugin.
+# run-wrap.sh launches this command directly (infini-entrypoint not required).
+
+name = "master-minicpm5-2b-vllm"
+host = "0.0.0.0"
+port = 18000
+
+[backend]
+type = "command"
+command = "python3"
+args = [
+  "-m", "vllm.entrypoints.openai.api_server",
+  "--model", "/model",
+  "--served-model-name", "minicpm5-2b",
+  "--chat-template", "/model/chat_template.jinja",
+  "--host", "0.0.0.0",
+  "--port", "18000",
+  "--max-model-len", "16384",
+  "--max-num-seqs", "1",
+  "--generation-config", "vllm",
+]
+work_dir = "/workspace"
+
+[backend.env]
+DENGLIN_DEVICES = "0"
+HOME = "/home/qinyiqun"
+PATH = "/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+LD_LIBRARY_PATH = "/usr/local/dlgpu/sdk/lib"
+TZ = "Asia/Shanghai"
+LC_ALL = "C.UTF-8"
+LANG = "C.UTF-8"
+
+[metadata]
+backend_type = "vllm"
+static = true

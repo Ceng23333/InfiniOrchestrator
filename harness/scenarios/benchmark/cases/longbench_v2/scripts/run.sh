@@ -27,8 +27,7 @@ CASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 HARNESS_ROOT="$(cd "${CASE_ROOT}/../../../.." && pwd)"
 # shellcheck disable=SC1091
 source "${HARNESS_ROOT}/lib/client_env.sh"
-# shellcheck disable=SC1091
-source "${CASE_ROOT}/config/default.env"
+# Apply named preset before default.env so preset values win via ${VAR:-default}.
 if [[ -n "${LONGBENCH_PRESET:-}" ]]; then
   _preset="${CASE_ROOT}/config/presets/${LONGBENCH_PRESET}.env"
   if [[ ! -f "${_preset}" ]]; then
@@ -38,6 +37,8 @@ if [[ -n "${LONGBENCH_PRESET:-}" ]]; then
   # shellcheck disable=SC1090
   source "${_preset}"
 fi
+# shellcheck disable=SC1091
+source "${CASE_ROOT}/config/default.env"
 
 _bench_client_resolve_urls || exit 1
 _bench_client_resolve_paths || exit 1
@@ -65,12 +66,12 @@ MODEL="${MODEL:-${MODELS:-}}"
 TIMEOUT="${TIMEOUT:-600}"
 
 if [[ -z "${MODEL}" ]]; then
-  echo "Error: MODEL is required (minicpm5 | minicpm5.16a3.v0314 | 9g_8b_thinking | Qwen3-32B)" >&2
+  echo "Error: MODEL is required (minicpm5 | minicpm5-2b | minicpm5.16a3.v0314 | 9g_8b_thinking | Qwen3-32B)" >&2
   exit 1
 fi
 
 case "${MODEL}" in
-  9g_8b_thinking|Qwen3-32B|minicpm5|minicpm5.16a3.v0314) ;;
+  9g_8b_thinking|Qwen3-32B|minicpm5|minicpm5-2b|minicpm5.16a3.v0314) ;;
   *)
     echo "Error: unsupported MODEL=${MODEL}" >&2
     exit 1
@@ -96,6 +97,7 @@ else
 fi
 
 export LONGBENCH_LENGTH LONGBENCH_DIFFICULTY LIMIT MAX_CONCURRENCY MAX_INPUT_TOKENS MAX_GEN_TOKS ENABLE_THINKING
+export LONGBENCH_COT_MAX_GEN="${LONGBENCH_COT_MAX_GEN:-1024}"
 
 # shellcheck disable=SC1091
 source "${HARNESS_ROOT}/lib/resolve_tokenizer.sh"
@@ -172,8 +174,17 @@ fi
 _backend="$(echo "${BENCH_BACKEND:-infinilm}" | tr '[:upper:]' '[:lower:]')"
 # Run client in-container for vLLM and InfiniLM so AutoTokenizer (transformers) works
 # and max_input filtering matches the server tokenizer (host often lacks transformers).
+# On hosts without the MetaX DEV_CONTAINER (e.g. Denglin QY), fall back to host python.
+_use_dev_container=0
 if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "infinilm" ]]; then
   DEV_CONTAINER="${DEV_CONTAINER_NAME:-infinilm-dev-hpcc37}"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${DEV_CONTAINER}"; then
+    _use_dev_container=1
+  else
+    echo "[deploy-longbench] WARN: DEV_CONTAINER=${DEV_CONTAINER} not running; using host python client" >&2
+  fi
+fi
+if [[ "${_use_dev_container}" == "1" ]]; then
   _default_port=18180
   if [[ "${_backend}" == "infinilm" ]]; then
     _default_port=18190
@@ -247,6 +258,8 @@ if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "
     _extra_escaped="${EXTRA_BODY//\'/\'\\\'\'}"
     _extra_arg="--extra-body-json '${_extra_escaped}'"
   fi
+  # MetaX images use conda; Denglin unify image uses system python3.
+  _py_boot='if [[ -f /opt/conda/etc/profile.d/conda.sh ]]; then source /opt/conda/etc/profile.d/conda.sh && conda activate base; fi; if [[ -f /usr/local/dlgpu/sdk/env.sh ]]; then source /usr/local/dlgpu/sdk/env.sh; fi'
   docker exec \
     -e PYTHONUNBUFFERED=1 \
     -e HF_DATASETS_CACHE="${_ctn_hf_cache}" \
@@ -258,11 +271,12 @@ if [[ "${_backend}" == "vllm" || "${_backend}" == "openai" || "${_backend}" == "
     -e LONGBENCH_OFFICIAL_ROOT="${_ctn_official}" \
     -e ENABLE_THINKING="${ENABLE_THINKING}" \
     -e MAX_GEN_TOKS="${MAX_GEN_TOKS}" \
+    -e LONGBENCH_COT_MAX_GEN="${LONGBENCH_COT_MAX_GEN:-1024}" \
     -e LIMIT="${LIMIT}" \
     -e LONGBENCH_LENGTH="${LONGBENCH_LENGTH}" \
     -e LONGBENCH_DIFFICULTY="${LONGBENCH_DIFFICULTY}" \
     "${DEV_CONTAINER}" \
-    bash -lc "source /opt/conda/etc/profile.d/conda.sh && conda activate base && \
+    bash -lc "${_py_boot}; \
       python3 '${_ctn_client}' \
         --base-url '${_bench_url}' \
         --model '${MODEL}' \

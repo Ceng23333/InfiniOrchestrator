@@ -38,6 +38,15 @@ resolve_tokenizer_dir() {
         "/data-aisoft/zenghua/models/minicpm5.16a3.v0314"
       )
       ;;
+    minicpm5-2b)
+      # Dense 2B HF dir (ModelScope OpenBMB/MiniCPM5-2B) — not MoE bytelevel tokenizer.
+      candidates=(
+        "${MINICPM5_2B_TOKENIZER_DIR:-}"
+        "${MINICPM5_2B_DIR:-}"
+        "/home/qinyiqun/workspace/minicpm5-2b-support/model"
+        "/home/qinyiqun/workspace/minicpm5-2b-support/models/minicpm5-2b"
+      )
+      ;;
     *)
       echo "[resolve_tokenizer] unsupported model: ${model}" >&2
       return 1

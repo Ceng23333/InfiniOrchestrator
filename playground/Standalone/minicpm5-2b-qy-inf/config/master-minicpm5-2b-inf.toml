@@ -1,0 +1,39 @@
+# Standalone InfiniLM inference server for MiniCPM5-2B on Denglin QY (dlrt).
+# Worktree is baked into the unify image; run-wrap.sh launches this command directly.
+
+name = "master-minicpm5-2b-inf"
+host = "0.0.0.0"
+port = 18001
+
+[backend]
+type = "command"
+command = "python3"
+args = [
+  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
+  "--device", "qy",
+  "--model", "/models/minicpm5-2b",
+  "--tp", "1",
+  "--host", "0.0.0.0",
+  "--port", "18001",
+  "--max-new-tokens", "2048",
+  "--max-batch-size", "1",
+  "--max-cache-len", "16384",
+  "--temperature", "0",
+  "--top-p", "1",
+  "--top-k", "1",
+]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+DENGLIN_DEVICES = "0"
+HOME = "/home/qinyiqun"
+PATH = "/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python:/workspace/InfiniCore/python"
+LD_LIBRARY_PATH = "/usr/local/dlgpu/sdk/lib:/opt/infinicore/lib:/usr/local/lib/python3.12/dist-packages/torch/lib"
+TZ = "Asia/Shanghai"
+LC_ALL = "C.UTF-8"
+LANG = "C.UTF-8"
+
+[metadata]
+backend_type = "infinilm"
+static = true
