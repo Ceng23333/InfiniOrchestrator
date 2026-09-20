@@ -1,0 +1,12 @@
+PHASE=2
+PLATFORM=hpcc37
+DEPLOYMENT_CASE=qwen3-32b-x203-inf--phytium
+ITW_TAG=v2026.08.12
+IL_SHA=4e0fdd7e
+IC_SHA=6ad5e1c9
+BUILD_TS=20260813
+IMAGE_TAG=infini-orchestrator-metax:4e0fdd7e-6ad5e1c9-20260813
+NOTE=product_image_pin_from_qwen3-32b+9g--x203-inf--opt20260811_do_not_rebuild
+CASE_ID=qwen3-32b-x203-inf--phytium
+BE_ABBR=inf
+CONTROL_PLANE=InfiniEntrypoint

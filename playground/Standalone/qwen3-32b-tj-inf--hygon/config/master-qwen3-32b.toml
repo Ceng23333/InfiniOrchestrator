@@ -1,0 +1,71 @@
+# Standalone InfiniLM Qwen3-32B TP=4 daemon for tj-io-node00 (Hygon).
+# Host-native x86_64 rebuild @ InfiniTensorWorktree v2026.08.12 (2026-09-21).
+# Staging: /private/zenghua/staging/{InfiniLM,InfiniCore} → ITW pin.
+
+name = "qwen-tj-inf-hygon"
+host = "0.0.0.0"
+port = 8200
+
+[entrypoint]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "command"
+# Override COMMAND_PYTHON if InfiniLM needs a different interpreter than conda.
+command = "/opt/conda/bin/python"
+args = [
+  "-m", "infinilm.server.entry",
+  "--phase", "all",
+  "--device", "metax",
+  "--model", "/private/zenghua/Qwen3-32B",
+  "--dtype", "bfloat16",
+  "--max-batch-size", "4",
+  "--max-new-tokens", "40960",
+  "--num-blocks", "512",
+  "--tp", "4",
+  "--temperature", "0.7",
+  "--top-p", "0.8",
+  "--top-k", "20",
+  "--host", "0.0.0.0",
+  "--port", "8200",
+  "--enable-paged-attn",
+  "--attn", "flash-attn",
+  "--enable-graph",
+]
+work_dir = "/private/zenghua/staging/InfiniLM"
+
+[backend.env]
+PATH = "/opt/conda/bin:/private/zenghua/.infini/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/private/zenghua/staging/InfiniLM/python:/private/zenghua/staging/InfiniCore/python"
+INFINI_ROOT = "/private/zenghua/.infini"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/conda/lib/python3.12/site-packages/torch/lib:/opt/conda/lib/python3.12/site-packages:/private/zenghua/.infini/lib:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+MACA_HOME = "/opt/hpcc"
+MACA_PATH = "/opt/hpcc"
+HPCC_PATH = "/opt/hpcc"
+C_INCLUDE_PATH = "/opt/hpcc/include/hcr:/opt/hpcc/tools/cu-bridge/include"
+XMAKE_ROOT = "y"
+HPCC_VISIBLE_DEVICES = "0,1,2,3"
+INFINI_PREFILL_NATIVE_CG = "1"
+INFINI_COMPILE_MAX_SEQ = "40960"
+INFINI_DECODE_CG_TP = "1"
+INFINI_REQUEST_TIMEOUT_S = "7200"
+INFINI_NATIVE_CG_CAPTURE_BUCKETS = "2048"
+INFINI_PREFILL_CHUNKED = "1"
+INFINI_MAX_NUM_BATCHED_TOKENS = "2048"
+INFINI_V1_SCHEDULER = "1"
+INFINI_SCHEDULE_HOMOGENEOUS = "1"
+INFINI_DECODE_LIGHT_SYNC = "1"
+INFINI_PIECEWISE_INDUCTOR_SEGMENT = "0"
+INFINI_PIECEWISE_LAYER_AGNOSTIC = "1"
+INFINI_PIECEWISE_INDUCTOR_COMPILE_ON_MISS = "1"
+INFINI_AOT_CHECK_SKIP = "1"
+INFINI_PIECEWISE_INDUCTOR_CACHE = "/private/zenghua/runs/qwen3-32b-tj-inf--hygon/piecewise_inductor_cache"
+
+[metadata]
+cache_type = "paged"
+static = false
+deployment_case = "qwen3-32b-tj-inf--hygon"
+role = "worker"
+worker_id = "worker"

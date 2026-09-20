@@ -1,0 +1,66 @@
+{
+  "preset": "short_easy_cot",
+  "model": "Qwen3-32B",
+  "tp": 4,
+  "gpus": "0,1,2,3",
+  "n_full": 59,
+  "generated_at": "2026-09-21T02:20:00+08:00",
+  "arms": {
+    "phytium_vllm": {
+      "case_id": "qwen3-32b-x203-vllm--phytium",
+      "host": "metax-9",
+      "cpu": "phytium",
+      "backend": "vllm",
+      "lb_em": 0.4745762711864407,
+      "ttft_p50_ms": 982.81,
+      "output_tok_per_s": 135.76,
+      "e2e_mean_ms": 21009.94,
+      "status": "PASS",
+      "out": "/root/zenghua/workspace/profiling_20260731/bench-warehouse/bench_results/longbench_v2_Qwen3-32B_20260920_233946",
+      "notes": "wrap image vllm-mars-entrypoint:0.20.0-hpcc.ai3.7.0.102-9g"
+    },
+    "phytium_infinilm": {
+      "case_id": "qwen3-32b-x203-inf--phytium",
+      "host": "metax-9",
+      "cpu": "phytium",
+      "backend": "infinilm",
+      "lb_em": 0.4915254237288136,
+      "ttft_p50_ms": 1602.30,
+      "output_tok_per_s": 32.87,
+      "e2e_mean_ms": 82271.98,
+      "status": "PASS",
+      "out": "/root/zenghua/workspace/profiling_20260731/bench-warehouse/bench_results/longbench_v2_Qwen3-32B_20260921_011151",
+      "notes": "product image infini-orchestrator-metax:4e0fdd7e-6ad5e1c9-20260813; AOT/piecewise cache seeded from Distribution case"
+    },
+    "hygon_vllm": {
+      "case_id": "qwen3-32b-tj-vllm--hygon",
+      "host": "tj-io-node00",
+      "cpu": "hygon",
+      "backend": "vllm",
+      "lb_em": 0.5254237288135594,
+      "ttft_p50_ms": 978.6342699080706,
+      "output_tok_per_s": 147.03216585101885,
+      "e2e_mean_ms": 19497.964075498156,
+      "status": "PASS",
+      "out": "/private/zenghua/staging/bench-warehouse/bench_results/longbench_v2_Qwen3-32B_20260920_233331",
+      "notes": "daemon port 18180"
+    },
+    "hygon_infinilm": {
+      "case_id": "qwen3-32b-tj-inf--hygon",
+      "host": "tj-io-node00",
+      "cpu": "hygon",
+      "backend": "infinilm",
+      "lb_em": 0.5084745762711864,
+      "ttft_p50_ms": 1530.268719419837,
+      "output_tok_per_s": 55.153448025374196,
+      "e2e_mean_ms": 51029.10694009546,
+      "status": "PASS",
+      "out": "/private/zenghua/staging/bench-warehouse/bench_results/longbench_v2_Qwen3-32B_20260921_020648",
+      "limit8_out": "/private/zenghua/staging/bench-warehouse/bench_results/longbench_v2_Qwen3-32B_20260921_015938",
+      "limit8_em": 0.5,
+      "notes": "ITW v2026.08.12 native rebuild; INFINI_PIECEWISE_INDUCTOR_SEGMENT=0 (AOT blocked→unblocked via SEGMENT=0); previously blocked on std::experimental inductor wrapper",
+      "itw": "/private/zenghua/staging/InfiniTensorWorktree-v2026.08.12",
+      "case": "/private/zenghua/runs/qwen3-32b-tj-inf--hygon/case"
+    }
+  }
+}

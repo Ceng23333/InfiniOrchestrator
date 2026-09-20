@@ -1,0 +1,38 @@
+# Standalone single-worker vLLM daemon for Qwen3-32B on tj-io-node00 (Hygon).
+# Slimmed from Distribution qwen3-32b+qwen3-32b--tj-vllm--m1 (no etcd/LB).
+
+name = "qwen-tj-vllm-hygon"
+host = "0.0.0.0"
+port = 18180
+
+[entrypoint]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "vllm"
+model = "/private/zenghua/Qwen3-32B"
+args = [
+  "--tensor-parallel-size", "4",
+  "--gpu-memory-utilization", "0.80",
+  "--max-model-len", "16384",
+  "--host", "0.0.0.0",
+  "--trust-remote-code",
+]
+work_dir = "/private/zenghua"
+
+[backend.env]
+PATH = "/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+HPCC_VISIBLE_DEVICES = "0,1,2,3"
+MACA_HOME = "/opt/hpcc"
+MACA_PATH = "/opt/hpcc"
+HPCC_PATH = "/opt/hpcc"
+LD_LIBRARY_PATH = "/opt/conda/lib:/opt/hpcc/lib:/opt/hpcc/htgpu_llvm/lib:/opt/hpcc/ompi/lib"
+PYTHONPATH = "/private/zenghua/staging/InfiniOrchestrator/phase2-m1/runtime-overlay"
+
+[metadata]
+backend_type = "vllm"
+deployment_case = "qwen3-32b-tj-vllm--hygon"
+role = "worker"
+worker_id = "worker"

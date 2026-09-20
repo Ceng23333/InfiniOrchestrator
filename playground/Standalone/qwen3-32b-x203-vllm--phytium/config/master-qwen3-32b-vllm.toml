@@ -1,0 +1,28 @@
+# Standalone babysitter wrap: stock vLLM for Qwen3-32B TP=4 (no registry/router)
+
+name = "master-qwen3-32b-vllm"
+host = "0.0.0.0"
+port = 18180
+
+[babysitter]
+max_restarts = 10000
+restart_delay = 5
+heartbeat_interval = 30
+
+[backend]
+type = "vllm"
+model = "/models/Qwen3-32B"
+args = [
+  "--tensor-parallel-size", "4",
+  "--gpu-memory-utilization", "0.9",
+  "--max-model-len", "16384",
+  "--host", "0.0.0.0",
+  "--trust-remote-code",
+]
+
+[backend.env]
+HPCC_VISIBLE_DEVICES = "0,1,2,3"
+
+[metadata]
+backend_type = "vllm"
+static = true
