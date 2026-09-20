@@ -26,17 +26,42 @@ RUNTIME="${RUNTIME:-dlrt}"
 # Match vLLM CoT context budget; default max-new-tokens must cover CoT phase (1024).
 MAX_CACHE_LEN="${MAX_CACHE_LEN:-16384}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-2048}"
-# CUDA graph: default off — MiniCPM5-2B+QY produced <|fim_prefix|> loops with --enable-graph.
-ENABLE_GRAPH="${ENABLE_GRAPH:-0}"
+# Experiment knobs (override via env; wired into INF_CMD below).
+# Default baseline after Core paged+FA verify (ITW v2026.09.20-qy-minicpm5-paged):
+#   ENABLE_PAGED_ATTN=1 ATTN=flash-attn NUM_BLOCKS=512 BLOCK_SIZE=256 ENABLE_GRAPH=1
+# Escape hatch for Static KV (no --attn / --enable-graph):
+#   ENABLE_PAGED_ATTN=0 ATTN=default ENABLE_GRAPH=0
+# Staged recipes:
+#   ENABLE_PAGED_ATTN=1 ATTN=paged-attn ENABLE_GRAPH=1   # infiniop paged kernels only
+#   ENABLE_PAGED_ATTN=1 ATTN=flash-attn  ENABLE_GRAPH=1   # FA-linked Core (default)
+# Note: static+flash-attn is unsupported; graph capture needs PagedCompiler.
+ENABLE_GRAPH="${ENABLE_GRAPH:-1}"
+ENABLE_PAGED_ATTN="${ENABLE_PAGED_ATTN:-1}"
+ATTN="${ATTN:-flash-attn}"
+NUM_BLOCKS="${NUM_BLOCKS:-512}"
+BLOCK_SIZE="${BLOCK_SIZE:-256}"
 HOST_WS="${HOST_WS:-/home/qinyiqun/workspace}"
 HOST_WS_CTN="${HOST_WS_CTN:-/host_ws}"
 MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-/home/qinyiqun/.cache/modelscope}"
 # Live InfiniLM tree so QY chat_template_kwargs fix applies without image rebuild.
-INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v029/InfiniLM}"
+INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniLM}"
+# Live InfiniCore (FA-enabled rebuild) — override image-baked /opt/infinicore + python.
+INFINI_CORE_SRC="${INFINI_CORE_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniCore}"
+INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${SUPPORT_ROOT}/worktrees/InfiniCore-v20260920-install}"
 
 GRAPH_ARGS=()
 if [[ "${ENABLE_GRAPH}" == "1" || "${ENABLE_GRAPH}" == "true" || "${ENABLE_GRAPH}" == "yes" ]]; then
   GRAPH_ARGS+=(--enable-graph)
+fi
+PAGED_ARGS=()
+if [[ "${ENABLE_PAGED_ATTN}" == "1" || "${ENABLE_PAGED_ATTN}" == "true" || "${ENABLE_PAGED_ATTN}" == "yes" ]]; then
+  PAGED_ARGS+=(--enable-paged-attn --num-blocks="${NUM_BLOCKS}" --block-size="${BLOCK_SIZE}")
+  if [[ "${ATTN}" == "default" ]]; then
+    ATTN="paged-attn"
+  fi
+fi
+if [[ "${ATTN}" != "default" ]]; then
+  PAGED_ARGS+=(--attn="${ATTN}")
 fi
 
 if [[ ! -f "${MODEL_DIR}/config.json" ]]; then
@@ -52,13 +77,22 @@ if [[ ! -d "${INFINI_LM_SRC}/python/infinilm" ]]; then
   echo "error: InfiniLM source missing: ${INFINI_LM_SRC}" >&2
   exit 1
 fi
+if [[ ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
+  echo "error: InfiniCore source missing: ${INFINI_CORE_SRC}" >&2
+  exit 1
+fi
+if [[ ! -d "${INFINI_CORE_INSTALL}/lib" ]]; then
+  echo "error: InfiniCore install libs missing: ${INFINI_CORE_INSTALL}/lib" >&2
+  exit 1
+fi
 
 echo "Stopping existing ${CONTAINER_NAME} (if any)..."
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
-echo "Starting ${CONTAINER_NAME} from ${IMAGE_TAG} (DENGLIN_DEVICES=${DENGLIN_DEVICES}, port=${API_PORT}, enable_graph=${ENABLE_GRAPH})..."
+echo "Starting ${CONTAINER_NAME} from ${IMAGE_TAG} (DENGLIN_DEVICES=${DENGLIN_DEVICES}, port=${API_PORT}, enable_graph=${ENABLE_GRAPH}, paged=${ENABLE_PAGED_ATTN}, attn=${ATTN})..."
 echo "Mounting live InfiniLM from ${INFINI_LM_SRC}"
-# Build argv inside the container shell so --enable-graph is optional.
+echo "Mounting live InfiniCore from ${INFINI_CORE_SRC} (libs: ${INFINI_CORE_INSTALL})"
+# Build argv inside the container shell so --enable-graph / paged flags are optional.
 INF_CMD=(
   python3 /workspace/InfiniLM/python/infinilm/server/inference_server.py
   --device qy
@@ -73,6 +107,9 @@ INF_CMD=(
   --top-p=1
   --top-k=1
 )
+if [[ ${#PAGED_ARGS[@]} -gt 0 ]]; then
+  INF_CMD+=("${PAGED_ARGS[@]}")
+fi
 if [[ ${#GRAPH_ARGS[@]} -gt 0 ]]; then
   INF_CMD+=("${GRAPH_ARGS[@]}")
 fi
@@ -96,6 +133,8 @@ docker run -d \
   -v "${HOST_WS}:${HOST_WS_CTN}:rw" \
   -v "${MODELSCOPE_CACHE}:${MODELSCOPE_CACHE}:ro" \
   -v "${INFINI_LM_SRC}:/workspace/InfiniLM:ro" \
+  -v "${INFINI_CORE_SRC}:/workspace/InfiniCore:ro" \
+  -v "${INFINI_CORE_INSTALL}/lib:/opt/infinicore/lib:ro" \
   "${IMAGE_TAG}" \
   -lc "source /usr/local/dlgpu/sdk/env.sh; export CUDA_HOME=/usr/local/dlgpu/sdk; exec $(printf '%q ' "${INF_CMD[@]}")"
 

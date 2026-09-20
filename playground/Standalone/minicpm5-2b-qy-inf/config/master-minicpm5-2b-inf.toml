@@ -1,5 +1,6 @@
 # Standalone InfiniLM inference server for MiniCPM5-2B on Denglin QY (dlrt).
 # Worktree is baked into the unify image; run-wrap.sh launches this command directly.
+# Baseline: paged KV + flash-attn + CUDA graph (requires FA-linked InfiniCore install).
 
 name = "master-minicpm5-2b-inf"
 host = "0.0.0.0"
@@ -21,6 +22,11 @@ args = [
   "--temperature", "0",
   "--top-p", "1",
   "--top-k", "1",
+  "--enable-paged-attn",
+  "--attn", "flash-attn",
+  "--num-blocks", "512",
+  "--block-size", "256",
+  "--enable-graph",
 ]
 work_dir = "/workspace/InfiniLM"
 
@@ -36,4 +42,8 @@ LANG = "C.UTF-8"
 
 [metadata]
 backend_type = "infinilm"
-static = true
+paged = true
+attn = "flash-attn"
+enable_graph = true
+num_blocks = 512
+block_size = 256
