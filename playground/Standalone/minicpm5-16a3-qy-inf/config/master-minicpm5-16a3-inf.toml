@@ -1,0 +1,50 @@
+# Standalone InfiniLM inference for MiniCPM5.16a3 MoE on Denglin QY (dlrt).
+# TP=1 only (host NCCL allreduce not ready). Weights ~28 GiB on 32 GiB KS38 —
+# keep short cache / few paged blocks; enable graph only after stable decode.
+
+name = "master-minicpm5-16a3-inf"
+host = "0.0.0.0"
+port = 18182
+
+[backend]
+type = "command"
+command = "python3"
+args = [
+  "/workspace/InfiniLM/python/infinilm/server/inference_server.py",
+  "--device", "qy",
+  "--model", "/models/minicpm5-16a3",
+  "--tp", "1",
+  "--host", "0.0.0.0",
+  "--port", "18182",
+  "--max-new-tokens", "1024",
+  "--max-batch-size", "1",
+  "--max-cache-len", "8192",
+  "--temperature", "0",
+  "--top-p", "1",
+  "--top-k", "1",
+  "--enable-paged-attn",
+  "--attn", "flash-attn",
+  "--num-blocks", "32",
+  "--block-size", "256",
+]
+work_dir = "/workspace/InfiniLM"
+
+[backend.env]
+DENGLIN_DEVICES = "0"
+HOME = "/home/qinyiqun"
+PATH = "/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PYTHONPATH = "/workspace/InfiniLM/python:/workspace/InfiniCore/python"
+LD_LIBRARY_PATH = "/usr/local/dlgpu/sdk/lib:/opt/infinicore/lib:/usr/local/lib/python3.12/dist-packages/torch/lib"
+TZ = "Asia/Shanghai"
+LC_ALL = "C.UTF-8"
+LANG = "C.UTF-8"
+
+[metadata]
+backend_type = "infinilm"
+paged = true
+attn = "flash-attn"
+enable_graph = false
+num_blocks = 32
+block_size = 256
+tp = 1
+model = "minicpm5.16a3.v0314"

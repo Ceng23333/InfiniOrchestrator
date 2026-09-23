@@ -15,7 +15,13 @@
 # Bench / playground run artifacts
 playground/Distribution/**/results/
 playground/Standalone/**/results/
+playground/Standalone/**/logs/
+playground/Standalone/**/moe_configs/
 bench_results/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
 
 # Piecewise Inductor AOT seed products (keep README only)
 playground/Distribution/**/piecewise_inductor_cache/**

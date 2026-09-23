@@ -1,0 +1,8 @@
+case_id = "minicpm5-16a3-qy-vllm"
+category = "Standalone"
+n = 1
+model_id = "minicpm5.16a3.v0314"
+hw_profile_id = "denglin-qy-ks38"
+hw_abbr = "qy"
+be_abbr = "vllm"
+worktree = "v2026.09.21-qy-minicpm5-16a3"

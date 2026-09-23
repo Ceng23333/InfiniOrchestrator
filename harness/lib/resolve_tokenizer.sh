@@ -31,7 +31,7 @@ resolve_tokenizer_dir() {
         "/root/zenghua/models/Qwen3-32B"
       )
       ;;
-    minicpm5|minicpm5.16a3.v0314)
+    minicpm5|minicpm5.16a3.v0314|minicpm5-16a3)
       candidates=(
         "${MINICPM5_TOKENIZER_DIR:-}"
         "${MONOREPO_WORK:-${INFINILM_PREFILL_WORK:-}}/vllm_minicpm5/tokenizer_bytelevel"

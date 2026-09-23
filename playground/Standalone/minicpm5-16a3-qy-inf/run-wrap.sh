@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Run MiniCPM5-2B InfiniLM on Denglin QY (dlrt). Shares unify .image_tag with -vllm.
+# Run MiniCPM5.16a3 MoE InfiniLM on Denglin QY (dlrt). Live-mounts InfiniLM/InfiniCore.
+# TP=1 only until Denglin NCCL allreduce is fixed. Weights ~28 GiB → short KV budget.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_ID="$(basename "${SCRIPT_DIR}")"
 SUPPORT_ROOT="${SUPPORT_ROOT:-/home/qinyiqun/workspace/minicpm5-2b-support}"
-MODEL_DIR="${MODEL_DIR:-${SUPPORT_ROOT}/model}"
+MODEL_DIR="${MODEL_DIR:-/home/qinyiqun/models/minicpm5.16a3.v0314}"
+# Same bytelevel tokenizer vLLM LongBench used (overlay the weight-dir LlamaTokenizerFast files).
+IO_ROOT="${IO_ROOT:-/home/qinyiqun/workspace/InfiniOrchestrator}"
+TOKENIZER_BYTELEVEL="${TOKENIZER_BYTELEVEL:-${IO_ROOT}/playground/Standalone/minicpm5-x203-vllm/vllm_minicpm5/tokenizer_bytelevel}"
 
 IMAGE_TAG="${IMAGE_TAG:-}"
 if [[ -z "${IMAGE_TAG}" && -f "${SCRIPT_DIR}/.image_tag" ]]; then
@@ -19,36 +23,24 @@ if [[ -z "${IMAGE_TAG}" ]]; then
   exit 1
 fi
 
-CONTAINER_NAME="${CONTAINER_NAME:-minicpm5-2b-qy-inf}"
-API_PORT="${API_PORT:-18001}"
+CONTAINER_NAME="${CONTAINER_NAME:-minicpm5-16a3-qy-inf}"
+API_PORT="${API_PORT:-18182}"
 DENGLIN_DEVICES="${DENGLIN_DEVICES:-0}"
 RUNTIME="${RUNTIME:-dlrt}"
-# Match vLLM CoT context budget; default max-new-tokens must cover CoT phase (1024).
-MAX_CACHE_LEN="${MAX_CACHE_LEN:-16384}"
-MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-2048}"
-# Experiment knobs (override via env; wired into INF_CMD below).
-# Default baseline after Core paged+FA verify (ITW v2026.09.20-qy-minicpm5-paged):
-#   ENABLE_PAGED_ATTN=1 ATTN=flash-attn NUM_BLOCKS=512 BLOCK_SIZE=256 ENABLE_GRAPH=1
-# Escape hatch for Static KV (no --attn / --enable-graph):
-#   ENABLE_PAGED_ATTN=0 ATTN=default ENABLE_GRAPH=0
-# Staged recipes:
-#   ENABLE_PAGED_ATTN=1 ATTN=paged-attn ENABLE_GRAPH=1   # infiniop paged kernels only
-#   ENABLE_PAGED_ATTN=1 ATTN=flash-attn  ENABLE_GRAPH=1   # FA-linked Core (default)
-# Note: static+flash-attn is unsupported; graph capture needs PagedCompiler.
-ENABLE_GRAPH="${ENABLE_GRAPH:-1}"
+# 28 GiB weights on ~32 GiB KS38 — keep cache short; graph off until decode is stable.
+MAX_CACHE_LEN="${MAX_CACHE_LEN:-8192}"
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-1024}"
+ENABLE_GRAPH="${ENABLE_GRAPH:-0}"
 ENABLE_PAGED_ATTN="${ENABLE_PAGED_ATTN:-1}"
 ATTN="${ATTN:-flash-attn}"
-NUM_BLOCKS="${NUM_BLOCKS:-512}"
+NUM_BLOCKS="${NUM_BLOCKS:-32}"
 BLOCK_SIZE="${BLOCK_SIZE:-256}"
-# Perf harness (EvalScope ignore_eos): pass IGNORE_EOS=1 → --ignore-eos
 IGNORE_EOS="${IGNORE_EOS:-0}"
 HOST_WS="${HOST_WS:-/home/qinyiqun/workspace}"
 HOST_WS_CTN="${HOST_WS_CTN:-/host_ws}"
 MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-/home/qinyiqun/.cache/modelscope}"
-# Live InfiniLM tree so QY chat_template_kwargs fix applies without image rebuild.
-INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniLM}"
-# Live InfiniCore (FA-enabled rebuild) — override image-baked /opt/infinicore + python.
-INFINI_CORE_SRC="${INFINI_CORE_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniCore}"
+INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260922-16a3/InfiniLM}"
+INFINI_CORE_SRC="${INFINI_CORE_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260922-16a3/InfiniCore}"
 INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${SUPPORT_ROOT}/worktrees/InfiniCore-v20260920-install}"
 
 GRAPH_ARGS=()
@@ -74,6 +66,10 @@ if [[ ! -f "${MODEL_DIR}/config.json" ]]; then
   echo "error: missing model at ${MODEL_DIR}" >&2
   exit 1
 fi
+if [[ ! -f "${TOKENIZER_BYTELEVEL}/tokenizer.json" || ! -f "${TOKENIZER_BYTELEVEL}/tokenizer_config.json" ]]; then
+  echo "error: bytelevel tokenizer missing under ${TOKENIZER_BYTELEVEL}" >&2
+  exit 1
+fi
 if ! docker image inspect "${IMAGE_TAG}" >/dev/null 2>&1; then
   echo "error: image not found: ${IMAGE_TAG}" >&2
   echo "  build via ${SUPPORT_ROOT}/image/build-unify-image.sh" >&2
@@ -81,6 +77,10 @@ if ! docker image inspect "${IMAGE_TAG}" >/dev/null 2>&1; then
 fi
 if [[ ! -d "${INFINI_LM_SRC}/python/infinilm" ]]; then
   echo "error: InfiniLM source missing: ${INFINI_LM_SRC}" >&2
+  exit 1
+fi
+if [[ ! -f "${INFINI_LM_SRC}/python/infinilm/lib/_infinilm.cpython-312-x86_64-linux-gnu.so" ]]; then
+  echo "error: rebuilt InfiniLM extension missing under ${INFINI_LM_SRC}/python/infinilm/lib" >&2
   exit 1
 fi
 if [[ ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
@@ -98,11 +98,11 @@ docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 echo "Starting ${CONTAINER_NAME} from ${IMAGE_TAG} (DENGLIN_DEVICES=${DENGLIN_DEVICES}, port=${API_PORT}, enable_graph=${ENABLE_GRAPH}, paged=${ENABLE_PAGED_ATTN}, attn=${ATTN}, ignore_eos=${IGNORE_EOS})..."
 echo "Mounting live InfiniLM from ${INFINI_LM_SRC}"
 echo "Mounting live InfiniCore from ${INFINI_CORE_SRC} (libs: ${INFINI_CORE_INSTALL})"
-# Build argv inside the container shell so --enable-graph / paged flags are optional.
+echo "Overlaying bytelevel tokenizer from ${TOKENIZER_BYTELEVEL}"
 INF_CMD=(
   python3 /workspace/InfiniLM/python/infinilm/server/inference_server.py
   --device qy
-  --model=/models/minicpm5-2b
+  --model=/models/minicpm5-16a3
   --tp=1
   --host=0.0.0.0
   --port="${API_PORT}"
@@ -122,7 +122,7 @@ fi
 if [[ ${#IGNORE_EOS_ARGS[@]} -gt 0 ]]; then
   INF_CMD+=("${IGNORE_EOS_ARGS[@]}")
 fi
-# shellcheck disable=SC2086
+
 docker run -d \
   --name "${CONTAINER_NAME}" \
   --runtime "${RUNTIME}" \
@@ -138,7 +138,10 @@ docker run -d \
   -e "PATH=/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   -e "PYTHONPATH=/workspace/InfiniLM/python:/workspace/InfiniCore/python" \
   -e "LD_LIBRARY_PATH=/usr/local/dlgpu/sdk/lib:/opt/infinicore/lib:/usr/local/lib/python3.12/dist-packages/torch/lib" \
-  -v "${MODEL_DIR}:/models/minicpm5-2b:ro" \
+  -e "CUDA_LAUNCH_BLOCKING=${CUDA_LAUNCH_BLOCKING:-0}" \
+  -v "${MODEL_DIR}:/models/minicpm5-16a3:ro" \
+  -v "${TOKENIZER_BYTELEVEL}/tokenizer.json:/models/minicpm5-16a3/tokenizer.json:ro" \
+  -v "${TOKENIZER_BYTELEVEL}/tokenizer_config.json:/models/minicpm5-16a3/tokenizer_config.json:ro" \
   -v "${HOST_WS}:${HOST_WS_CTN}:rw" \
   -v "${MODELSCOPE_CACHE}:${MODELSCOPE_CACHE}:ro" \
   -v "${INFINI_LM_SRC}:/workspace/InfiniLM:ro" \
@@ -148,8 +151,8 @@ docker run -d \
   -lc "source /usr/local/dlgpu/sdk/env.sh; export CUDA_HOME=/usr/local/dlgpu/sdk; exec $(printf '%q ' "${INF_CMD[@]}")"
 
 URL="http://127.0.0.1:${API_PORT}"
-echo "Waiting for ${URL}/health ..."
-for i in $(seq 1 180); do
+echo "Waiting for ${URL}/health (MoE weight load can take several minutes)..."
+for i in $(seq 1 360); do
   if docker exec "${CONTAINER_NAME}" bash -lc "curl -sf --connect-timeout 2 http://127.0.0.1:${API_PORT}/health >/dev/null || curl -sf --connect-timeout 2 http://127.0.0.1:${API_PORT}/v1/models >/dev/null"; then
     echo "Ready: ${URL}"
     docker exec "${CONTAINER_NAME}" bash -lc "curl -s http://127.0.0.1:${API_PORT}/v1/models" | head -c 2000 || true

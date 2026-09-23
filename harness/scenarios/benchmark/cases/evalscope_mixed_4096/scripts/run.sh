@@ -34,8 +34,21 @@ case "${MODEL}" in
   Qwen3-32B)
     TOKENIZER_DIR="${TOKENIZER_DIR:-${QWEN3_32B_DIR:-}}"
     ;;
+  minicpm5-2b|minicpm5|minicpm5.16a3.v0314|minicpm5-16a3)
+    TOKENIZER_DIR="${TOKENIZER_DIR:-${MINICPM5_2B_TOKENIZER_DIR:-${MINICPM5_TOKENIZER_DIR:-}}}"
+    # Standalone QY servers are max-batch=1; default latency-fair vs LongBench CoT.
+    # Callers may still override PARALLEL/NUMBER explicitly before invoking.
+    # minicpm5-16a3 is the InfiniLM served id (directory basename) for checkpoint
+    # minicpm5.16a3.v0314; vLLM serves the checkpoint id directly.
+    if [[ -z "${PARALLEL_SET:-}" ]]; then
+      PARALLEL=1
+    fi
+    if [[ -z "${NUMBER_SET:-}" ]]; then
+      NUMBER=10
+    fi
+    ;;
   *)
-    echo "Error: unsupported MODEL=${MODEL} (expected Qwen3-32B)" >&2
+    echo "Error: unsupported MODEL=${MODEL} (expected Qwen3-32B | minicpm5-2b | minicpm5 | minicpm5.16a3.v0314 | minicpm5-16a3)" >&2
     exit 1
     ;;
 esac
@@ -49,6 +62,9 @@ if [[ -n "${BENCH_CTN_URL:-}" && -n "${CONTAINER_TOKENIZER_DIR:-}" ]]; then
 elif [[ -n "${BENCH_CTN_URL:-}" ]]; then
   case "${MODEL}" in
     Qwen3-32B) TOKENIZER_DIR="/models/Qwen3-32B" ;;
+    minicpm5-2b|minicpm5|minicpm5.16a3.v0314|minicpm5-16a3)
+      TOKENIZER_DIR="${CONTAINER_TOKENIZER_DIR:-/models/minicpm5-2b}"
+      ;;
   esac
 fi
 
@@ -145,10 +161,14 @@ _run_evalscope_local() {
 _run_evalscope_in_container() {
   local dev_ctn="$1"
   local bench_url="$2"
+  # MetaX images use conda; Denglin unify images use system python + dlgpu sdk.
+  local _py_boot='if [[ -f /opt/conda/etc/profile.d/conda.sh ]]; then source /opt/conda/etc/profile.d/conda.sh && conda activate base; fi; if [[ -f /usr/local/dlgpu/sdk/env.sh ]]; then source /usr/local/dlgpu/sdk/env.sh; fi'
+  # Escape single quotes in EXTRA_ARGS for the inner bash -lc string.
+  local _extra_escaped="${EVALSCOPE_EXTRA_ARGS//\'/\'\\\'\'}"
   docker exec \
     -e PYTHONUNBUFFERED=1 \
     "${dev_ctn}" \
-    bash -lc "source /opt/conda/etc/profile.d/conda.sh && conda activate base && \
+    bash -lc "${_py_boot}; \
       ${EVALSCOPE_BIN} perf \
         --parallel '${PARALLEL}' \
         --number '${NUMBER}' \
@@ -161,18 +181,19 @@ _run_evalscope_in_container() {
         --min-prompt-length '${MIN_PROMPT_LENGTH}' \
         --max-prompt-length '${MAX_PROMPT_LENGTH}' \
         --tokenizer-path '${TOKENIZER_DIR}' \
-        --extra-args '${EVALSCOPE_EXTRA_ARGS}' \
+        --extra-args '${_extra_escaped}' \
         --outputs-dir '${OUT_DIR}/${LABEL}'"
 }
 
-if [[ -n "${BENCH_CTN_URL:-}" ]]; then
+if command -v "${EVALSCOPE_BIN}" >/dev/null 2>&1; then
+  # Prefer host evalscope (QY server images typically lack the CLI).
+  echo "[evalscope] running locally url=${CHAT_URL}"
+  _run_evalscope_local 2>&1 | tee "${LOG_FILE}"
+elif [[ -n "${BENCH_CTN_URL:-}" ]]; then
   DEV_CONTAINER="${DEV_CONTAINER_NAME}"
   echo "[evalscope] running inside ${DEV_CONTAINER} url=${BENCH_CTN_URL}${EVALSCOPE_ENDPOINT}"
   _run_evalscope_in_container "${DEV_CONTAINER}" "${BENCH_CTN_URL}${EVALSCOPE_ENDPOINT}" \
     2>&1 | tee "${LOG_FILE}"
-elif command -v "${EVALSCOPE_BIN}" >/dev/null 2>&1; then
-  echo "[evalscope] running locally url=${CHAT_URL}"
-  _run_evalscope_local 2>&1 | tee "${LOG_FILE}"
 else
   DEV_CONTAINER="${DEV_CONTAINER_NAME}"
   if docker ps --format '{{.Names}}' | grep -qx "${DEV_CONTAINER}"; then

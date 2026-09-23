@@ -1,0 +1,42 @@
+# Standalone stock vLLM OpenAI server for MiniCPM5.16a3 MoE on Denglin QY (dlrt).
+# Requires vllm_minicpm5 plugin (MiniCPM5MoEForCausalLM) + ByteLevel tokenizer sidecar.
+# run-wrap.sh launches this command directly (infini-entrypoint not required).
+
+name = "master-minicpm5-16a3-vllm"
+host = "0.0.0.0"
+port = 18181
+
+[backend]
+type = "command"
+command = "python3"
+args = [
+  "-m", "vllm.entrypoints.openai.api_server",
+  "--model", "/model",
+  "--tokenizer", "/opt/vllm_minicpm5/tokenizer_bytelevel",
+  "--served-model-name", "minicpm5.16a3.v0314",
+  "--chat-template", "/model/chat_template.jinja",
+  "--host", "0.0.0.0",
+  "--port", "18181",
+  "--dtype", "bfloat16",
+  "--trust-remote-code",
+  "--tensor-parallel-size", "1",
+  "--max-model-len", "8192",
+  "--max-num-seqs", "1",
+  "--gpu-memory-utilization", "0.95",
+  "--generation-config", "vllm",
+]
+work_dir = "/workspace"
+
+[backend.env]
+DENGLIN_DEVICES = "0"
+HOME = "/home/qinyiqun"
+PATH = "/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+LD_LIBRARY_PATH = "/usr/local/dlgpu/sdk/lib"
+TZ = "Asia/Shanghai"
+LC_ALL = "C.UTF-8"
+LANG = "C.UTF-8"
+VLLM_TUNED_CONFIG_FOLDER = "/opt/vllm_minicpm5/moe_configs"
+
+[metadata]
+backend_type = "vllm"
+static = true
