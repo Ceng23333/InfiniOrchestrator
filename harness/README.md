@@ -2,6 +2,9 @@
 
 Bench **runners** only: scenarios, shell libs, and HTTP scrape (`server_client.py`).
 
+The run-only [AIPerf adapter](adapters/aiperf/README.md) provides bounded
+agentic and long-prefix trace replay with CI gates against a live endpoint.
+
 The data plane lives in the sibling **`bench-warehouse`** repo as package **`bench_warehouse`** (`warehouse-emit`, `warehouse-compact`, `warehouse-query`, `warehouse-validate-e2e`).
 
 ## Setup

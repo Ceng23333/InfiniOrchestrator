@@ -1,0 +1,7 @@
+{
+  "name": "agentic_tool_loop",
+  "trace": "../traces/agentic_tool_loop.json",
+  "requests": 3,
+  "concurrency": 1,
+  "timeout_sec": 90
+}

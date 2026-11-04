@@ -1,0 +1,90 @@
+name: AIPerf harness
+
+on:
+  push:
+    paths:
+      - '.github/workflows/aiperf-harness.yml'
+      - 'harness/adapters/aiperf/**'
+      - 'harness/case_diagnostic/test_aiperf.py'
+      - 'harness/pyproject.toml'
+  pull_request:
+    paths:
+      - '.github/workflows/aiperf-harness.yml'
+      - 'harness/adapters/aiperf/**'
+      - 'harness/case_diagnostic/test_aiperf.py'
+      - 'harness/pyproject.toml'
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Bounded workload to run against an existing endpoint
+        required: true
+        type: choice
+        options: [agentic_tool_loop, long_prefix]
+      base_url:
+        description: URL reachable from the infini-gpu runner
+        required: true
+        default: http://127.0.0.1:8000
+        type: string
+      model:
+        description: Model ID served by the endpoint
+        required: true
+        type: string
+      tokenizer:
+        description: Local tokenizer path (required for long_prefix)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate adapter and CI gates
+        env:
+          PYTHONPATH: harness
+        run: python -m unittest harness.case_diagnostic.test_aiperf
+
+  live:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && vars.AIPERF_CI_ENDPOINT != '' && vars.AIPERF_CI_MODEL != '')
+    needs: unit
+    runs-on: [self-hosted, linux, infini-gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned AIPerf in an isolated environment
+        run: |
+          python -m venv "${RUNNER_TEMP}/aiperf-venv"
+          "${RUNNER_TEMP}/aiperf-venv/bin/pip" install 'aiperf==0.13.0'
+      - name: Replay trace and check gates
+        env:
+          PROFILE: ${{ inputs.profile || vars.AIPERF_CI_PROFILE || 'agentic_tool_loop' }}
+          BASE_URL: ${{ inputs.base_url || vars.AIPERF_CI_ENDPOINT }}
+          MODEL: ${{ inputs.model || vars.AIPERF_CI_MODEL }}
+          TOKENIZER: ${{ inputs.tokenizer || vars.AIPERF_CI_TOKENIZER }}
+        run: |
+          args=(
+            --base-url "$BASE_URL" --model "$MODEL"
+            --profile "harness/adapters/aiperf/profiles/${PROFILE}.json"
+            --output-dir "${RUNNER_TEMP}/aiperf-ci"
+            --aiperf-bin "${RUNNER_TEMP}/aiperf-venv/bin/aiperf"
+          )
+          if [[ -n "$TOKENIZER" ]]; then args+=(--tokenizer "$TOKENIZER"); fi
+          bash harness/bin/run-aiperf "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aiperf-ci
+          path: ${{ runner.temp }}/aiperf-ci
+          if-no-files-found: warn

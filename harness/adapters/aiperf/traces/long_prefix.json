@@ -1,0 +1,47 @@
+[
+  {
+    "timestamp": 0,
+    "session_id": "ci-long-prefix",
+    "input_length": 8192,
+    "output_length": 16,
+    "hash_ids": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "timestamp": 100,
+    "session_id": "ci-long-prefix",
+    "input_length": 16384,
+    "output_length": 16,
+    "hash_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  {
+    "timestamp": 200,
+    "session_id": "ci-long-prefix",
+    "input_length": 18050,
+    "output_length": 16,
+    "hash_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  }
+]

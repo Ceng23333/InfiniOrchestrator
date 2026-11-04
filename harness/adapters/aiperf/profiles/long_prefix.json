@@ -1,0 +1,9 @@
+{
+  "name": "long_prefix",
+  "trace": "../traces/long_prefix.json",
+  "requests": 3,
+  "concurrency": 1,
+  "timeout_sec": 120,
+  "block_size": 2048,
+  "gates": {"min_input_tokens": 18050}
+}

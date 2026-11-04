@@ -19,5 +19,5 @@ evalscope = ["evalscope>=0.8"]
 # No warehouse console scripts here — use warehouse-emit / warehouse-compact from bench-warehouse.
 
 [tool.setuptools]
-packages = ["case_diagnostic", "adapters", "adapters.llm_d_benchmark"]
+packages = ["case_diagnostic", "adapters", "adapters.llm_d_benchmark", "adapters.aiperf"]
 py-modules = ["server_client"]
