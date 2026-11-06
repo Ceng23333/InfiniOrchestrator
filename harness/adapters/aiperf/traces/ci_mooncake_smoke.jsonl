@@ -1,0 +1,10 @@
+{"timestamp":0,"input_length":512,"output_length":32}
+{"timestamp":50,"input_length":768,"output_length":48}
+{"timestamp":100,"input_length":1024,"output_length":64}
+{"timestamp":150,"input_length":640,"output_length":40}
+{"timestamp":200,"input_length":896,"output_length":56}
+{"timestamp":250,"input_length":1280,"output_length":72}
+{"timestamp":300,"input_length":480,"output_length":24}
+{"timestamp":350,"input_length":1152,"output_length":80}
+{"timestamp":400,"input_length":704,"output_length":36}
+{"timestamp":450,"input_length":960,"output_length":60}

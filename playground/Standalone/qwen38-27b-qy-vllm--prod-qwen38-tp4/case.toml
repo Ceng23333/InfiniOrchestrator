@@ -1,0 +1,24 @@
+case_id = "qwen38-27b-qy-vllm--prod-qwen38-tp4"
+category = "Standalone"
+n = 1
+model_id = "Qwen3.8-27B"
+hw_profile_id = "metax-qy-tp4"
+hw_abbr = "qy"
+be_abbr = "vllm"
+worktree = "v2026.10.29-infinilm-prod-qwen38-tp4"
+
+[spec]
+version = "0.1"
+topology = "direct_openai"
+host_env = "BENCH_TARGET_HOST"
+notes = "vLLM baseline for AIPerf mooncake_trace dual-run; client-only harness never starts this process."
+
+[[spec.services]]
+id = "inference"
+role = "inference"
+base_url = "http://{host}:8000"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/v1/models", kind = "json_snapshot", expect_nonempty = "data" },
+  { path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "Qwen3.8-27B" },
+]

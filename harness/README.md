@@ -31,3 +31,17 @@ Scrape / preflight:
 ```bash
 python -m server_client …   # module at harness/server_client.py
 ```
+
+## AIPerf mooncake_trace dual-run (showroom local)
+
+Dual-run **always** measures **vLLM first** (baseline), then InfiniLM (candidate),
+and gates InfiniLM against the frozen vLLM summary. See
+[`adapters/aiperf/README.md`](adapters/aiperf/README.md).
+
+```bash
+harness/bin/run-aiperf-dual \
+  --base-url-vllm "$BASE_URL_VLLM" \
+  --base-url-infinilm "$BASE_URL_INFINILM" \
+  --profile harness/adapters/aiperf/profiles/ci_mooncake_replay.yaml \
+  --model Qwen3.8-27B
+```

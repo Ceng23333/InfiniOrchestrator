@@ -49,6 +49,7 @@ The benchmark split is:
 
 - Case-diagnostic harness: mandatory for M0 and M1. It validates endpoints, routing, streaming, cancellation, health, and evidence completeness.
 - `llm-d-benchmark` adapter: introduced in M1 in minimal run-only mode for repeatable HTTP load profiles and core system metrics, then expanded in M2 while preserving `CASE_PATH`, `server_id`, and warehouse emission.
+- NVIDIA AIPerf adapter (`harness/adapters/aiperf`): optional run-only mooncake_trace replay (`--fixed-schedule`) for dual-backend regression (vLLM baseline first, then InfiniLM candidate). Same client-only rule: never owns server lifecycle. See `harness/adapters/aiperf/README.md`.
 - Agentic/cache-sensitive workloads: introduced with M5/M6 to evaluate P/D and KV-aware behavior. They are workload inputs, not a replacement for case diagnostics.
 - Benchmark result ownership remains `InfiniOrchestrator/harness` for runners and `bench-warehouse` for emitted raw rows and compact facts.
 
