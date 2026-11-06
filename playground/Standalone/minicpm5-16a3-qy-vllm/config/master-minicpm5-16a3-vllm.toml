@@ -29,7 +29,7 @@ work_dir = "/workspace"
 
 [backend.env]
 DENGLIN_DEVICES = "0"
-HOME = "/home/qinyiqun"
+HOME = "/home/admin01"
 PATH = "/usr/local/dlgpu/sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 LD_LIBRARY_PATH = "/usr/local/dlgpu/sdk/lib"
 TZ = "Asia/Shanghai"

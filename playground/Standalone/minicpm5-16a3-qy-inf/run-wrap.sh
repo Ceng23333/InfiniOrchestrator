@@ -5,10 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_ID="$(basename "${SCRIPT_DIR}")"
+WS_ROOT="${WS_ROOT:-/home/admin01/workspace_c610/nov_milestone}"
 SUPPORT_ROOT="${SUPPORT_ROOT:-/home/qinyiqun/workspace/minicpm5-2b-support}"
-MODEL_DIR="${MODEL_DIR:-/home/qinyiqun/models/minicpm5.16a3.v0314}"
+MODEL_DIR="${MODEL_DIR:-/home/admin01/models/minicpm5.16a3.v0314}"
 # Same bytelevel tokenizer vLLM LongBench used (overlay the weight-dir LlamaTokenizerFast files).
-IO_ROOT="${IO_ROOT:-/home/qinyiqun/workspace/InfiniOrchestrator}"
+IO_ROOT="${IO_ROOT:-${WS_ROOT}/InfiniOrchestrator}"
 TOKENIZER_BYTELEVEL="${TOKENIZER_BYTELEVEL:-${IO_ROOT}/playground/Standalone/minicpm5-x203-vllm/vllm_minicpm5/tokenizer_bytelevel}"
 
 IMAGE_TAG="${IMAGE_TAG:-}"
@@ -39,9 +40,10 @@ IGNORE_EOS="${IGNORE_EOS:-0}"
 HOST_WS="${HOST_WS:-/home/qinyiqun/workspace}"
 HOST_WS_CTN="${HOST_WS_CTN:-/host_ws}"
 MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-/home/qinyiqun/.cache/modelscope}"
-INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260922-16a3/InfiniLM}"
-INFINI_CORE_SRC="${INFINI_CORE_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260922-16a3/InfiniCore}"
-INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${SUPPORT_ROOT}/worktrees/InfiniCore-v20260920-install}"
+# Live InfiniLM/InfiniCore from sibling InfiniTensorWorktree pin (v2026.10.28-qy-kernel-em-pending).
+INFINI_LM_SRC="${INFINI_LM_SRC:-${WS_ROOT}/InfiniTensorWorktree/InfiniLM}"
+INFINI_CORE_SRC="${INFINI_CORE_SRC:-${WS_ROOT}/InfiniTensorWorktree/InfiniCore}"
+INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${WS_ROOT}/InfiniCore-install-v20261028}"
 
 GRAPH_ARGS=()
 if [[ "${ENABLE_GRAPH}" == "1" || "${ENABLE_GRAPH}" == "true" || "${ENABLE_GRAPH}" == "yes" ]]; then
@@ -83,7 +85,11 @@ if [[ ! -f "${INFINI_LM_SRC}/python/infinilm/lib/_infinilm.cpython-312-x86_64-li
   echo "error: rebuilt InfiniLM extension missing under ${INFINI_LM_SRC}/python/infinilm/lib" >&2
   exit 1
 fi
-if [[ ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
+if [[ ! -d "${INFINI_LM_SRC}/python/infinicore" ]]; then
+  echo "error: InfiniCore python package missing under InfiniLM: ${INFINI_LM_SRC}/python/infinicore" >&2
+  exit 1
+fi
+if [[ ! -d "${INFINI_CORE_SRC}/submodules/InfiniOps" && ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
   echo "error: InfiniCore source missing: ${INFINI_CORE_SRC}" >&2
   exit 1
 fi

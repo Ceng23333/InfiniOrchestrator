@@ -4,8 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CASE_ID="$(basename "${SCRIPT_DIR}")"
+WS_ROOT="${WS_ROOT:-/home/admin01/workspace_c610/nov_milestone}"
 SUPPORT_ROOT="${SUPPORT_ROOT:-/home/qinyiqun/workspace/minicpm5-2b-support}"
-MODEL_DIR="${MODEL_DIR:-${SUPPORT_ROOT}/model}"
+MODEL_DIR="${MODEL_DIR:-/home/admin01/models/MiniCPM5-2B}"
 
 IMAGE_TAG="${IMAGE_TAG:-}"
 if [[ -z "${IMAGE_TAG}" && -f "${SCRIPT_DIR}/.image_tag" ]]; then
@@ -45,11 +46,10 @@ IGNORE_EOS="${IGNORE_EOS:-0}"
 HOST_WS="${HOST_WS:-/home/qinyiqun/workspace}"
 HOST_WS_CTN="${HOST_WS_CTN:-/host_ws}"
 MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-/home/qinyiqun/.cache/modelscope}"
-# Live InfiniLM tree so QY chat_template_kwargs fix applies without image rebuild.
-INFINI_LM_SRC="${INFINI_LM_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniLM}"
-# Live InfiniCore (FA-enabled rebuild) — override image-baked /opt/infinicore + python.
-INFINI_CORE_SRC="${INFINI_CORE_SRC:-${SUPPORT_ROOT}/worktrees/InfiniTensorWorktree-v20260920/InfiniCore}"
-INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${SUPPORT_ROOT}/worktrees/InfiniCore-v20260920-install}"
+# Live InfiniLM/InfiniCore from sibling InfiniTensorWorktree pin (v2026.10.28-qy-kernel-em-pending).
+INFINI_LM_SRC="${INFINI_LM_SRC:-${WS_ROOT}/InfiniTensorWorktree/InfiniLM}"
+INFINI_CORE_SRC="${INFINI_CORE_SRC:-${WS_ROOT}/InfiniTensorWorktree/InfiniCore}"
+INFINI_CORE_INSTALL="${INFINI_CORE_INSTALL:-${WS_ROOT}/InfiniCore-install-v20261028}"
 
 GRAPH_ARGS=()
 if [[ "${ENABLE_GRAPH}" == "1" || "${ENABLE_GRAPH}" == "true" || "${ENABLE_GRAPH}" == "yes" ]]; then
@@ -83,7 +83,11 @@ if [[ ! -d "${INFINI_LM_SRC}/python/infinilm" ]]; then
   echo "error: InfiniLM source missing: ${INFINI_LM_SRC}" >&2
   exit 1
 fi
-if [[ ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
+if [[ ! -d "${INFINI_LM_SRC}/python/infinicore" ]]; then
+  echo "error: InfiniCore python package missing under InfiniLM: ${INFINI_LM_SRC}/python/infinicore" >&2
+  exit 1
+fi
+if [[ ! -d "${INFINI_CORE_SRC}/submodules/InfiniOps" && ! -d "${INFINI_CORE_SRC}/python/infinicore" ]]; then
   echo "error: InfiniCore source missing: ${INFINI_CORE_SRC}" >&2
   exit 1
 fi

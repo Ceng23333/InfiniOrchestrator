@@ -4,8 +4,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+DOCKER="${DOCKER:-sudo docker}"
 
-BASE_IMAGE="${BASE_IMAGE:-dl-vllm-v0.21.0-docker-image:MR-4.2.1-202606231124-ubuntu22.04-x86_64-20260701}"
+# Prefer the image present on this host; override via BASE_IMAGE if needed.
+BASE_IMAGE="${BASE_IMAGE:-dl-vllm-v0.21.0-docker-image:MR-4.1.2-202606032315-ubuntu22.04-x86_64-20260603}"
 IMAGE_TAG="${IMAGE_TAG:-dl-vllm-minicpm5-16a3-qy:v2026.09.21}"
 BUILD_CONTAINER="${BUILD_CONTAINER:-dl-vllm-minicpm5-16a3-qy-build-$$}"
 RUNTIME="${RUNTIME:-dlrt}"
@@ -23,7 +25,7 @@ echo "VLLM_MINICPM5_HOST:  ${VLLM_MINICPM5_HOST}"
 echo "RUNTIME:             ${RUNTIME}"
 echo ""
 
-if ! docker image inspect "${BASE_IMAGE}" >/dev/null 2>&1; then
+if ! ${DOCKER} image inspect "${BASE_IMAGE}" >/dev/null 2>&1; then
   echo "error: base image not found: ${BASE_IMAGE}" >&2
   exit 1
 fi
@@ -36,11 +38,12 @@ if [[ ! -f "${VLLM_MINICPM5_HOST}/pyproject.toml" ]]; then
   exit 1
 fi
 
-docker rm -f "${BUILD_CONTAINER}" >/dev/null 2>&1 || true
-docker run -d \
+${DOCKER} rm -f "${BUILD_CONTAINER}" >/dev/null 2>&1 || true
+${DOCKER} run -d \
   --name "${BUILD_CONTAINER}" \
   --runtime "${RUNTIME}" \
   --network host \
+  -e "DL_DEVICES=all" \
   --workdir /workspace \
   --entrypoint /bin/bash \
   "${BASE_IMAGE}" \
@@ -49,32 +52,32 @@ docker run -d \
 cleanup_on_fail() {
   local ec=$?
   if [[ ${ec} -ne 0 ]]; then
-    echo "Build failed (exit ${ec}). Container kept: docker exec -it ${BUILD_CONTAINER} bash" >&2
+    echo "Build failed (exit ${ec}). Container kept: sudo docker exec -it ${BUILD_CONTAINER} bash" >&2
   fi
 }
 trap cleanup_on_fail EXIT
 
 echo "Copying vllm_minicpm5 → /opt/vllm_minicpm5 ..."
-docker exec "${BUILD_CONTAINER}" rm -rf /opt/vllm_minicpm5
-docker exec "${BUILD_CONTAINER}" mkdir -p /opt/vllm_minicpm5
+${DOCKER} exec "${BUILD_CONTAINER}" rm -rf /opt/vllm_minicpm5
+${DOCKER} exec "${BUILD_CONTAINER}" mkdir -p /opt/vllm_minicpm5
 tar -C "${VLLM_MINICPM5_HOST}" \
   --exclude='.git' \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
-  -cf - . | docker exec -i "${BUILD_CONTAINER}" tar -C /opt/vllm_minicpm5 -xf -
+  -cf - . | ${DOCKER} exec -i "${BUILD_CONTAINER}" tar -C /opt/vllm_minicpm5 -xf -
 
 # Apply Denglin vLLM 0.21 API shim to the installed plugin tree.
 SHIM="${PATCH_DIR}/apply_denglin_api_shim.py"
 if [[ -f "${SHIM}" ]]; then
   echo "Applying Denglin API shim ..."
-  docker cp "${SHIM}" "${BUILD_CONTAINER}:/tmp/apply_denglin_api_shim.py"
-  docker exec "${BUILD_CONTAINER}" python3 /tmp/apply_denglin_api_shim.py
+  ${DOCKER} cp "${SHIM}" "${BUILD_CONTAINER}:/tmp/apply_denglin_api_shim.py"
+  ${DOCKER} exec "${BUILD_CONTAINER}" python3 /tmp/apply_denglin_api_shim.py
 else
   echo "warning: shim missing at ${SHIM}; continuing without API patch" >&2
 fi
 
 echo "Seeding MoE configs for Denglin device aliases ..."
-docker exec "${BUILD_CONTAINER}" bash -lc '
+${DOCKER} exec "${BUILD_CONTAINER}" bash -lc '
   set -eo pipefail
   # env.sh references $1; keep nounset off while sourcing.
   set +u
@@ -134,30 +137,42 @@ PY
 '
 
 echo "Installing MoE JSON into Denglin dl_fused_moe configs path ..."
-docker exec "${BUILD_CONTAINER}" bash -lc '
+${DOCKER} exec "${BUILD_CONTAINER}" bash -lc '
   set -euo pipefail
-  DL_CFG=/usr/local/lib/python3.12/dist-packages/vllm/plugins/dl_platform_plugin/ops/configs
-  SRC=/opt/vllm_minicpm5/moe_configs
-  mkdir -p "${DL_CFG}"
-  # Denglin get_moe_configs looks here (not VLLM_TUNED_CONFIG_FOLDER).
-  for f in "${SRC}"/E=160,N=512,device_name=*.json; do
-    [[ -f "$f" ]] || continue
-    cp -f "$f" "${DL_CFG}/"
-    echo "installed $(basename "$f") -> ${DL_CFG}/"
-  done
-  ls -1 "${DL_CFG}"/E=160,N=512,device_name=*.json 2>/dev/null | head -20 || true
+  # Denglin get_moe_configs expects flat {batch: {BLOCK_SIZE_M,...}}.
+  # MetaX seeds use {batch: {stage1, stage2}}; flatten stage1 for DL.
+  python3 - <<'"'"'PY'"'"'
+import json
+from pathlib import Path
+src = Path("/opt/vllm_minicpm5/moe_configs")
+dst = Path("/usr/local/lib/python3.12/dist-packages/vllm/plugins/dl_platform_plugin/ops/configs")
+dst.mkdir(parents=True, exist_ok=True)
+for f in sorted(src.glob("E=160,N=512,device_name=*.json")):
+    data = json.loads(f.read_text())
+    flat = {}
+    for key, val in data.items():
+        if isinstance(val, dict) and "stage1" in val and isinstance(val["stage1"], dict):
+            flat[key] = dict(val["stage1"])
+        else:
+            flat[key] = val
+    out = dst / f.name
+    out.write_text(json.dumps(flat, indent=2) + "\n")
+    sample = next(iter(flat.values())) if flat else {}
+    print("installed", out.name, "BLOCK_SIZE_M=", sample.get("BLOCK_SIZE_M"))
+print("done", len(list(dst.glob("E=160,N=512,device_name=*.json"))))
+PY
 '
 
 echo "pip install -e /opt/vllm_minicpm5 ..."
-docker exec "${BUILD_CONTAINER}" bash -lc '
+${DOCKER} exec "${BUILD_CONTAINER}" bash -lc '
   set -eo pipefail
   # env.sh references $1; keep nounset off while sourcing.
   set +u
   source /usr/local/dlgpu/sdk/env.sh
   set -u
   export CUDA_HOME=/usr/local/dlgpu/sdk
-  if ! pip install --no-build-isolation -e /opt/vllm_minicpm5; then
-    pip install -e /opt/vllm_minicpm5
+  if ! python3 -m pip install --no-build-isolation -e /opt/vllm_minicpm5; then
+    python3 -m pip install -e /opt/vllm_minicpm5
   fi
   python3 - <<'"'"'PY'"'"'
 import vllm, vllm_minicpm5
@@ -176,7 +191,7 @@ PY
 IO_SHA="$(git -C "${IO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TS="$(date -u +%Y%m%d)"
 
-docker commit \
+${DOCKER} commit \
   --change 'WORKDIR /workspace' \
   --change 'ENTRYPOINT ["/bin/bash"]' \
   --change 'CMD ["-lc","sleep infinity"]' \
@@ -188,7 +203,7 @@ docker commit \
   "${IMAGE_TAG}"
 
 trap - EXIT
-docker rm -f "${BUILD_CONTAINER}" >/dev/null
+${DOCKER} rm -f "${BUILD_CONTAINER}" >/dev/null
 
 echo "${IMAGE_TAG}" > "${SCRIPT_DIR}/.image_tag"
 echo ""
