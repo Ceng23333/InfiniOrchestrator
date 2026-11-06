@@ -1,0 +1,13 @@
+name: ci_mooncake_smoke
+model: Qwen3.8-27B
+endpoint_type: chat
+streaming: true
+fixed_schedule: true
+custom_dataset_type: mooncake_trace
+input_file: ../traces/ci_mooncake_smoke.jsonl
+timeout_sec: 1800
+# Local weights (offline host cannot reach huggingface.co for "Qwen3.8-27B")
+extra_args:
+  - "--tokenizer"
+  - "/home/metax/Downloads/Qwen3.8-27B"
+  - "--tokenizer-trust-remote-code"

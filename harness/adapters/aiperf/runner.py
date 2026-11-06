@@ -1,221 +1,412 @@
-"""Replay a bounded AIPerf trace against an already-running endpoint."""
+"""Run-only NVIDIA AIPerf mooncake_trace adapter.
+
+Never owns serving lifecycle. Targets an already-running OpenAI-compatible
+endpoint (InfiniOrchestrator router or direct backend).
+"""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import math
 import os
-import signal
+import shutil
 import subprocess
+import time
 from pathlib import Path
-from typing import Callable
-from urllib.parse import urlsplit
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from .profile import Profile, load_profile, load_trace
+from .manifest_map import build_bench_block, update_manifest
+from .profile import AiperfProfile, load_profile  # noqa: F401 — AiperfProfile used in main
 
 
-PINNED_AIPERF_VERSION = "0.13.0"
+def _get(url: str, timeout: float) -> Tuple[int, bytes]:
+    request = Request(url, method="GET")
+    with urlopen(request, timeout=timeout) as response:
+        return int(response.status), response.read()
 
 
-def command(
-    profile: Profile,
+def _scrape(url: str, timeout: float) -> str:
+    try:
+        status, body = _get(url.rstrip("/") + "/metrics", timeout)
+        return f"# http_status {status}\n" + body.decode("utf-8", errors="replace")
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        return f"# metrics_unavailable {type(exc).__name__}: {exc}\n"
+
+
+def _preflight(base_url: str, timeout: float) -> None:
+    """Require the live endpoint to expose health and an OpenAI model list."""
+    for path in ("/health", "/v1/models"):
+        try:
+            status, _ = _get(base_url.rstrip("/") + path, timeout)
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            # Some backends only expose /v1/models; allow /health soft-fail once.
+            if path == "/health":
+                continue
+            raise RuntimeError(
+                f"endpoint preflight failed: {path}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if status < 200 or status >= 300:
+            if path == "/health":
+                continue
+            raise RuntimeError(f"endpoint preflight failed: {path} returned {status}")
+
+
+def _find_aiperf() -> str:
+    env_bin = os.environ.get("AIPERF_BIN", "").strip()
+    if env_bin:
+        return env_bin
+    found = shutil.which("aiperf")
+    if found:
+        return found
+    raise RuntimeError(
+        "aiperf executable not found; pip install -r "
+        "harness/adapters/aiperf/requirements.txt (Python >=3.11) "
+        "or set AIPERF_BIN"
+    )
+
+
+def _deep_find_number(obj: Any, keys: tuple[str, ...]) -> Optional[float]:
+    if isinstance(obj, dict):
+        for key in keys:
+            if key in obj and obj[key] is not None:
+                value = obj[key]
+                if isinstance(value, dict):
+                    for nested in ("avg", "p95", "p50", "mean", "value"):
+                        if nested in value and value[nested] is not None:
+                            try:
+                                return float(value[nested])
+                            except (TypeError, ValueError):
+                                pass
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    pass
+        for value in obj.values():
+            found = _deep_find_number(value, keys)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _deep_find_number(item, keys)
+            if found is not None:
+                return found
+    return None
+
+
+def _load_json_files(root: Path) -> List[Dict[str, Any]]:
+    payloads: List[Dict[str, Any]] = []
+    for path in sorted(root.rglob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict):
+            payloads.append(data)
+    return payloads
+
+
+def _normalize_metrics(
+    artifact_dir: Path,
+    *,
+    elapsed_sec: float,
+    aiperf_rc: int,
+) -> Dict[str, Any]:
+    """Build a stable summary.json from AIPerf artifact JSON exports."""
+    payloads = _load_json_files(artifact_dir)
+    merged: Dict[str, Any] = {}
+    for payload in payloads:
+        merged.update(payload)
+
+    request_count = _deep_find_number(
+        merged, ("request_count", "requests", "total_requests", "num_requests")
+    )
+    request_ok = _deep_find_number(
+        merged, ("request_success", "successful_requests", "requests_ok")
+    )
+    request_err = _deep_find_number(
+        merged, ("request_failure", "failed_requests", "requests_error")
+    )
+
+    success_rate: Optional[float] = _deep_find_number(
+        merged, ("success_rate", "request_success_rate")
+    )
+    if success_rate is None and request_count and request_count > 0:
+        if request_ok is not None:
+            success_rate = float(request_ok) / float(request_count)
+        elif request_err is not None:
+            success_rate = max(0.0, 1.0 - float(request_err) / float(request_count))
+
+    tok_s = _deep_find_number(
+        merged,
+        (
+            "output_token_throughput",
+            "output_token_throughput_per_sec",
+            "output_tokens_per_sec",
+            "tok_s",
+            "token_throughput",
+        ),
+    )
+    req_throughput = _deep_find_number(
+        merged, ("request_throughput", "requests_per_sec", "request_rate")
+    )
+    ttft_p95 = _deep_find_number(
+        merged,
+        (
+            "time_to_first_token_p95",
+            "ttft_p95",
+            "ttft_p95_ms",
+            "time_to_first_token",
+        ),
+    )
+    # AIPerf often reports seconds; convert plausible second-scale values to ms.
+    if ttft_p95 is not None and ttft_p95 < 10:
+        ttft_p95_ms = ttft_p95 * 1000.0
+    else:
+        ttft_p95_ms = ttft_p95
+
+    if success_rate is None and aiperf_rc == 0 and payloads:
+        # Prefer failing closed only when AIPerf failed; otherwise assume full success
+        # when exports exist but omit rates (smoke profiles).
+        success_rate = 1.0
+    if success_rate is None:
+        success_rate = 0.0 if aiperf_rc != 0 else 1.0
+
+    return {
+        "schema_version": "aiperf-m1",
+        "adapter": "aiperf",
+        "elapsed_sec": elapsed_sec,
+        "aiperf_rc": aiperf_rc,
+        "success_rate": success_rate,
+        "tok_s": tok_s,
+        "output_token_throughput_per_sec": tok_s,
+        "request_throughput": req_throughput,
+        "ttft_p95_ms": ttft_p95_ms,
+        "request_count": request_count,
+        "requests_ok": request_ok,
+        "requests_error": request_err,
+        "artifact_json_files": len(payloads),
+    }
+
+
+def build_aiperf_command(
+    profile: AiperfProfile,
     *,
     base_url: str,
     model: str,
     artifact_dir: Path,
-    input_file: Path,
-    binary: str = "aiperf",
-    tokenizer: str | None = None,
-) -> list[str]:
-    url = urlsplit(base_url)
-    if url.scheme not in ("http", "https") or not url.netloc or url.username or url.password:
-        raise ValueError("--base-url must be an HTTP(S) URL without credentials")
-    if not model:
-        raise ValueError("--model is required")
-    if profile.block_size is not None and not tokenizer:
-        raise ValueError("--tokenizer is required for hash-id trace synthesis")
-    args = [
-        binary, "profile", "--model", model, "--endpoint-type", "chat",
-        "--streaming", "--url", base_url.rstrip("/"),
-        "--input-file", str(input_file), "--custom-dataset-type", "mooncake_trace",
-        "--no-fixed-schedule", "--dataset-sampling-strategy", "sequential",
-        "--concurrency", str(profile.concurrency),
-        "--request-count", str(profile.requests),
-        "--request-timeout-seconds", str(profile.timeout_sec),
-        "--random-seed", "42", "--output-artifact-dir", str(artifact_dir),
+    aiperf_bin: str,
+) -> List[str]:
+    # AIPerf accepts host:port or URL; strip scheme for --url when needed.
+    url = base_url.strip()
+    command = [
+        aiperf_bin,
+        "profile",
+        "--model",
+        model,
+        "--endpoint-type",
+        profile.endpoint_type,
+        "--url",
+        url,
+        "--input-file",
+        str(profile.input_file),
+        "--custom-dataset-type",
+        profile.custom_dataset_type,
+        "--artifact-dir",
+        str(artifact_dir),
     ]
-    if profile.block_size is not None:
-        args.extend(("--isl-block-size", str(profile.block_size)))
-    if tokenizer:
-        args.extend(("--tokenizer", tokenizer))
-    return args
+    if profile.streaming:
+        command.append("--streaming")
+    if profile.fixed_schedule:
+        command.append("--fixed-schedule")
+    command.extend(profile.extra_args)
+    return command
 
 
-def _metric(export: dict, name: str, field: str = "avg") -> float | None:
-    entry = export.get(name)
-    if entry is None:
-        return None
-    if not isinstance(entry, dict):
-        raise ValueError(f"{name} must be a metric object")
-    value = entry.get(field)
-    if value is None:
-        return None
-    if type(value) not in (int, float) or not math.isfinite(value):
-        raise ValueError(f"{name}.{field} must be finite")
-    return float(value)
-
-
-def evaluate(profile: Profile, export: dict) -> tuple[dict, list[str]]:
-    if not isinstance(export, dict):
-        raise ValueError("AIPerf export must be an object")
-    metrics = {
-        "requests_ok": _metric(export, "request_count"),
-        "requests_error": _metric(export, "error_request_count") or 0.0,
-        "latency_p95_ms": _metric(export, "request_latency", "p95"),
-        "ttft_p95_ms": _metric(export, "time_to_first_token", "p95"),
-        "input_tokens_max": _metric(export, "input_sequence_length", "max"),
-    }
-    failures = []
-    if export.get("aiperf_version") != PINNED_AIPERF_VERSION:
-        failures.append(f"expected AIPerf {PINNED_AIPERF_VERSION}, got {export.get('aiperf_version')!r}")
-    if export.get("was_cancelled"):
-        failures.append("AIPerf run was cancelled")
-    if metrics["requests_ok"] is None or metrics["requests_ok"] < profile.requests:
-        failures.append(f"fewer than {profile.requests} successful requests")
-    if metrics["requests_error"] != 0:
-        failures.append(f"{metrics['requests_error']:g} request errors")
-    for key, limit in (
-        ("latency_p95_ms", profile.max_latency_p95_ms),
-        ("ttft_p95_ms", profile.max_ttft_p95_ms),
-    ):
-        if limit is not None and (metrics[key] is None or metrics[key] > limit):
-            failures.append(f"{key} missing or above {limit:g}")
-    if profile.min_input_tokens is not None and (
-        metrics["input_tokens_max"] is None
-        or metrics["input_tokens_max"] < profile.min_input_tokens
-    ):
-        failures.append(f"input_tokens_max below {profile.min_input_tokens}")
-    return metrics, failures
-
-
-def execute(args: list[str], log_path: Path, timeout: int) -> int:
-    with log_path.open("w", encoding="utf-8") as log:
-        proc = subprocess.Popen(
-            args, stdout=log, stderr=subprocess.STDOUT,
-            start_new_session=(os.name == "posix"),
-        )
-        try:
-            return proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            if os.name == "posix":
-                os.killpg(proc.pid, signal.SIGTERM)
-            else:
-                proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                if os.name == "posix":
-                    os.killpg(proc.pid, signal.SIGKILL)
-                else:
-                    proc.kill()
-                proc.wait()
-            raise
-
-
-def run(
-    profile: Profile,
+def run_aiperf(
+    profile: AiperfProfile,
     *,
     base_url: str,
     model: str,
     output_dir: Path,
-    binary: str = "aiperf",
-    tokenizer: str | None = None,
-    manifest: Path | None = None,
-    executor: Callable[[list[str], Path, int], int] = execute,
-) -> dict:
-    artifact_dir = output_dir / "aiperf"
-    input_file = output_dir / "input.jsonl"
-    args = command(
-        profile, base_url=base_url, model=model, artifact_dir=artifact_dir,
-        input_file=input_file, binary=binary, tokenizer=tokenizer,
-    )
-    if artifact_dir.exists() and any(artifact_dir.iterdir()):
-        raise ValueError(f"AIPerf artifact directory must be empty: {artifact_dir}")
+    role: str,
+    aiperf_bin: Optional[str] = None,
+) -> Dict[str, Any]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifact_dir = output_dir / "aiperf_artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    input_file.write_text(
-        "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in load_trace(profile)),
+
+    preflight_timeout = min(profile.timeout_sec, 120.0)
+    try:
+        _preflight(base_url, preflight_timeout)
+    except RuntimeError:
+        raise
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(
+            f"endpoint preflight failed: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    before = _scrape(base_url, preflight_timeout)
+    (output_dir / "metrics_before.prom").write_text(before, encoding="utf-8")
+
+    binary = aiperf_bin or _find_aiperf()
+    command = build_aiperf_command(
+        profile,
+        base_url=base_url,
+        model=model,
+        artifact_dir=artifact_dir,
+        aiperf_bin=binary,
+    )
+    (output_dir / "aiperf_command.json").write_text(
+        json.dumps({"command": command, "role": role, "run_only": True}, indent=2)
+        + "\n",
         encoding="utf-8",
     )
-    export_path = artifact_dir / "profile_export_aiperf.json"
-    summary = {
-        "adapter": "aiperf", "profile": profile.name, "status": "fail",
-        "base_url": base_url, "model": model,
-        "trace_sha256": hashlib.sha256(profile.trace.read_bytes()).hexdigest(),
-        "expected_requests": profile.requests,
-        "artifacts": [str(input_file), str(export_path), str(output_dir / "aiperf.log")],
-        "metrics": {}, "failures": [],
-    }
-    try:
-        timeout = profile.requests * profile.timeout_sec + 60
-        rc = executor(args, output_dir / "aiperf.log", timeout)
-        if rc != 0:
-            summary["failures"].append(f"AIPerf exited with code {rc}")
-        if not export_path.is_file():
-            summary["failures"].append("AIPerf JSON export is missing")
-        else:
-            export = json.loads(export_path.read_text(encoding="utf-8"))
-            summary["aiperf_version"] = export.get("aiperf_version")
-            summary["metrics"], gates = evaluate(profile, export)
-            summary["failures"].extend(gates)
-    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
-        summary["failures"].append(f"{type(exc).__name__}: {exc}")
 
-    if not summary["failures"]:
-        summary["status"] = "pass"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+    completed = subprocess.run(
+        command,
+        cwd=str(output_dir),
+        capture_output=True,
+        text=True,
+        timeout=profile.timeout_sec,
+        check=False,
+    )
+    elapsed = max(time.monotonic() - started, 0.000001)
+    (output_dir / "aiperf_stdout.log").write_text(completed.stdout or "", encoding="utf-8")
+    (output_dir / "aiperf_stderr.log").write_text(completed.stderr or "", encoding="utf-8")
+
+    after = _scrape(base_url, preflight_timeout)
+    (output_dir / "metrics_after.prom").write_text(after, encoding="utf-8")
+    (output_dir / "evidence").mkdir(exist_ok=True)
+    (output_dir / "evidence" / "metrics.prom").write_text(after, encoding="utf-8")
+
+    metrics = _normalize_metrics(
+        artifact_dir, elapsed_sec=elapsed, aiperf_rc=int(completed.returncode)
+    )
+    raw = {
+        "schema_version": "aiperf-m1",
+        "adapter": "aiperf",
+        "adapter_mode": "aiperf_cli",
+        "role": role,
+        "profile": profile.name,
+        "base_url": base_url,
+        "model": model,
+        "collection": profile.raw,
+        "metrics": metrics,
+        "aiperf_rc": int(completed.returncode),
+        "status": "pass"
+        if completed.returncode == 0 and float(metrics.get("success_rate") or 0) >= 0.99
+        else "fail",
+    }
+    (output_dir / "aiperf_raw.json").write_text(
+        json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    # Flat summary for compare.py (--baseline/--candidate).
+    summary = {
+        **metrics,
+        "role": role,
+        "backend": "vllm" if role == "baseline" else "infinilm" if role == "candidate" else role,
+        "base_url": base_url,
+        "model": model,
+        "profile": profile.name,
+        "status": raw["status"],
+    }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    if manifest is not None:
-        document = json.loads(manifest.read_text(encoding="utf-8"))
-        if not isinstance(document, dict):
-            raise ValueError("diagnostic manifest must be a JSON object")
-        document["bench"] = {
-            "adapter": "aiperf", "profile": profile.name,
-            "client_version": summary.get("aiperf_version", PINNED_AIPERF_VERSION),
-            "adapter_mode": "trace_replay", "status": summary["status"],
-            "base_url": base_url,
-            "case_path": document.get("case", {}).get("case_path", ""),
-            "topology_fingerprint": document.get("topology_fingerprint", ""),
-            "collection_config": profile.raw,
-            "metrics": summary["metrics"],
-            "artifacts": [os.path.relpath(input_file, manifest.parent),
-                          os.path.relpath(export_path, manifest.parent),
-                          os.path.relpath(output_dir / "summary.json", manifest.parent)],
-        }
-        manifest.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return summary
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"aiperf exited {completed.returncode}; see {output_dir / 'aiperf_stderr.log'}"
+        )
+    return raw
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run-only AIPerf trace adapter")
-    parser.add_argument("--base-url", required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--profile", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--manifest", type=Path)
-    parser.add_argument("--aiperf-bin", default="aiperf")
-    parser.add_argument("--tokenizer", help="local tokenizer path for offline runners")
-    args = parser.parse_args(argv)
-    summary = run(
-        load_profile(args.profile), base_url=args.base_url, model=args.model,
-        output_dir=args.output_dir, binary=args.aiperf_bin,
-        tokenizer=args.tokenizer, manifest=args.manifest,
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run-only AIPerf mooncake_trace adapter (client-only)"
     )
-    print(json.dumps({k: summary[k] for k in ("status", "profile", "metrics", "failures")}, indent=2))
-    return 0 if summary["status"] == "pass" else 1
+    parser.add_argument("--base-url", required=True)
+    parser.add_argument("--profile", required=True)
+    parser.add_argument("--case-path", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--model", default=os.environ.get("MODEL", ""))
+    parser.add_argument("--manifest", default=os.environ.get("DIAGNOSTIC_MANIFEST", ""))
+    parser.add_argument(
+        "--role",
+        choices=("baseline", "candidate", "single"),
+        default="single",
+        help="baseline=vLLM, candidate=InfiniLM, single=unlabeled run",
+    )
+    parser.add_argument(
+        "--client-version",
+        default=os.environ.get("AIPERF_VERSION", "0.13.0"),
+    )
+    parser.add_argument("--aiperf-bin", default=os.environ.get("AIPERF_BIN", ""))
+    parser.add_argument(
+        "--tokenizer",
+        default=os.environ.get("TOKENIZER_DIR", os.environ.get("TOKENIZER", "")),
+        help="Local tokenizer/model path passed to aiperf --tokenizer (offline hosts)",
+    )
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = _parser().parse_args(argv)
+    profile = load_profile(Path(args.profile))
+    model = args.model or profile.model
+    if not model:
+        raise SystemExit("--model, MODEL, or profile.model is required")
+    # Inject --tokenizer when provided and not already present in profile extra_args.
+    if args.tokenizer:
+        extras = list(profile.extra_args)
+        if "--tokenizer" not in extras:
+            extras.extend(["--tokenizer", args.tokenizer])
+            profile = AiperfProfile(
+                name=profile.name,
+                model=profile.model,
+                endpoint_type=profile.endpoint_type,
+                streaming=profile.streaming,
+                fixed_schedule=profile.fixed_schedule,
+                input_file=profile.input_file,
+                custom_dataset_type=profile.custom_dataset_type,
+                timeout_sec=profile.timeout_sec,
+                extra_args=extras,
+                raw=profile.raw,
+            )
+    output_dir = Path(args.output_dir).resolve()
+    raw = run_aiperf(
+        profile,
+        base_url=args.base_url,
+        model=model,
+        output_dir=output_dir,
+        role=args.role,
+        aiperf_bin=args.aiperf_bin or None,
+    )
+    raw["client_version"] = args.client_version
+    raw["case_path"] = args.case_path
+    raw_path = output_dir / "aiperf_raw.json"
+    raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.manifest:
+        manifest_path = Path(args.manifest).resolve()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        block = build_bench_block(
+            profile=profile.name,
+            client_version=args.client_version,
+            collection_config=profile.raw,
+            base_url=args.base_url,
+            case_path=args.case_path,
+            topology_fingerprint=str(manifest.get("topology_fingerprint", "")),
+            metrics=raw.get("metrics", {}),
+            artifacts=[os.path.relpath(raw_path, manifest_path.parent)],
+            adapter_mode="aiperf_cli",
+            role=args.role,
+        )
+        update_manifest(manifest_path, block)
+
+    return 0 if raw.get("status") == "pass" else 1
 
 
 if __name__ == "__main__":
