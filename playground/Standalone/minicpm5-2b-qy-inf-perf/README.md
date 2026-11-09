@@ -7,7 +7,7 @@ InfiniOrchestrator Standalone case for the **llm_performace_benchmark** complete
 |-------|-------|
 | case_id | `minicpm5-2b-qy-inf-perf` |
 | backend | InfiniLM (`be_abbr=inf`) |
-| worktree | `v2026.11.06-qy-full-pd` |
+| worktree | `v2026.11.09-qy-moe-bf16-warpnk` |
 | harness container | `minicpm5-2b-inf-perf-harness` |
 | Layer A | TP1/2/4 × prompts 512/2048/8192, o=1024, graph-on |
 | Layer B | longbench-task on `short_easy_cot` (59), TP1/2/4 |

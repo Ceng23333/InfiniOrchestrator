@@ -7,7 +7,7 @@ WS_ROOT="$(cd "${CASE_DIR}/../../../.." && pwd)"
 BENCH="${BENCH:-${WS_ROOT}/llm_performace_benchmark}"
 HARNESS="${BENCH}/scripts/run_harness_in_inf_container.sh"
 CONFIG="${CONFIG:-${BENCH}/config.minicpm5-2b.infinilm.tp1.json}"
-export ITW_TAG="${ITW_TAG:-v2026.11.06-qy-full-pd}"
+export ITW_TAG="${ITW_TAG:-v2026.11.09-qy-moe-bf16-warpnk}"
 export INFINI_VOCAB_PARALLEL="${INFINI_VOCAB_PARALLEL:-1}"
 TPS="${TPS:-1 2 4}"
 

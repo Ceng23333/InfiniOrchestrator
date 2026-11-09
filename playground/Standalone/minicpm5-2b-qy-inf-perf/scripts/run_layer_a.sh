@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# InfiniLM MiniCPM5-2B Layer-A: smoke→full for TP1/2/4 on v2026.11.06-qy-full-pd.
+# InfiniLM MiniCPM5-2B Layer-A: smoke→full for TP1/2/4 on v2026.11.09-qy-moe-bf16-warpnk.
 set -euo pipefail
 
 CASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_ROOT="$(cd "${CASE_DIR}/../../../.." && pwd)"
 BENCH="${BENCH:-${WS_ROOT}/llm_performace_benchmark}"
 HARNESS="${BENCH}/scripts/run_harness_in_inf_container.sh"
-export ITW_TAG="${ITW_TAG:-v2026.11.06-qy-full-pd}"
+export ITW_TAG="${ITW_TAG:-v2026.11.09-qy-moe-bf16-warpnk}"
 export INFINI_VOCAB_PARALLEL="${INFINI_VOCAB_PARALLEL:-1}"
 
 run_one() {
