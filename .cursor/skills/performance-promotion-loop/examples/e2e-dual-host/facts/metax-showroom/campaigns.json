@@ -1,0 +1,1114 @@
+{
+  "schema_version": "promo-facts-1",
+  "host": "metax-showroom",
+  "campaigns": [
+    {
+      "campaign_id": "metax-aiperf-vllm-leg-20231123",
+      "host": "metax-showroom",
+      "vendor_profiler": "aiperf",
+      "cell": "AIPerf dual mooncake/agentic leg",
+      "pin_baseline": "vllm",
+      "pin_candidate": "v2026.10.29-infinilm-prod-qwen38-tp4",
+      "agent_ids": [
+        "01229051-a881-4ebf-aef2-6d67110b7449"
+      ],
+      "source_paths": [
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/aiperf_vllm_leg_20231123_170901/compare.json",
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/aiperf_vllm_leg_20231123_170901/baseline/vllm/summary.json",
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/aiperf_vllm_leg_20231123_170901/candidate/infinilm/summary.json"
+      ],
+      "iters": [
+        {
+          "iter": 0,
+          "profiled": false,
+          "lever_applied": null,
+          "wall": {
+            "metric": "output_token_throughput_per_sec",
+            "baseline": 334.792326121441,
+            "candidate": 17.130666849517535,
+            "WALL_DECODE_RATIO": 0.05116803914825585,
+            "gate": "PROFILE_REGRESS",
+            "source": "aiperf"
+          },
+          "host_signals": [],
+          "backlog": null,
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": null
+          }
+        }
+      ],
+      "worktree_baseline": "playground/Standalone/qwen38-27b-qy-vllm--prod-qwen38-tp4",
+      "worktree_candidate": "pilotdeck-infinilm:promoted-tool-search-20261029",
+      "itw_tag_baseline": null,
+      "itw_tag_candidate": "v2026.10.29-infinilm-prod-qwen38-tp4"
+    },
+    {
+      "campaign_id": "metax-peak-batch64-promotion",
+      "host": "metax-showroom",
+      "vendor_profiler": "mctracer",
+      "cell": "EvalScope P64/N64 128->128",
+      "pin_baseline": "vllm-frozen-315.6",
+      "pin_candidate": "peak-batch64-promo",
+      "agent_ids": [
+        "01229051-a881-4ebf-aef2-6d67110b7449"
+      ],
+      "source_paths": [
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/compare.json",
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/profile/20261106_154827/promotion_backlog.json",
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/profile/20261109_restore_rerank/promotion_backlog.json",
+        "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_surpass_nogo.md"
+      ],
+      "iters": [
+        {
+          "iter": 0,
+          "profile_run_id": "20261106_154827",
+          "profiled": true,
+          "lever_applied": null,
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 185.97361596320002,
+            "WALL_DECODE_RATIO": 0.589273,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration0.md"
+          }
+        },
+        {
+          "iter": 2,
+          "profiled": false,
+          "lever_applied": "gemm",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 191.5671,
+            "WALL_DECODE_RATIO": 0.606996,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration2.md"
+          }
+        },
+        {
+          "iter": 3,
+          "profiled": false,
+          "lever_applied": "residual_add_rmsnorm",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 189.9311,
+            "WALL_DECODE_RATIO": 0.601813,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration3.md"
+          }
+        },
+        {
+          "iter": 4,
+          "profiled": false,
+          "lever_applied": "allreduce",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 190.7398,
+            "WALL_DECODE_RATIO": 0.604375,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration4.md"
+          }
+        },
+        {
+          "iter": 5,
+          "profiled": false,
+          "lever_applied": "gated_delta_rule",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 81.4069,
+            "WALL_DECODE_RATIO": 0.257945,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration5.md"
+          }
+        },
+        {
+          "iter": 7,
+          "profiled": false,
+          "lever_applied": "gemm",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 189.1513,
+            "WALL_DECODE_RATIO": 0.599342,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration7.md"
+          }
+        },
+        {
+          "iter": 8,
+          "profiled": false,
+          "lever_applied": "batch_policy",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 190.8489,
+            "WALL_DECODE_RATIO": 0.604721,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gated_delta_rule",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gated_delta_rule",
+                "score": 11532.913,
+                "reasons": [
+                  "post_load bucket ms il=1206.348 vl=126.185 ratio=9.560"
+                ],
+                "lever": "inspect InfiniLM chunk_gated_delta_rule / causal_conv1d vs vLLM fused_recurrent_gated_delta_rule; no static env lever mapped yet"
+              },
+              {
+                "rank": 2,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "inspect gemm/gemv kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "score": 266.987,
+                "reasons": [
+                  "post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1"
+              },
+              {
+                "rank": 4,
+                "path_id": "allreduce",
+                "score": 245.367,
+                "reasons": [
+                  "post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "inspect AllReduce / MCCL; no static lever mapped yet"
+              },
+              {
+                "rank": 5,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect attention / FA kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration8.md"
+          }
+        },
+        {
+          "iter": 9,
+          "profiled": false,
+          "lever_applied": "batch_policy",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 227.2833,
+            "WALL_DECODE_RATIO": 0.720166,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gemm",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "MCBLAS TENSOR_OP already applied (wall +5 tok/s); next is non-env tile/launch (128x128 vs vLLM 64x64) \u2014 NOT mixed_qkv port"
+              },
+              {
+                "rank": 2,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect leftover kernels"
+              },
+              {
+                "rank": 3,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect FA"
+              },
+              {
+                "rank": 4,
+                "path_id": "residual_add_rmsnorm",
+                "score": 2.67,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "exhausted: vectorize overlay + INFINI_QY_FUSED_ADD_RMSNORM; wall-flat on restore stack"
+              },
+              {
+                "rank": 5,
+                "path_id": "allreduce",
+                "score": 2.454,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "exhausted: INFINICORE_GRAPH_DEBUG=0 / DIAG=0; wall-flat"
+              },
+              {
+                "rank": 6,
+                "path_id": "gated_delta_rule",
+                "score": 1.527,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=138.803 vl=126.185 ratio=1.100 (raw_il_gdn=1206.348\u2192adj=138.803)"
+                ],
+                "lever": "exhausted: Triton packed-decode port + overlay_recurrent_graph killed device graphs; treat ~1.10\u00d7/~9ms/step not top"
+              }
+            ],
+            "exhausted": [
+              "gated_delta_rule",
+              "residual_add_rmsnorm",
+              "allreduce"
+            ]
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration9.md"
+          }
+        },
+        {
+          "iter": 10,
+          "profiled": false,
+          "lever_applied": "batch_policy",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 223.8179,
+            "WALL_DECODE_RATIO": 0.709186,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gemm",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "MCBLAS TENSOR_OP already applied (wall +5 tok/s); next is non-env tile/launch (128x128 vs vLLM 64x64) \u2014 NOT mixed_qkv port"
+              },
+              {
+                "rank": 2,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect leftover kernels"
+              },
+              {
+                "rank": 3,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect FA"
+              },
+              {
+                "rank": 4,
+                "path_id": "residual_add_rmsnorm",
+                "score": 2.67,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "exhausted: vectorize overlay + INFINI_QY_FUSED_ADD_RMSNORM; wall-flat on restore stack"
+              },
+              {
+                "rank": 5,
+                "path_id": "allreduce",
+                "score": 2.454,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "exhausted: INFINICORE_GRAPH_DEBUG=0 / DIAG=0; wall-flat"
+              },
+              {
+                "rank": 6,
+                "path_id": "gated_delta_rule",
+                "score": 1.527,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=138.803 vl=126.185 ratio=1.100 (raw_il_gdn=1206.348\u2192adj=138.803)"
+                ],
+                "lever": "exhausted: Triton packed-decode port + overlay_recurrent_graph killed device graphs; treat ~1.10\u00d7/~9ms/step not top"
+              }
+            ],
+            "exhausted": [
+              "gated_delta_rule",
+              "residual_add_rmsnorm",
+              "allreduce"
+            ]
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_iteration10.md"
+          }
+        },
+        {
+          "iter": 11,
+          "profiled": false,
+          "lever_applied": "batch_policy",
+          "wall": {
+            "metric": "evalscope_output_tok_s",
+            "baseline": 315.5984,
+            "candidate": 85.0122,
+            "WALL_DECODE_RATIO": 0.269368,
+            "gate": "NO_GO",
+            "source": "evalscope"
+          },
+          "host_signals": [
+            {
+              "family": "api",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2650323177673168,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.4236270028963611,
+              "mapped_from": "mctracer"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 2.7983663167459127,
+              "mapped_from": "mctracer",
+              "note": "gpu_kernel_ms_post_load_ratio proxy"
+            }
+          ],
+          "backlog": {
+            "top_path": "gemm",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "gemm",
+                "score": 705.069,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=548.457 vl=426.633 ratio=1.286"
+                ],
+                "lever": "MCBLAS TENSOR_OP already applied (wall +5 tok/s); next is non-env tile/launch (128x128 vs vLLM 64x64) \u2014 NOT mixed_qkv port"
+              },
+              {
+                "rank": 2,
+                "path_id": "other",
+                "score": 136.815,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=58.728 vl=25.209 ratio=2.330"
+                ],
+                "lever": "inspect leftover kernels"
+              },
+              {
+                "rank": 3,
+                "path_id": "attention",
+                "score": 4.509,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=7.574 vl=12.722 ratio=0.595"
+                ],
+                "lever": "inspect FA"
+              },
+              {
+                "rank": 4,
+                "path_id": "residual_add_rmsnorm",
+                "score": 2.67,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=79.079 vl=23.422 ratio=3.376"
+                ],
+                "lever": "exhausted: vectorize overlay + INFINI_QY_FUSED_ADD_RMSNORM; wall-flat on restore stack"
+              },
+              {
+                "rank": 5,
+                "path_id": "allreduce",
+                "score": 2.454,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=156.088 vl=99.294 ratio=1.572"
+                ],
+                "lever": "exhausted: INFINICORE_GRAPH_DEBUG=0 / DIAG=0; wall-flat"
+              },
+              {
+                "rank": 6,
+                "path_id": "gated_delta_rule",
+                "score": 1.527,
+                "reasons": [
+                  "restore-adjusted post_load bucket ms il=138.803 vl=126.185 ratio=1.100 (raw_il_gdn=1206.348\u2192adj=138.803)"
+                ],
+                "lever": "exhausted: Triton packed-decode port + overlay_recurrent_graph killed device graphs; treat ~1.10\u00d7/~9ms/step not top"
+              }
+            ],
+            "exhausted": [
+              "gated_delta_rule",
+              "residual_add_rmsnorm",
+              "allreduce"
+            ]
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/metax/qy/workspace/pilotdeck/perf_mccl_loop/results/peak_batch64_promotion/FINDINGS_surpass_nogo.md"
+          }
+        }
+      ],
+      "worktree_baseline": "vllm-frozen-peak64",
+      "worktree_candidate": "worktree-peak64-iter4-locked",
+      "itw_tag_baseline": null,
+      "itw_tag_candidate": null
+    }
+  ]
+}

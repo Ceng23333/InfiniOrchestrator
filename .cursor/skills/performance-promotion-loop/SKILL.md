@@ -1,12 +1,12 @@
 ---
 name: performance-promotion-loop
 description: >-
-  Runs InfiniLM vs vLLM performance promotion loops: observe with harness/profiler
-  tools, parse/analyze into a ranked backlog, then promote one lever and rebuild.
-  Use when profiling InfiniLM against a vLLM baseline, ranking promotion paths
-  (host/graph/COMMAND, RoPE/KV, fusion), running AIPerf dual gates, DLPTI or
-  mcTracer matched captures, or deciding whether to tag an ITW pin / update an
-  InfiniOrchestrator case after a surpass gate.
+  Runs InfiniLM vs vLLM performance promotion loops and reviews iteration facts
+  on a portable HTML page. Use when observing/profiling InfiniLM against a vLLM
+  baseline (AIPerf, DLPTI, mcTracer), ranking promotion paths, emitting suite
+  facts.json / review/index.html, reviewing multi-iter wall and host signals,
+  or deciding whether to tag an ITW pin / update an InfiniOrchestrator case
+  after a surpass gate.
 ---
 
 # Performance promotion loop
@@ -14,158 +14,162 @@ description: >-
 Closed loop for InfiniLM performance work integrated with InfiniOrchestrator
 (harness + playground cases) and InfiniTensorWorktree (code/pin).
 
+**Facts** are the durable product of each turn. **HTML review**
+(`$SUITE_DIR/review/index.html`) is the universal surface for inspecting those
+facts across iterations — not Cursor Canvas.
+
 **Pattern (every turn):**
 
-1. **Observe** — tools only (client wall + matched profiler)
-2. **Parse / analyze** — host-aware compare → ranked `promotion_backlog`
-3. **Promote / rebuild** — apply **one** top lever, rebuild serving pin, re-observe
+1. **Observe** — tools only (client wall + matched profiler when behind)
+2. **Parse → facts** — host-aware compare → ranked backlog → envelope facts
+3. **Promote / rebuild** — apply **one** top lever, rebuild candidate, re-observe
+4. **Review** — regenerate HTML review; launch or report the URL when validating
 
-Do not skip observe. Do not promote matrix/ITW/IO case until the **surpass gate**
+Do not skip observe. Do not ship matrix/ITW/IO case until the **surpass gate**
 passes on an **unprofiled** wall metric.
 
 ## When to use
 
 - InfiniLM trails vLLM on decode tok/s, TTFT, or AIPerf `PROFILE_REGRESS`
-- User asks for profile loop / promotion loop / DLPTI / mcTracer / host-graph
+- User asks for profile / promotion loop, fact review, or HTML iter review
 - Ranking next lever after fused-kernel or CUDA-graph work
-- Shipping: refresh `GLOBAL_MATRIX`, tag ITW pin, update playground case worktree
+- Shipping: refresh matrix, tag ITW pin, update playground case worktree
 
 ## Roles (keep separated)
 
 | Role | Owns | Does not |
 |------|------|----------|
-| **InfiniOrchestrator** | Client observe (`harness/adapters/aiperf`, bench runners), gates, playground cases, FINDINGS under suite dirs | InfiniLM kernel source |
-| **InfiniTensorWorktree** | Lever code/env (`enable_graph`, `INFINI_CUDAGRAPH_POLICY`, QY blocks), rebuild image/worktree, ITW release tag | AIPerf dual recipe |
-| **Host profiler kit** | Matched capture + summarize/compare/promote (DLPTI on Denglin/c610; mcTracer on MetaX/showroom) | Shipping IO cases alone |
+| **InfiniOrchestrator** | Client observe, gates, cases, suite facts + HTML review | InfiniLM kernel source |
+| **InfiniTensorWorktree** | Lever code/env, rebuild image/worktree, ITW release tag | AIPerf dual recipe |
+| **Host profiler kit** | Matched capture + summarize/compare/promote (DLPTI on c610; mcTracer on MetaX/showroom) | Shipping IO cases alone |
 
-Client wall (AIPerf / harness A/B) is the **KPI**. Profiler compare ranks **where**
-to spend the next rebuild — it does not replace wall ratio.
+Client wall is the **KPI**. Profiler compare ranks **where** to spend the next
+rebuild — it does not replace wall ratio.
+
+## Fact families (index)
+
+Converged format: [facts.md](facts.md) (`schema_version: promo-facts-1`).
+Vendor DLPTI/mcTracer/AIPerf JSON is normalized **into** this envelope — not
+used raw as the review/warehouse contract. Validate with
+[scripts/parse_promo_facts.py](scripts/parse_promo_facts.py).
+
+| Family | Purpose |
+|--------|---------|
+| `CampaignFact` | host, cell, pins, worktree/ITW tags, agent ids |
+| `IterFact` | iter index, profiled?, lever applied |
+| `WallFact` | unprofiled KPI + gate |
+| `HostSignalFact` | optional diagnostic host ratios (review UI may omit) |
+| `CuBucketFact` | material CU buckets |
+| `BacklogFact` | `top_path`, ranked `path_id` (path leftover pies) |
+| `ShipFact` | surpass + matrix/pin/case actions |
+
+Multi-campaign review payload: `{ "schema_version": "promo-facts-1", "campaigns": [...] }`.
 
 ## Loop checklist
-
-Copy and tick each turn:
 
 ```
 Turn N:
 - [ ] Observe wall (vLLM baseline frozen first, then InfiniLM candidate)
 - [ ] If behind / PROFILE_REGRESS → Observe matched profiler (same prompt/window)
-- [ ] Parse → compare.json + promotion_backlog.json (host-first rules)
+- [ ] Parse → namespaced compare + promotion_backlog (host-first rules)
+- [ ] Emit/update $SUITE_DIR/facts/ (envelope; never invent WALL_DECODE_RATIO)
 - [ ] Pick top_path only; write FINDINGS_iterationN.md
 - [ ] Promote one lever in ITW / env; rebuild candidate
 - [ ] Re-observe wall (unprofiled); update WALL_DECODE_RATIO
+- [ ] Regenerate $SUITE_DIR/review/index.html (+ facts.json); launch/report URL if validating
 - [ ] Surpass? yes → ship (matrix/pin/case). no → next turn or NO-GO
 ```
 
-## Phase 1 — Observe (tools)
+## Observe (condensed)
 
-### 1a. Client wall (always)
+**Wall (always):** Prefer `harness/bin/run-aiperf-dual` when OpenAI endpoints are
+live. Freeze vLLM → `baseline/vllm/`; InfiniLM → `candidate/infinilm/`; gate via
+`compare.json` (`PASS` | `PROFILE_REGRESS`). Defaults: success_rate ≥ 0.99;
+tok/s ratio ≥ 0.50 (**regress detect**, not ship); TTFT p95 ratio ≤ 1.25.
+Unprofiled harness A/B is equally valid — record
+`WALL_DECODE_RATIO = infinilm_decode / vllm_decode`.
 
-Prefer InfiniOrchestrator AIPerf dual when OpenAI endpoints are live:
+**Profiler (when behind):** Matched window on both backends.
 
-```bash
-harness/bin/run-aiperf-dual \
-  --base-url-vllm "$BASE_URL_VLLM" \
-  --base-url-infinilm "$BASE_URL_INFINILM" \
-  --profile harness/adapters/aiperf/profiles/<profile>.yaml \
-  --model "$MODEL" \
-  --suite-dir "$SUITE_DIR"
-```
+| Host | Tool | Host signals |
+|------|------|--------------|
+| Denglin / c610 | DLPTI | DRIVER/RUNTIME/COMMAND + CU gap + buckets |
+| MetaX / showroom | mcTracer | api_*/inter_kernel_gap + post-load GPU |
 
-Contract:
+Never rank from a single-backend trace. Never mix prompt shapes in one compare.
 
-- **vLLM first** → `baseline/vllm/` (freeze; do not overwrite mid-campaign)
-- **InfiniLM next** → `candidate/infinilm/`
-- Compare → `compare.json` (`PASS` or `PROFILE_REGRESS`)
-- Default gates: success_rate ≥ 0.99; tok/s ratio ≥ 0.50; TTFT p95 ratio ≤ 1.25
+## Parse → facts (condensed)
 
-Adapter is **run-only**: it does not start GPUs/containers. Bring-up is host/case
-ops. Use a fresh suite dir per campaign.
+1. Summarize traces (CU buckets + **host** overhead).
+2. Write profiler `profile/<run_id>/compare.json` (do not overwrite wall compare).
+3. Rank → `promotion_backlog.json`.
+4. Require unprofiled `WALL_DECODE_RATIO` (do not invent).
+5. Normalize into envelope under `$SUITE_DIR/facts/` per [facts.md](facts.md).
 
-Unprofiled harness A/B (decode tok/s) is equally valid for Layer-A / fixed-IO
-cells; record `WALL_DECODE_RATIO = infinilm_decode / vllm_decode` explicitly.
+**Host-first:** fire `host_graph_command` when CU ≤ vLLM **and** wall &lt; 0.9
+**and** (DRIVER/RUNTIME or api count ≥ 2× **or** COMMAND/api_ms ≥ 2× **or**
+gap ≥ 1.5×). Else rank material CU buckets via the lever map in
+[reference.md](reference.md).
 
-### 1b. Matched profiler (when behind)
-
-Same workload window on both backends. Prefer reuse of frozen vLLM trace when
-only InfiniLM changed.
-
-| Host / vendor | Observe tool | Notes |
-|---------------|--------------|-------|
-| Denglin / c610 | DLPTI matched fullcell or reduced | `tools.dlpti`; host DRIVER/RUNTIME/COMMAND + CU buckets |
-| MetaX / showroom | mcTracer dual capture | `perf_mccl_loop` profile tools; parse → summary |
-
-Never rank promotions from a single-backend trace. Never mix different prompt
-shapes between A and B in one compare.
-
-## Phase 2 — Parse and analyze
-
-1. Summarize each trace (device CU buckets + **host** overhead).
-2. Compare InfiniLM over vLLM → `compare.json` / `compare.txt`.
-3. Run promote ranker → `promotion_backlog.json` + `PROMOTION_BACKLOG.md`.
-4. Require `WALL_DECODE_RATIO` from the latest **unprofiled** A/B (do not invent).
-
-**Host-first rule** (priority 1): fire `host_graph_command` when
-
-- CU us/flash ≤ vLLM, **and**
-- wall decode ratio < 0.9, **and**
-- at least one of: DRIVER/RUNTIME count ≥ 2×, COMMAND us/flash ≥ 2×, CU-gap ≥ 1.5×
-
-Else rank material CU buckets by us/flash ratio (rope, kv_cache_reshape,
-residual_add_rmsnorm, …) via the static lever map.
-
-Write `FINDINGS_iterationN.md` in the suite/out dir: wall numbers, top_path,
-signals, chosen lever, keep/no-go for each A/B arm.
-
-## Phase 3 — Promote and rebuild
+## Promote / rebuild (condensed)
 
 1. Apply **only** `top_path` (or explicit user override). One lever per turn.
-2. Change lives in InfiniTensorWorktree (env default, policy, or code) or case
-   env passthrough — not in AIPerf profiles.
-3. Rebuild / restart **candidate** serving pin. Keep vLLM baseline frozen.
-4. Re-run Phase 1a unprofiled. Update `WALL_DECODE_RATIO`.
-5. Re-run Phase 1b+2 if still behind (re-rank; do not assume prior top_path).
+2. Change lives in ITW (env/policy/code) or case env — not AIPerf profiles.
+3. Rebuild/restart **candidate**; keep vLLM frozen.
+4. Re-observe unprofiled wall; update facts + HTML review.
+5. Re-rank if still behind (do not assume prior `top_path`).
 
-### Surpass / ship gate
+**Surpass / ship:** unprofiled KPI **exceeds** frozen vLLM (ratio &gt; 1.0). Then
+matrix + ITW tag + IO case. If improved but not surpass →
+`FINDINGS_surpass_nogo.md`; do not retag.
 
-Ship only when unprofiled KPI **exceeds** the frozen vLLM baseline for the
-agreed cell (e.g. decode tok/s > vLLM on Layer-A TP1).
+## Review (HTML)
 
-Then:
+Canonical surface: `$SUITE_DIR/review/index.html` (vanilla HTML+JS; embed facts
+for `file://`). Procedure and page sections: [review.md](review.md). Template:
+[examples/review/index.html](examples/review/index.html). Dual-host e2e example:
+[examples/e2e-dual-host/](examples/e2e-dual-host/).
 
-1. Refresh matrix / campaign record for that cell
-2. Tag ITW pin (`InfiniTensorWorktree` release scripts; IO `pin_worktree.sh` is a redirect)
-3. Point InfiniOrchestrator playground case / image at the new pin
-
-If improved but not surpass → document `FINDINGS_surpass_nogo.md`; **do not**
-retag or rewrite the IO case. Leave next lever from the latest backlog.
+When validating, launch a static server on `review/` (or open the file) and
+report the URL. Do not treat Cursor Canvas / `/visualize` as the campaign record.
 
 ## Anti-patterns
 
 - Promoting from profiled (instrumented) wall numbers
 - Changing multiple levers before re-observe
 - Overwriting vLLM baseline mid-loop
-- Treating `enable_graph=true` as “full CG every step” (compiler on ≠ always graph hit; sampling/D2H often outside graph)
-- Shipping EM-gated levers (e.g. full-prefill CG) without an explicit quality gate
-- Killing unrelated GPU jobs; prefer a free device / non-destructive harness path
+- Inventing `WALL_DECODE_RATIO` or reviewing prose FINDINGS when JSON facts exist
+- Conflating AIPerf floor (0.50) with surpass (1.0)
+- Cursor-only viz as the durable campaign record; skipping HTML regen after an iter
+- Treating `enable_graph=true` as guaranteed per-step CG replay
+- Shipping EM-gated levers without an explicit quality gate
+- Killing unrelated GPU jobs
 
 ## Artifact layout
 
 ```text
 $SUITE_DIR/
-  baseline/vllm/summary.json          # frozen wall
+  baseline/vllm/summary.json
   candidate/infinilm/summary.json
-  compare.json                        # AIPerf or harness gate
-  profile/<run_id>/                   # DLPTI or mcTracer
-    compare.json
+  compare.json                      # wall gate (AIPerf / harness / evalscope)
+  facts/
+    campaign.json
+    iters.jsonl                     # or facts/iterN.json
+  profile/<run_id>/
+    compare.json                    # profiler compare (namespaced)
     promotion_backlog.json
-    PROMOTION_BACKLOG.md
     FINDINGS_iterationN.md
-  FINDINGS_surpass_nogo.md            # if ship blocked
+  review/
+    index.html                      # universal HTML review
+    facts.json                      # snapshot for HTTP reload
+  FINDINGS_surpass_nogo.md          # if ship blocked
 ```
 
 ## References
 
-- Tool contracts and lever map: [reference.md](reference.md)
+- Fact envelope + host maps: [facts.md](facts.md)
+- HTML review + launch: [review.md](review.md)
+- Levers, gates, host tooling: [reference.md](reference.md)
 - AIPerf adapter: `harness/adapters/aiperf/README.md`
 - Case validate: `harness/bin/validate-case`
 - Worktree env: `scripts/worktree_env.sh`

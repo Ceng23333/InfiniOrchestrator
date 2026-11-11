@@ -1,0 +1,12 @@
+{
+  "schema_version": "promo-facts-fetch-1",
+  "default_source_id": "local",
+  "cache_bust": true,
+  "sources": [
+    {
+      "id": "local",
+      "label": "facts.json (same directory)",
+      "url": "facts.json"
+    }
+  ]
+}

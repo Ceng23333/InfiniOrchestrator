@@ -1,0 +1,870 @@
+{
+  "schema_version": "promo-facts-1",
+  "host": "c610",
+  "campaigns": [
+    {
+      "campaign_id": "c610-minicpm5-2b-tp1-host-graph",
+      "host": "c610",
+      "vendor_profiler": "dlpti",
+      "cell": "MiniCPM5-2B TP1 Layer-A decode",
+      "pin_baseline": "vllm-frozen-matrix",
+      "pin_candidate": "v2026.11.03-qy-lmhead-tp-nccl",
+      "agent_ids": [
+        "926aff24-3b86-4c32-be1e-817ff73d73dd"
+      ],
+      "source_paths": [
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/dlpti/dlpti_fullcell_fused1_20261103_151019/promotion_backlog.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/dlpti/dlpti_reduced_hostgraph_best_20261104_110241/promotion_backlog.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/dlpti/dlpti_fullcell_fused1_20261103_151019/compare.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/dlpti/dlpti_reduced_hostgraph_best_20261104_110241/compare.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/host_graph_promo/FINDINGS_surpass_nogo.md"
+      ],
+      "iters": [
+        {
+          "iter": 0,
+          "profile_run_id": "dlpti_fullcell_fused1_20261103_151019",
+          "lever_applied": null,
+          "profiled": true,
+          "wall": {
+            "metric": "decode_tok_s",
+            "baseline": 14.4,
+            "candidate": 5.88,
+            "WALL_DECODE_RATIO": 0.408,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "host_signals": [
+            {
+              "family": "driver",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.9681225706565242,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "runtime",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.0320049872604395,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 8.659301298217276,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 3.009882968059207,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "graph",
+              "baseline": 7292,
+              "candidate": 88701,
+              "ratio": 12.164152495885903,
+              "mapped_from": "dlpti"
+            }
+          ],
+          "backlog": {
+            "top_path": "host_graph_command",
+            "host_first_fired": true,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "host_graph_command",
+                "priority_rule": 1,
+                "reasons": [
+                  "wall decode ratio 0.408 < 0.9",
+                  "DRIVER_API count ratio 5.17 \u2265 2.0",
+                  "RUNTIME_API count ratio 5.98 \u2265 2.0",
+                  "COMMAND us/flash ratio 8.66 \u2265 2.0"
+                ],
+                "lever": "Graph policy / replay / host sync (INFINI_CUDAGRAPH_POLICY, \u2026) \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/FULL_VS_VLLM.md"
+              },
+              {
+                "rank": 2,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 1.467 (infinilm=6.03 vllm=4.10953281224575)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 1.415 (infinilm=18.45 vllm=13.038854107054766)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 4,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.291 (infinilm=8.68 vllm=6.727793728336479)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 5,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 0.991 (infinilm=786.70 vllm=793.6990798264543)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 0.581 (infinilm=4.58 vllm=7.890232802940543)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 7,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 0.451 (infinilm=4.18 vllm=9.253909530788885)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/host_graph_promo/FINDINGS_surpass_nogo.md"
+          }
+        },
+        {
+          "iter": 2,
+          "profile_run_id": "dlpti_reduced_hostgraph_best_20261104_110241",
+          "lever_applied": "full_and_piecewise+skip_tail",
+          "profiled": true,
+          "wall": {
+            "metric": "decode_tok_s",
+            "baseline": 14.4,
+            "candidate": 8.67,
+            "WALL_DECODE_RATIO": 0.6020347222222222,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "host_signals": [
+            {
+              "family": "driver",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2436271424250475,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "runtime",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.002532328999364,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 3.1427462215522843,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.9955358228925922,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "graph",
+              "baseline": 3708,
+              "candidate": 2999,
+              "ratio": 0.8087918015102481,
+              "mapped_from": "dlpti"
+            }
+          ],
+          "backlog": {
+            "top_path": "host_graph_command",
+            "host_first_fired": true,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "host_graph_command",
+                "priority_rule": 1,
+                "reasons": [
+                  "wall decode ratio 0.602 < 0.9",
+                  "COMMAND us/flash ratio 3.14 \u2265 2.0"
+                ],
+                "lever": "Graph policy / replay / host sync (INFINI_CUDAGRAPH_POLICY, \u2026) \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/FULL_VS_VLLM.md"
+              },
+              {
+                "rank": 2,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 2.526 (infinilm=53.43 vllm=21.15184425770307)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 3,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 2.442 (infinilm=41.26 vllm=16.899725863678807)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 4,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.325 (infinilm=13.82 vllm=10.428881792717132)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 5,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 1.109 (infinilm=5.21 vllm=4.696096265172748)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 6,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 0.985 (infinilm=786.90 vllm=799.0962231559279)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 7,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 0.231 (infinilm=8.89 vllm=38.53150140056018)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/host_graph_promo/FINDINGS_surpass_nogo.md"
+          }
+        },
+        {
+          "iter": 3,
+          "profile_run_id": null,
+          "lever_applied": "rope_kv_secondary",
+          "profiled": false,
+          "wall": {
+            "metric": "decode_tok_s",
+            "baseline": 14.4,
+            "candidate": 8.67,
+            "WALL_DECODE_RATIO": 0.6020833333333333,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "host_signals": [
+            {
+              "family": "driver",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.2436271424250475,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "runtime",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.002532328999364,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 3.1427462215522843,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.9955358228925922,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "graph",
+              "baseline": 3708,
+              "candidate": 2999,
+              "ratio": 0.8087918015102481,
+              "mapped_from": "dlpti"
+            }
+          ],
+          "backlog": {
+            "top_path": "host_graph_command",
+            "host_first_fired": true,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "host_graph_command",
+                "priority_rule": 1,
+                "reasons": [
+                  "wall decode ratio 0.602 < 0.9",
+                  "COMMAND us/flash ratio 3.14 \u2265 2.0"
+                ],
+                "lever": "Graph policy / replay / host sync (INFINI_CUDAGRAPH_POLICY, \u2026) \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/FULL_VS_VLLM.md"
+              },
+              {
+                "rank": 2,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 2.526 (infinilm=53.43 vllm=21.15184425770307)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 3,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 2.442 (infinilm=41.26 vllm=16.899725863678807)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 4,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.325 (infinilm=13.82 vllm=10.428881792717132)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 5,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 1.109 (infinilm=5.21 vllm=4.696096265172748)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 6,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 0.985 (infinilm=786.90 vllm=799.0962231559279)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 7,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 0.231 (infinilm=8.89 vllm=38.53150140056018)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/host_graph_promo/FINDINGS_surpass_nogo.md"
+          }
+        }
+      ],
+      "worktree_baseline": "vllm-frozen-matrix",
+      "worktree_candidate": "minicpm5-2b-qy-inf-perf",
+      "itw_tag_baseline": null,
+      "itw_tag_candidate": "v2026.11.03-qy-lmhead-tp-nccl"
+    },
+    {
+      "campaign_id": "c610-minicpm5-16a3-tp2-moe",
+      "host": "c610",
+      "vendor_profiler": "dlpti",
+      "cell": "MiniCPM5.16a3 TP2 MoE p512",
+      "pin_baseline": "vllm-p512-frozen",
+      "pin_candidate": "v2026.11.09-qy-moe-bf16-warpnk",
+      "agent_ids": [
+        "926aff24-3b86-4c32-be1e-817ff73d73dd"
+      ],
+      "source_paths": [
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/compare.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/profile/dlpti_16a3_reduced_tp2_iter1_20261106/promotion_backlog.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/profile/dlpti_16a3_reduced_tp2_iter4_20261109_114247/promotion_backlog.json",
+        "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/FINDINGS_surpass_pass.md"
+      ],
+      "iters": [
+        {
+          "iter": 0,
+          "profiled": false,
+          "lever_applied": "freeze",
+          "wall": {
+            "metric": "decode_tok_s_p512",
+            "baseline": 20.88,
+            "candidate": 3.15,
+            "WALL_DECODE_RATIO": 0.15086206896551724,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "backlog": {
+            "top_path": "moe_fused",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "moe_fused",
+                "priority_rule": 0,
+                "reasons": [
+                  "16a3/MoE campaign: MoE-in-graph decode FULL only (no PiecewiseDecode / 2B host-knob divert)",
+                  "wall decode ratio 0.151 < 0.5",
+                  "moe_fused us/flash ratio 2.492"
+                ],
+                "lever": "MoE-in-graph decode FULL (vLLM CUDAGraphMode.FULL align)"
+              },
+              {
+                "rank": 2,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 22.973 (infinilm=4271.74 vllm=185.9423578458894)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 2.989 (infinilm=41.97 vllm=14.040343363329631)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 4,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 1.958 (infinilm=8.23 vllm=4.2057800899887745)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 5,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 1.107 (infinilm=472.88 vllm=427.2558076490451)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.069 (infinilm=11.39 vllm=10.65283338020244)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 7,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 0.904 (infinilm=9.83 vllm=10.876152840269967)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "host_signals": [
+            {
+              "family": "driver",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 3.1624874773764553,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "runtime",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.335986789283014,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.4787528578237191,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 6.052555498192986,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "graph",
+              "baseline": 510,
+              "candidate": 13972,
+              "ratio": 27.396078431372548,
+              "mapped_from": "dlpti"
+            }
+          ],
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/FINDINGS_iteration0.md"
+          }
+        },
+        {
+          "iter": 1,
+          "profile_run_id": "dlpti_16a3_reduced_tp2_iter1_20261106",
+          "profiled": true,
+          "lever_applied": "moe_fused",
+          "wall": {
+            "metric": "decode_tok_s_p512",
+            "baseline": 20.88,
+            "candidate": 3.15,
+            "WALL_DECODE_RATIO": 0.151,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "backlog": {
+            "top_path": "moe_fused",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "moe_fused",
+                "priority_rule": 0,
+                "reasons": [
+                  "16a3/MoE campaign: MoE-in-graph decode FULL only (no PiecewiseDecode / 2B host-knob divert)",
+                  "wall decode ratio 0.151 < 0.5",
+                  "moe_fused us/flash ratio 2.492"
+                ],
+                "lever": "MoE-in-graph decode FULL (vLLM CUDAGraphMode.FULL align)"
+              },
+              {
+                "rank": 2,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 22.973 (infinilm=4271.74 vllm=185.9423578458894)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 3,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 2.989 (infinilm=41.97 vllm=14.040343363329631)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 4,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 1.958 (infinilm=8.23 vllm=4.2057800899887745)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 5,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 1.107 (infinilm=472.88 vllm=427.2558076490451)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.069 (infinilm=11.39 vllm=10.65283338020244)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 7,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 0.904 (infinilm=9.83 vllm=10.876152840269967)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "host_signals": [
+            {
+              "family": "driver",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 3.1624874773764553,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "runtime",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 1.335986789283014,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "command",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 0.4787528578237191,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "gap",
+              "baseline": null,
+              "candidate": null,
+              "ratio": 6.052555498192986,
+              "mapped_from": "dlpti"
+            },
+            {
+              "family": "graph",
+              "baseline": 510,
+              "candidate": 13972,
+              "ratio": 27.396078431372548,
+              "mapped_from": "dlpti"
+            }
+          ],
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/FINDINGS_iteration1.md"
+          }
+        },
+        {
+          "iter": 3,
+          "profiled": false,
+          "lever_applied": "tiles_align",
+          "wall": {
+            "metric": "decode_tok_s_p512",
+            "baseline": 20.88,
+            "candidate": 11.6524,
+            "WALL_DECODE_RATIO": 0.558065,
+            "gate": "NO_GO",
+            "source": "harness"
+          },
+          "backlog": {
+            "top_path": "residual_add_rmsnorm",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 6.397 (infinilm=138.15 vllm=21.596549509803726)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 2,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 3.422 (infinilm=14.93 vllm=4.362341316526618)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 3,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 1.803 (infinilm=30.71 vllm=17.034840546218337)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 4,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.094 (infinilm=17.58 vllm=16.071738095238143)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 5,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 1.081 (infinilm=463.78 vllm=428.96716120448)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "moe_fused",
+                "priority_rule": 2,
+                "reasons": [
+                  "moe_fused us/flash ratio 0.907 (infinilm=826.77 vllm=911.2908130952346)"
+                ],
+                "lever": "MoE-in-graph decode FULL (vLLM CUDAGraphMode.FULL align)"
+              },
+              {
+                "rank": 7,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 0.569 (infinilm=659.26 vllm=1159.2360761903872)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "host_signals": [],
+          "ship": {
+            "surpass": false,
+            "actions": "none",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/FINDINGS_iteration3.md"
+          }
+        },
+        {
+          "iter": 4,
+          "profile_run_id": "dlpti_16a3_reduced_tp2_iter4_20261109_114247",
+          "profiled": false,
+          "lever_applied": "residual_add_rmsnorm",
+          "wall": {
+            "metric": "decode_tok_s_p512",
+            "baseline": 20.88,
+            "candidate": 21.07,
+            "WALL_DECODE_RATIO": 1.0090996168582376,
+            "gate": "SURPASS",
+            "source": "harness"
+          },
+          "backlog": {
+            "top_path": "residual_add_rmsnorm",
+            "host_first_fired": false,
+            "ranked": [
+              {
+                "rank": 1,
+                "path_id": "residual_add_rmsnorm",
+                "priority_rule": 2,
+                "reasons": [
+                  "residual_add_rmsnorm us/flash ratio 6.397 (infinilm=138.15 vllm=21.596549509803726)"
+                ],
+                "lever": "INFINI_QY_FUSED_ADD_RMSNORM=1 (deprioritize if CU already \u2264 vLLM)"
+              },
+              {
+                "rank": 2,
+                "path_id": "kv_cache_reshape",
+                "priority_rule": 2,
+                "reasons": [
+                  "kv_cache_reshape us/flash ratio 3.422 (infinilm=14.93 vllm=4.362341316526618)"
+                ],
+                "lever": "INFINI_QY_KV_SMALL_BLOCK"
+              },
+              {
+                "rank": 3,
+                "path_id": "silu_act",
+                "priority_rule": 2,
+                "reasons": [
+                  "silu_act us/flash ratio 1.803 (infinilm=30.71 vllm=17.034840546218337)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 4,
+                "path_id": "rope",
+                "priority_rule": 2,
+                "reasons": [
+                  "rope us/flash ratio 1.094 (infinilm=17.58 vllm=16.071738095238143)"
+                ],
+                "lever": "INFINI_QY_ROPE_SMALL_BLOCK \u2014 InfiniTensorWorktree/profiling/fp-ab-conc4/ROPE_KV_PROMOTION.md"
+              },
+              {
+                "rank": 5,
+                "path_id": "gemm",
+                "priority_rule": 2,
+                "reasons": [
+                  "gemm us/flash ratio 1.081 (infinilm=463.78 vllm=428.96716120448)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              },
+              {
+                "rank": 6,
+                "path_id": "moe_fused",
+                "priority_rule": 2,
+                "reasons": [
+                  "moe_fused us/flash ratio 0.907 (infinilm=826.77 vllm=911.2908130952346)"
+                ],
+                "lever": "MoE-in-graph decode FULL (vLLM CUDAGraphMode.FULL align)"
+              },
+              {
+                "rank": 7,
+                "path_id": "other",
+                "priority_rule": 2,
+                "reasons": [
+                  "other us/flash ratio 0.569 (infinilm=659.26 vllm=1159.2360761903872)"
+                ],
+                "lever": "inspect bucket kernels; no static lever mapped yet"
+              }
+            ],
+            "exhausted": []
+          },
+          "host_signals": [],
+          "ship": {
+            "surpass": true,
+            "actions": "itw_tag",
+            "findings_path": "/home/admin01/workspace_c610/nov_milestone/llm_performace_benchmark/result/promo_16a3_tp2/FINDINGS_surpass_pass.md"
+          }
+        }
+      ],
+      "worktree_baseline": "vllm-p512-frozen",
+      "worktree_candidate": "promo_16a3_tp2",
+      "itw_tag_baseline": "v2026.11.06-qy-full-pd",
+      "itw_tag_candidate": "v2026.11.09-qy-moe-bf16-warpnk"
+    }
+  ]
+}
