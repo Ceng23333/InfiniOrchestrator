@@ -1,0 +1,12 @@
+name: ci_mooncake_smoke_qwen32
+model: Qwen3-32B
+endpoint_type: chat
+streaming: true
+fixed_schedule: true
+custom_dataset_type: mooncake_trace
+input_file: ../traces/ci_mooncake_smoke.jsonl
+timeout_sec: 1800
+extra_args:
+  - "--tokenizer"
+  - "/root/zenghua/models/Qwen3-32B"
+  - "--tokenizer-trust-remote-code"

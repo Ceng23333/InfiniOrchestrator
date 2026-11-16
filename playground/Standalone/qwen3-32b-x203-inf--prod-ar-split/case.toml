@@ -1,0 +1,24 @@
+case_id = "qwen3-32b-x203-inf--prod-ar-split"
+category = "Standalone"
+n = 1
+model_id = "Qwen3-32B"
+hw_profile_id = "metax-x203-hpcc-metax9"
+hw_abbr = "x203"
+be_abbr = "inf"
+worktree = "v2026.11.16-infinilm-prod-qwen38-tp4-ar-split"
+
+[spec]
+version = "0.1"
+topology = "direct_openai"
+host_env = "BENCH_TARGET_HOST"
+notes = "Mars AR-split InfiniLM candidate for AIPerf dual-run vs qwen3-32b-x203-vllm--phytium. Pin ITW tag v2026.11.16-infinilm-prod-qwen38-tp4-ar-split (FA+paged+graph host verify PASS). Explicit --device mars (no metax alias). Client-only harness never starts this process."
+
+[[spec.services]]
+id = "inference"
+role = "inference"
+base_url = "http://{host}:8200"
+probes = [
+  { path = "/health", kind = "http_ok" },
+  { path = "/v1/models", kind = "json_snapshot", expect_nonempty = "data" },
+  { path = "/v1/chat/completions", kind = "chat_smoke", method = "POST", model = "Qwen3-32B" },
+]
