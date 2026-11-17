@@ -45,3 +45,23 @@ harness/bin/run-aiperf-dual \
   --profile harness/adapters/aiperf/profiles/ci_mooncake_replay.yaml \
   --model Qwen3.8-27B
 ```
+
+## Performance promotion (Observe→Parse SOP)
+
+Normative contract:
+[`docs/design/performance-promotion-e2e.md`](../docs/design/performance-promotion-e2e.md).
+Promote stays AI-led; these bins exit before lever apply.
+
+| Bin | Role |
+|-----|------|
+| `bin/parse-promo-facts` | Validate / canonicalize `promo-facts-1` |
+| `bin/rank-promotion` | Host-first + CU/score → `promotion_backlog.json` |
+| `bin/run-promotion-loop-step` | One Observe→Parse turn (`SUITE_DIR`, `DEVICE_TRACK`) |
+| `bin/emit-promo-facts` | Compact warehouse rows (`promo_facts` suite) |
+
+```bash
+export SUITE_DIR=/path/to/suite DEVICE_TRACK=mars
+harness/bin/run-promotion-loop-step --reuse-wall --skip-profiler
+harness/bin/parse-promo-facts validate "$SUITE_DIR/facts"
+harness/bin/emit-promo-facts --suite-dir "$SUITE_DIR" --dry-run
+```

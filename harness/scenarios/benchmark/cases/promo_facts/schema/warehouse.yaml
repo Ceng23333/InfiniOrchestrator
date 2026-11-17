@@ -1,0 +1,25 @@
+suite_prefix: promo_facts
+family: promo
+model_in_bench_id: true
+metric_columns:
+  - schema_version
+  - campaign_id
+  - iter
+  - host
+  - device_track
+  - vendor_profiler
+  - hw_profile_id
+  - hw_abbr
+  - case_id_baseline
+  - case_id_candidate
+  - be_abbr_baseline
+  - be_abbr_candidate
+  - pin_baseline
+  - pin_candidate
+  - primary_metric
+  - primary_ratio
+  - primary_gate
+  - profiled
+  - top_path
+  - surpass
+  - promo_payload

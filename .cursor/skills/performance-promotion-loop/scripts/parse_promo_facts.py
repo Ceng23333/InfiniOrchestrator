@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Template parser for the converged promo-facts-1 envelope.
 
-See ../facts.md. Stdlib only.
+See ../facts.md and docs/design/performance-promotion-e2e.md. Stdlib only.
 
 Examples:
   python parse_promo_facts.py validate path/to/facts.json
@@ -16,7 +16,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Union
 
 SCHEMA_ID = "promo-facts"
 SCHEMA_VERSION = "promo-facts-1"
@@ -24,6 +24,7 @@ SCHEMA_VERSION = "promo-facts-1"
 WALL_GATES = frozenset({"PASS", "PROFILE_REGRESS", "SURPASS", "NO_GO"})
 WALL_SOURCES = frozenset({"aiperf", "harness", "evalscope"})
 VENDOR_PROFILERS = frozenset({"dlpti", "mctracer", "aiperf", "none"})
+DEVICE_TRACKS = frozenset({"denglin_qy", "metax_qy", "mars", "other"})
 HOST_FAMILIES = frozenset({"driver", "runtime", "command", "api", "gap", "graph"})
 HOST_MAPPED_FROM = frozenset({"dlpti", "mctracer"})
 SHIP_ACTIONS = frozenset({"matrix", "itw_tag", "io_case", "none"})
@@ -48,10 +49,6 @@ def _req(obj: Mapping[str, Any], key: str, path: str) -> Any:
 	if key not in obj:
 		raise PromoFactsError(path, f"missing required field '{key}'")
 	return obj[key]
-
-
-def _opt(obj: Mapping[str, Any], key: str) -> Any:
-	return obj.get(key)
 
 
 def _as_str(v: Any, path: str, *, allow_empty: bool = False) -> str:
@@ -95,7 +92,7 @@ def _as_str_list(v: Any, path: str) -> List[str]:
 def parse_wall(obj: Any, path: str) -> JsonDict:
 	if not _is_mapping(obj):
 		raise PromoFactsError(path, "expected object")
-	return {
+	out: JsonDict = {
 		"metric": _as_str(_req(obj, "metric", path), f"{path}.metric"),
 		"baseline": _as_number(_req(obj, "baseline", path), f"{path}.baseline"),
 		"candidate": _as_number(_req(obj, "candidate", path), f"{path}.candidate"),
@@ -105,6 +102,9 @@ def parse_wall(obj: Any, path: str) -> JsonDict:
 		"gate": _as_enum(_req(obj, "gate", path), f"{path}.gate", WALL_GATES),
 		"source": _as_enum(_req(obj, "source", path), f"{path}.source", WALL_SOURCES),
 	}
+	if "primary" in obj and obj["primary"] is not None:
+		out["primary"] = _as_bool(obj["primary"], f"{path}.primary")
+	return out
 
 
 def parse_host_signal(obj: Any, path: str) -> JsonDict:
@@ -196,6 +196,84 @@ def parse_ship(obj: Any, path: str) -> JsonDict:
 	return out
 
 
+def parse_engine(obj: Any, path: str) -> JsonDict:
+	if not _is_mapping(obj):
+		raise PromoFactsError(path, "expected object")
+	out: JsonDict = {}
+	for key in ("device", "graph_policy"):
+		if key in obj and obj[key] is not None:
+			out[key] = _as_str(obj[key], f"{path}.{key}", allow_empty=True)
+	for key in ("tp", "batch_limit", "max_output_tokens"):
+		if key in obj and obj[key] is not None:
+			out[key] = _as_number(obj[key], f"{path}.{key}")
+	if "extra" in obj and obj["extra"] is not None:
+		if not _is_mapping(obj["extra"]):
+			raise PromoFactsError(f"{path}.extra", "expected object")
+		out["extra"] = dict(obj["extra"])
+	return out
+
+
+def _normalize_walls(
+	walls: List[JsonDict],
+	legacy_wall: Optional[JsonDict],
+	path: str,
+) -> tuple[List[JsonDict], Optional[JsonDict]]:
+	"""Ensure walls[] primary invariant; derive from legacy wall if needed."""
+	if walls:
+		primary_idxs = [i for i, w in enumerate(walls) if w.get("primary") is True]
+		if len(primary_idxs) == 0:
+			# If exactly one wall and no primary flag, treat it as primary.
+			if len(walls) == 1:
+				walls[0]["primary"] = True
+			else:
+				raise PromoFactsError(
+					path, "walls[] must contain exactly one entry with primary: true"
+				)
+		elif len(primary_idxs) > 1:
+			raise PromoFactsError(
+				path, "walls[] must contain exactly one entry with primary: true"
+			)
+		else:
+			for i, w in enumerate(walls):
+				if i != primary_idxs[0] and "primary" not in w:
+					w["primary"] = False
+		primary = walls[primary_idxs[0] if primary_idxs else 0]
+		if legacy_wall is None:
+			legacy_wall = dict(primary)
+		return walls, legacy_wall
+
+	if legacy_wall is not None:
+		mirrored = dict(legacy_wall)
+		mirrored["primary"] = True
+		return [mirrored], legacy_wall
+	return [], legacy_wall
+
+
+def primary_wall(iter_obj: Mapping[str, Any]) -> Optional[JsonDict]:
+	"""Return the primary WallFact from walls[] or legacy wall."""
+	walls = iter_obj.get("walls")
+	if isinstance(walls, list) and walls:
+		for w in walls:
+			if isinstance(w, Mapping) and w.get("primary") is True:
+				return dict(w)
+		if len(walls) == 1 and isinstance(walls[0], Mapping):
+			return dict(walls[0])
+	wall = iter_obj.get("wall")
+	if isinstance(wall, Mapping):
+		return dict(wall)
+	return None
+
+
+def any_profile_regress(iter_obj: Mapping[str, Any]) -> bool:
+	walls = iter_obj.get("walls")
+	if isinstance(walls, list) and walls:
+		return any(
+			isinstance(w, Mapping) and w.get("gate") == "PROFILE_REGRESS" for w in walls
+		)
+	wall = iter_obj.get("wall")
+	return isinstance(wall, Mapping) and wall.get("gate") == "PROFILE_REGRESS"
+
+
 def parse_iter(obj: Any, path: str) -> JsonDict:
 	if not _is_mapping(obj):
 		raise PromoFactsError(path, "expected object")
@@ -203,13 +281,14 @@ def parse_iter(obj: Any, path: str) -> JsonDict:
 	if isinstance(iter_v, bool) or not isinstance(iter_v, (int, float, str)):
 		raise PromoFactsError(f"{path}.iter", "expected number or string")
 	out: JsonDict = {
-		"iter": iter_v if isinstance(iter_v, str) else (int(iter_v) if float(iter_v).is_integer() else float(iter_v)),
+		"iter": iter_v
+		if isinstance(iter_v, str)
+		else (int(iter_v) if float(iter_v).is_integer() else float(iter_v)),
 		"profiled": _as_bool(_req(obj, "profiled", path), f"{path}.profiled"),
 	}
 	for key in ("suite_dir", "profile_run_id"):
 		if key in obj and obj[key] is not None:
 			out[key] = _as_str(obj[key], f"{path}.{key}", allow_empty=True)
-	# lever_applied may be explicitly null in templates
 	if "lever_applied" in obj:
 		if obj["lever_applied"] is None:
 			out["lever_applied"] = None
@@ -217,8 +296,24 @@ def parse_iter(obj: Any, path: str) -> JsonDict:
 			out["lever_applied"] = _as_str(
 				obj["lever_applied"], f"{path}.lever_applied", allow_empty=True
 			)
+
+	walls: List[JsonDict] = []
+	if "walls" in obj and obj["walls"] is not None:
+		raw_walls = obj["walls"]
+		if not isinstance(raw_walls, list):
+			raise PromoFactsError(f"{path}.walls", "expected array")
+		walls = [parse_wall(x, f"{path}.walls[{i}]") for i, x in enumerate(raw_walls)]
+
+	legacy_wall: Optional[JsonDict] = None
 	if "wall" in obj and obj["wall"] is not None:
-		out["wall"] = parse_wall(obj["wall"], f"{path}.wall")
+		legacy_wall = parse_wall(obj["wall"], f"{path}.wall")
+
+	walls, legacy_wall = _normalize_walls(walls, legacy_wall, f"{path}.walls")
+	if walls:
+		out["walls"] = walls
+	if legacy_wall is not None:
+		out["wall"] = legacy_wall
+
 	if "host_signals" in obj and obj["host_signals"] is not None:
 		hs = obj["host_signals"]
 		if not isinstance(hs, list):
@@ -240,20 +335,77 @@ def parse_iter(obj: Any, path: str) -> JsonDict:
 	return out
 
 
+def _infer_device_track(vendor_profiler: str, host: str) -> str:
+	if vendor_profiler == "dlpti":
+		return "denglin_qy"
+	if vendor_profiler == "mctracer":
+		return "metax_qy"
+	host_l = host.lower()
+	if "mars" in host_l or "phytium" in host_l or "hygon" in host_l:
+		return "mars"
+	if "metax" in host_l or "showroom" in host_l:
+		return "metax_qy"
+	if "c610" in host_l or "denglin" in host_l:
+		return "denglin_qy"
+	return "other"
+
+
+def _compat_identity(obj: Mapping[str, Any], path: str) -> Mapping[str, Any]:
+	"""Fill missing Standalone identity for legacy promo-facts-1 documents.
+
+	New writers MUST set device_track / hw_profile_id / case_id_candidate /
+	be_abbr_candidate explicitly. Readers tolerate older envelopes.
+	"""
+	filled = dict(obj)
+	host = str(filled.get("host") or "")
+	vendor = str(filled.get("vendor_profiler") or "none")
+	if "device_track" not in filled or filled["device_track"] in (None, ""):
+		filled["device_track"] = _infer_device_track(vendor, host)
+	if "hw_profile_id" not in filled or filled["hw_profile_id"] in (None, ""):
+		filled["hw_profile_id"] = host or "unknown"
+	if "case_id_candidate" not in filled or filled["case_id_candidate"] in (None, ""):
+		filled["case_id_candidate"] = (
+			filled.get("worktree_candidate")
+			or filled.get("campaign_id")
+			or "unknown-candidate"
+		)
+	if "be_abbr_candidate" not in filled or filled["be_abbr_candidate"] in (None, ""):
+		filled["be_abbr_candidate"] = "inf"
+	return filled
+
+
 def parse_campaign(obj: Any, path: str, *, require_iters: bool) -> JsonDict:
 	if not _is_mapping(obj):
 		raise PromoFactsError(path, "expected object")
+	obj = _compat_identity(obj, path)
 	out: JsonDict = {
 		"campaign_id": _as_str(_req(obj, "campaign_id", path), f"{path}.campaign_id"),
 		"host": _as_str(_req(obj, "host", path), f"{path}.host"),
+		"device_track": _as_enum(
+			_req(obj, "device_track", path), f"{path}.device_track", DEVICE_TRACKS
+		),
 		"vendor_profiler": _as_enum(
 			_req(obj, "vendor_profiler", path), f"{path}.vendor_profiler", VENDOR_PROFILERS
 		),
+		"hw_profile_id": _as_str(
+			_req(obj, "hw_profile_id", path), f"{path}.hw_profile_id"
+		),
+		"case_id_candidate": _as_str(
+			_req(obj, "case_id_candidate", path), f"{path}.case_id_candidate"
+		),
+		"be_abbr_candidate": _as_str(
+			_req(obj, "be_abbr_candidate", path), f"{path}.be_abbr_candidate"
+		),
 		"cell": _as_str(_req(obj, "cell", path), f"{path}.cell"),
 		"pin_baseline": _as_str(_req(obj, "pin_baseline", path), f"{path}.pin_baseline"),
-		"pin_candidate": _as_str(_req(obj, "pin_candidate", path), f"{path}.pin_candidate"),
+		"pin_candidate": _as_str(
+			_req(obj, "pin_candidate", path), f"{path}.pin_candidate"
+		),
 	}
 	for key in (
+		"hw_abbr",
+		"case_id_baseline",
+		"be_abbr_baseline",
 		"worktree_baseline",
 		"worktree_candidate",
 		"itw_tag_baseline",
@@ -261,6 +413,8 @@ def parse_campaign(obj: Any, path: str, *, require_iters: bool) -> JsonDict:
 	):
 		if key in obj and obj[key] is not None:
 			out[key] = _as_str(obj[key], f"{path}.{key}", allow_empty=True)
+	if "engine" in obj and obj["engine"] is not None:
+		out["engine"] = parse_engine(obj["engine"], f"{path}.engine")
 	if "agent_ids" in obj and obj["agent_ids"] is not None:
 		out["agent_ids"] = _as_str_list(obj["agent_ids"], f"{path}.agent_ids")
 	if "source_paths" in obj and obj["source_paths"] is not None:
@@ -324,7 +478,6 @@ def load_suite_facts(facts_dir: PathLike) -> JsonDict:
 	root = Path(facts_dir)
 	campaign_path = root / "campaign.json"
 	if not campaign_path.is_file():
-		# Allow a single campaigns.json / combined.json inside the dir
 		for name in ("combined.json", "campaigns.json", "facts.json"):
 			alt = root / name
 			if alt.is_file():
@@ -349,7 +502,6 @@ def load_suite_facts(facts_dir: PathLike) -> JsonDict:
 		for fp in iter_files:
 			iters.append(parse_iter(load_json(fp), fp.name))
 
-	# Strip iters from campaign fact before re-attach
 	base = {k: v for k, v in campaign_obj.items() if k != "iters"}
 	camp = parse_campaign({**base, "iters": iters}, "campaign.json", require_iters=True)
 	return {
@@ -366,13 +518,11 @@ def parse_path(path: PathLike) -> JsonDict:
 	obj = load_json(p)
 	if not _is_mapping(obj):
 		raise PromoFactsError(str(p), "expected JSON object")
-	# Single campaign without schema_version → wrap
 	if "schema_version" not in obj and "campaign_id" in obj:
 		camp = parse_campaign(obj, p.name, require_iters=("iters" in obj))
 		if "iters" not in camp:
 			raise PromoFactsError(p.name, "single campaign file must include iters[]")
 		return {"schema_version": SCHEMA_VERSION, "campaigns": [camp]}
-	# Host scrape wrapper {host, campaigns} without schema → add version
 	if "schema_version" not in obj and "campaigns" in obj:
 		obj = {**obj, "schema_version": SCHEMA_VERSION}
 	return parse_document(obj, p.name)
@@ -385,16 +535,18 @@ def summarize(doc: Mapping[str, Any]) -> str:
 	for c in doc.get("campaigns") or []:
 		iters = c.get("iters") or []
 		last = iters[-1] if iters else {}
-		wall = last.get("wall") or {}
+		wall = primary_wall(last) or {}
 		backlog = last.get("backlog") or {}
 		lines.append(
-			"  {host} · {cid} · iters={n} · last_ratio={ratio} · top_path={top} · wt={wt}".format(
+			"  {host} · {cid} · track={track} · iters={n} · last_ratio={ratio} · "
+			"top_path={top} · case={case}".format(
 				host=c.get("host"),
 				cid=c.get("campaign_id"),
+				track=c.get("device_track"),
 				n=len(iters),
 				ratio=wall.get("WALL_DECODE_RATIO"),
 				top=backlog.get("top_path"),
-				wt=c.get("worktree_candidate") or c.get("pin_candidate"),
+				case=c.get("case_id_candidate") or c.get("worktree_candidate") or c.get("pin_candidate"),
 			)
 		)
 	return "\n".join(lines)

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Deterministic host-first + CU/score promotion ranker (Observe→Parse SOP).
+set -euo pipefail
+
+_HARNESS_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_HARNESS_BIN_DIR}/../lib/paths.sh"
+
+exec python3 -m adapters.promo_facts.rank "$@"

@@ -1,15 +1,18 @@
 # Converged promotion facts spec
 
 **Status:** target format for InfiniOrchestrator promotion-loop facts  
-(review HTML, suite `facts/`, future warehouse compact rows).  
+(suite `facts/`, warehouse compact rows; HTML review is a future consumer).  
 **Schema id:** `promo-facts`  
 **Current version:** `promo-facts-1`  
 **Encoding:** UTF-8 JSON (no BOM preferred; readers SHOULD tolerate BOM)
 
+**Normative design doc:**
+[`docs/design/performance-promotion-e2e.md`](../../../docs/design/performance-promotion-e2e.md)
+
 This document is the **converged** contract. Vendor artifacts (DLPTI /
 mcTracer / AIPerf / EvalScope) are **sources**; they must be normalized into
-this envelope before review or warehouse emit. Do not treat vendor
-`compare.json` shapes as interchangeable with this schema.
+this envelope before warehouse emit. Do not treat vendor `compare.json` shapes
+as interchangeable with this schema.
 
 ### Template parser (in skill)
 
@@ -22,10 +25,11 @@ python .cursor/skills/performance-promotion-loop/scripts/parse_promo_facts.py va
 python .cursor/skills/performance-promotion-loop/scripts/parse_promo_facts.py canonicalize path/to/facts.json
 python .cursor/skills/performance-promotion-loop/scripts/parse_promo_facts.py summarize path/to/facts.json
 python .cursor/skills/performance-promotion-loop/scripts/parse_promo_facts.py load-suite path/to/$SUITE_DIR/facts
+# or: harness/bin/parse-promo-facts <cmd> <path>
 ```
 
-Use it after emitting suite facts or before regenerating HTML review. Importable
-API: `parse_path`, `parse_document`, `load_suite_facts`, `PromoFactsError`.
+Use it after emitting suite facts. Importable API: `parse_path`,
+`parse_document`, `load_suite_facts`, `PromoFactsError`, `primary_wall`.
 
 ---
 
@@ -33,7 +37,7 @@ API: `parse_path`, `parse_document`, `load_suite_facts`, `PromoFactsError`.
 
 Three interchangeable layouts; all share the same object types.
 
-### 1.1 Multi-campaign document (review / e2e / warehouse batch)
+### 1.1 Multi-campaign document (e2e / warehouse batch)
 
 ```json
 {
@@ -49,7 +53,7 @@ Three interchangeable layouts; all share the same object types.
 | `schema_version` | string | required | Exactly `promo-facts-1` for this revision |
 | `generated_at` | string (ISO-8601 UTC) | recommended | When the envelope was emitted |
 | `note` | string | optional | Human provenance |
-| `campaigns` | CampaignDocument[] | required | Length ≥ 1 for review payloads |
+| `campaigns` | CampaignDocument[] | required | Length ≥ 1 |
 
 ### 1.2 Single-campaign suite layout
 
@@ -59,9 +63,6 @@ $SUITE_DIR/facts/
   iters.jsonl       # one IterFact per line  (preferred stream form)
   # OR iter<N>.json # one IterFact per file
 ```
-
-`$SUITE_DIR/review/facts.json` MUST be a **1.1** document (even for one
-campaign) so the HTML review loader stays uniform.
 
 ### 1.3 CampaignDocument
 
@@ -93,20 +94,23 @@ campaign) so the HTML review loader stays uniform.
 |-------|---------|
 | `PASS` | Wall gate floor passed (e.g. AIPerf dual floor) — **not** surpass |
 | `PROFILE_REGRESS` | Behind floor / regress detect → escalate profiler |
-| `SURPASS` | Unprofiled candidate **exceeds** frozen baseline (ratio &gt; 1.0) |
+| `SURPASS` | Unprofiled primary **exceeds** frozen baseline (ratio &gt; 1.0) |
 | `NO_GO` | Improved or flat but not surpass; no ship |
 
-**`WallSource`:** `aiperf` \| `harness` \| `evalscope`
+**`WallSource`:** `aiperf` \| `harness` \| `evalscope`  
+(producer only — not the metric name; `WallFact.metric` is a free-form string)
 
 **`VendorProfiler`:** `dlpti` \| `mctracer` \| `aiperf` \| `none`
+
+**`DeviceTrack`:** `denglin_qy` \| `metax_qy` \| `mars` \| `other`
 
 **`HostSignalFamily`:** `driver` \| `runtime` \| `command` \| `api` \| `gap` \| `graph`
 
 **`HostSignalMappedFrom`:** `dlpti` \| `mctracer`
 
 **`ShipAction`:** `matrix` \| `itw_tag` \| `io_case` \| `none`  
-(comma-join only in FINDINGS prose; in JSON use a single primary action or
-`actions: string[]` in a future minor bump — **v1 uses one string**.)
+(comma-join only in FINDINGS prose; in JSON use a single primary action —
+**v1 uses one string**.)
 
 ---
 
@@ -114,13 +118,21 @@ campaign) so the HTML review loader stays uniform.
 
 ### 3.1 CampaignFact
 
-Identity of one promotion campaign on one host/cell.
+Identity of one promotion campaign on one host/cell, including Standalone case
+linkage.
 
 | Field | Type | Req | Description |
 |-------|------|-----|-------------|
 | `campaign_id` | string | yes | Stable id, kebab-case recommended |
 | `host` | string | yes | e.g. `c610`, `metax-showroom` |
+| `device_track` | DeviceTrack | yes | SOP routing (`denglin_qy` / `metax_qy` / `mars` / `other`) |
 | `vendor_profiler` | VendorProfiler | yes | Primary profiler kit (use `aiperf` / `none` if wall-only) |
+| `hw_profile_id` | string | yes | From playground `case.toml` / hardware-profile |
+| `hw_abbr` | string | recommended | e.g. `qy`, `x203` |
+| `case_id_baseline` | string | recommended | Standalone folder id (vLLM) |
+| `case_id_candidate` | string | yes | Standalone folder id (InfiniLM) |
+| `be_abbr_baseline` | string | recommended | Usually `vllm` |
+| `be_abbr_candidate` | string | yes | Usually `inf` |
 | `cell` | string | yes | Human cell description (model / TP / workload) |
 | `pin_baseline` | string | yes | Frozen baseline serving/matrix pin label |
 | `pin_candidate` | string | yes | Candidate serving pin label |
@@ -128,12 +140,24 @@ Identity of one promotion campaign on one host/cell.
 | `worktree_candidate` | string | no | Candidate worktree path or name |
 | `itw_tag_baseline` | string | no | ITW tag if distinct from `pin_baseline` |
 | `itw_tag_candidate` | string | no | ITW tag if distinct from `pin_candidate` |
+| `engine` | EngineFact | no | Compact serving knobs; omit unknowns |
 | `agent_ids` | string[] | no | Cursor/Codex agent ids that produced the campaign |
 | `source_paths` | string[] | no | Compact provenance paths (compare/backlog/FINDINGS) |
 
+**`EngineFact`** (optional; no invented values)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `tp` | number | tensor parallel |
+| `device` | string | e.g. `mars`, `metax`, `qy` |
+| `graph_policy` | string | env/policy label if known |
+| `batch_limit` | number | if known |
+| `max_output_tokens` | number | if known |
+| `extra` | object | free sparse knobs already recorded on case |
+
 ### 3.2 IterFact
 
-One promotion turn (observe → parse → optional promote).
+One Observe→Parse turn (Promote is AI-led after facts emit).
 
 | Field | Type | Req | Description |
 |-------|------|-----|-------------|
@@ -142,26 +166,31 @@ One promotion turn (observe → parse → optional promote).
 | `profile_run_id` | string | no | Profiler run id / OUT folder name |
 | `lever_applied` | string | no | Lever taken **after** this observe (or env key); null/omit if observe-only |
 | `profiled` | boolean | yes | Whether wall numbers in this iter came under profiler |
-| `wall` | WallFact | no | Unprofiled KPI preferred; see integrity |
-| `host_signals` | HostSignalFact[] | no | Optional diagnostic; **not** required for review UI |
+| `walls` | WallFact[] | recommended | All metrics from this observe; exactly one `primary: true` |
+| `wall` | WallFact | no | **Legacy** mirror of the primary wall |
+| `host_signals` | HostSignalFact[] | no | Optional diagnostic |
 | `cu_buckets` | CuBucketFact[] | no | Material CU/path buckets |
 | `backlog` | BacklogFact | no | Ranked promotion paths for this turn |
 | `ship` | ShipFact | no | Surpass / ship decision at this turn |
+
+**`walls` rules:** non-empty ⇒ exactly one `primary: true`. Escalate profiler if
+**any** wall is `PROFILE_REGRESS`. Surpass uses **only** the primary wall
+(unprofiled). If both `walls` and legacy `wall` are present, primary in `walls`
+wins.
 
 ### 3.3 WallFact
 
 | Field | Type | Req | Description |
 |-------|------|-----|-------------|
-| `metric` | string | yes | e.g. `decode_tok_s`, `decode_tok_s_p512`, `output_token_throughput_per_sec`, `evalscope_output_tok_s` |
+| `metric` | string | yes | e.g. `decode_tok_s`, `output_token_throughput_per_sec`, `ttft_p95_ms`, `success_rate` |
 | `baseline` | number | yes | Frozen baseline value |
 | `candidate` | number | yes | Candidate value |
 | `WALL_DECODE_RATIO` | number | yes | `candidate / baseline` from **unprofiled** A/B |
 | `gate` | WallGate | yes | Decision for this wall snapshot |
 | `source` | WallSource | yes | Client wall producer |
+| `primary` | boolean | no | Ship / host-first KPI when true |
 
 ### 3.4 HostSignalFact (optional diagnostic)
-
-Kept for tooling / host-first rankers; review HTML may omit family tables.
 
 | Field | Type | Req | Description |
 |-------|------|-----|-------------|
@@ -201,14 +230,11 @@ Kept for tooling / host-first rankers; review HTML may omit family tables.
 | `lever` | string | no | Human / env lever text |
 | `exhausted` | boolean | no | Per-entry exhausted flag (optional; list also on parent) |
 
-Path leftover pies in review weight by `score` if any ranked entry has
-`score > 0`; else by `1/rank`.
-
 ### 3.7 ShipFact
 
 | Field | Type | Req | Description |
 |-------|------|-----|-------------|
-| `surpass` | boolean | yes | True only if unprofiled wall ratio &gt; 1.0 and ship allowed |
+| `surpass` | boolean | yes | True only if unprofiled **primary** wall ratio &gt; 1.0 and ship allowed |
 | `actions` | ShipAction | yes | Primary ship action taken or `none` |
 | `findings_path` | string | no | Path to FINDINGS markdown |
 
@@ -216,40 +242,49 @@ Path leftover pies in review weight by `score` if any ranked entry has
 
 ## 4. Integrity invariants (normative)
 
-1. **`WALL_DECODE_RATIO` MUST come from unprofiled A/B.** If `profiled: true`,
+1. **Primary ship KPI MUST come from unprofiled A/B.** If `profiled: true`,
    writers MUST NOT present that wall as the ship KPI unless a separate
-   unprofiled wall is also recorded on a later iter.
+   unprofiled primary is also recorded.
 2. **Namespaced compares outside this envelope:**
    - wall gate file: `$SUITE_DIR/compare.json`
    - profiler compare: `$SUITE_DIR/profile/<run_id>/compare.json`  
    These are **inputs**, not substitutes for `promo-facts-1`.
 3. **Host-first rule** (ranker, shared thresholds): fire `host_graph_command`
-   when wall &lt; 0.9 **and** CU (or gpu post-load proxy) ≤ 1.0× **and**
+   when primary wall &lt; 0.9 **and** CU (or gpu post-load proxy) ≤ 1.0× **and**
    (count ≥ 2× **or** command/api_ms ≥ 2× **or** gap ≥ 1.5×).
-4. **Surpass** ⇔ `WALL_DECODE_RATIO > 1.0` (unprofiled). AIPerf tok/s floor
+4. **Surpass** ⇔ primary `WALL_DECODE_RATIO > 1.0` (unprofiled). AIPerf tok/s floor
    0.50 is `PROFILE_REGRESS` detect only.
-5. **No invented ratios.** Missing evidence ⇒ omit field / omit object.
-6. **Compact provenance only** in `source_paths` (compare, backlog, FINDINGS).
+5. **Escalate** on **any** `PROFILE_REGRESS` in `walls[]` (or legacy `wall`).
+6. **No invented ratios.** Missing evidence ⇒ omit field / omit object.
+7. **Compact provenance only** in `source_paths` (compare, backlog, FINDINGS).
    No raw traces in the facts tree.
 
 ---
 
-## 5. Minimal valid example
+## 5. Minimal valid example (multi-metric)
 
 ```json
 {
   "schema_version": "promo-facts-1",
-  "generated_at": "2026-11-10T00:00:00Z",
+  "generated_at": "2026-11-17T00:00:00Z",
   "campaigns": [
     {
       "campaign_id": "example-tp1-decode",
       "host": "c610",
+      "device_track": "denglin_qy",
       "vendor_profiler": "dlpti",
+      "hw_profile_id": "denglin-qy-ks38",
+      "hw_abbr": "qy",
+      "case_id_baseline": "minicpm5-2b-qy-vllm-perf",
+      "case_id_candidate": "minicpm5-2b-qy-inf-perf",
+      "be_abbr_baseline": "vllm",
+      "be_abbr_candidate": "inf",
       "cell": "Model TP1 decode",
       "pin_baseline": "vllm-frozen",
       "pin_candidate": "v2026.11.03-example",
       "worktree_candidate": "case-example-inf-perf",
       "itw_tag_candidate": "v2026.11.03-example",
+      "engine": { "tp": 1, "device": "qy" },
       "agent_ids": ["00000000-0000-0000-0000-000000000000"],
       "source_paths": ["/path/to/promotion_backlog.json"],
       "iters": [
@@ -257,13 +292,43 @@ Path leftover pies in review weight by `score` if any ranked entry has
           "iter": 0,
           "profiled": false,
           "lever_applied": null,
+          "walls": [
+            {
+              "metric": "decode_tok_s",
+              "baseline": 14.4,
+              "candidate": 8.67,
+              "WALL_DECODE_RATIO": 0.602,
+              "gate": "NO_GO",
+              "source": "harness",
+              "primary": true
+            },
+            {
+              "metric": "ttft_p95_ms",
+              "baseline": 40.0,
+              "candidate": 42.0,
+              "WALL_DECODE_RATIO": 1.05,
+              "gate": "PASS",
+              "source": "harness",
+              "primary": false
+            },
+            {
+              "metric": "success_rate",
+              "baseline": 1.0,
+              "candidate": 1.0,
+              "WALL_DECODE_RATIO": 1.0,
+              "gate": "PASS",
+              "source": "harness",
+              "primary": false
+            }
+          ],
           "wall": {
             "metric": "decode_tok_s",
             "baseline": 14.4,
             "candidate": 8.67,
             "WALL_DECODE_RATIO": 0.602,
             "gate": "NO_GO",
-            "source": "harness"
+            "source": "harness",
+            "primary": true
           },
           "backlog": {
             "top_path": "host_graph_command",
@@ -301,9 +366,9 @@ Path leftover pies in review weight by `score` if any ranked entry has
 | Rename / remove / semantic break | Bump to `promo-facts-2` and keep a mapper |
 | Enum extension | Additive OK on v1 if unknown values are ignored safely |
 
-Future warehouse rows SHOULD store `schema_version` + `campaign_id` + `iter`
-as identity columns and the rest as JSON or typed columns derived from this
-spec.
+Warehouse rows store identity columns (`schema_version`, `campaign_id`, `iter`,
+case/hw fields, primary wall summary) plus `promo_payload` JSON — see design doc
+§5.
 
 ---
 
@@ -311,28 +376,33 @@ spec.
 
 Normalize **into** §3; do not leak vendor key names into the envelope.
 
-### 7.1 c610 / DLPTI
+### 7.1 Denglin QY / DLPTI (`device_track: denglin_qy`)
 
 | Envelope | DLPTI source |
 |----------|--------------|
 | HostSignal `driver`/`runtime`/`command`/`gap`/`graph` | `host.*` totals / per-flash / timeline / over ratios |
 | `CuBucketFact` | `categories[]` |
 | `BacklogFact` | `promotion_backlog.json` |
-| `WallFact` | suite/harness `WALL_DECODE_RATIO` |
+| `WallFact` / `walls[]` | suite/harness `WALL_DECODE_RATIO` (+ aux metrics) |
 
-### 7.2 MetaX / mcTracer
+### 7.2 MetaX QY / showroom / mcTracer (`device_track: metax_qy`)
 
 | Envelope | Source |
 |----------|--------|
 | HostSignal `api`/`gap` (+ CU proxy) | `api_*_ratio`, `inter_kernel_gap_*`, `gpu_kernel_ms_post_load_ratio` |
 | `BacklogFact.ranked[].score` | MetaX promote scores |
-| Wall AIPerf | `aiperf-m1` → `WallFact` (`PROFILE_REGRESS` / `PASS`) |
+| Wall AIPerf | `aiperf-m1` / dual → `walls[]` (`PROFILE_REGRESS` / `PASS`) |
 | Wall peak | EvalScope `turnN` / suite compare |
 
-### 7.3 AIPerf dual
+### 7.3 Mars (`device_track: mars`)
 
-Wall-only Campaign/Iter until profiler escalate; `vendor_profiler` may be
-`aiperf` with empty `backlog` / `host_signals`.
+Wall-only until a matched profiler kit exists. `vendor_profiler` SHOULD be
+`aiperf` or `none` with empty `backlog` / `host_signals` when no kit ran.
+
+### 7.4 AIPerf dual (any track)
+
+Emit multi-metric `walls[]` (tok/s primary + TTFT + success_rate) from
+`compare.json`; escalate if **any** gate is `PROFILE_REGRESS`.
 
 ---
 

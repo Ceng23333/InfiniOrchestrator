@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Validate / canonicalize / summarize promo-facts-1 envelopes.
+set -euo pipefail
+
+_HARNESS_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_HARNESS_BIN_DIR}/../lib/paths.sh"
+
+PARSER="${IO_ROOT}/.cursor/skills/performance-promotion-loop/scripts/parse_promo_facts.py"
+if [[ ! -f "${PARSER}" ]]; then
+  echo "[parse-promo-facts] missing parser: ${PARSER}" >&2
+  exit 2
+fi
+
+exec python3 "${PARSER}" "$@"

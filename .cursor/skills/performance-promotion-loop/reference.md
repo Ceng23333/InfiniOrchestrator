@@ -5,25 +5,50 @@ Derived from Cursor agents:
 - `926aff24-3b86-4c32-be1e-817ff73d73dd` @ c610 (DLPTI host-aware promote + graph A/B)
 - `01229051-a881-4ebf-aef2-6d67110b7449` @ metax-showroom (AIPerf dual + mcTracer plan)
 
-Fact envelope and HTML review: [facts.md](facts.md), [review.md](review.md).
+Fact envelope: [facts.md](facts.md).  
+Normative pipe + harness/warehouse:
+[`docs/design/performance-promotion-e2e.md`](../../../docs/design/performance-promotion-e2e.md).
+
+## Observe→Parse SOP vs AI Promote
+
+| Phase | Owner | Harness |
+|-------|-------|---------|
+| Observe wall (+ optional profiler) | SOP | `run-aiperf-dual`, kit roots |
+| Parse / rank / emit `promo-facts-1` | SOP | `parse-promo-facts`, `rank-promotion`, `run-promotion-loop-step` |
+| Pick one lever + rebuild | **AI** | not in SOP scripts |
+| Warehouse compact emit | SOP (optional) | `emit-promo-facts` |
+
+`run-promotion-loop-step` **exits before promote**.
+
+## Device-track routing
+
+| `device_track` | Wall | Profiler | Env |
+|----------------|------|----------|-----|
+| `denglin_qy` | harness / AIPerf | DLPTI | `DLPTI_ROOT` |
+| `metax_qy` | `run-aiperf-dual` | mcTracer | `MCTRACER_ROOT` |
+| `mars` | LongBench / harness / AIPerf | **none** until kit | — |
+| `other` | as configured | as configured | — |
 
 ## Host tooling
 
-### c610 / DLPTI
+### Denglin QY / DLPTI (`denglin_qy`)
 
 - Kit: `llm_performace_benchmark/tools/dlpti/` (`summarize`, `compare`, `promote`, `timeline_facts`)
-- Step: `scripts/run_promotion_loop_step.sh`
-  - `MODE=fullcell|reduced|skip-capture` (host may add campaign modes)
-  - `WALL_DECODE_RATIO` required (unprofiled)
-  - `REUSE_VLLM_JSON` optional InfiniLM-only recapture
+- IO wrapper: `harness/bin/run-promotion-loop-step` with `DEVICE_TRACK=denglin_qy`
+- `WALL_DECODE_RATIO` / primary wall required (unprofiled)
 - Results (examples): `result/host_graph_promo/`, `result/promo_16a3_tp2/`, `result/dlpti/`
 
-### metax-showroom / AIPerf + mcTracer
+### MetaX QY / showroom / AIPerf + mcTracer (`metax_qy`)
 
 - Wall: InfiniOrchestrator `harness/bin/run-aiperf-dual` / `compare-aiperf` (run-only)
 - Profile kit: `perf_mccl_loop/tools/profile/` (`parse_mctracer`, `compare`, `promote`, `write_findings`)
 - Suites (examples): `results/aiperf_vllm_leg_*`, `results/peak_batch64_promotion/`
 - Pin AIPerf `0.13.0` in Python ≥3.11; preflight `/v1/models`; escalate `PROFILE_REGRESS` to matched mcTracer — not more AIPerf knobs
+
+### Mars (`mars`)
+
+Wall A/B only until a matched profiler kit exists. Emit `walls[]` + empty backlog
+when no profiler ran; `vendor_profiler` = `aiperf` or `none`.
 
 ## Lever map
 
@@ -61,23 +86,30 @@ From `harness/adapters/aiperf/compare.py` (dual):
 | tok/s ratio (candidate/baseline) | ≥ 0.50 | `PROFILE_REGRESS` throughput (**not** surpass) |
 | TTFT p95 ratio | ≤ 1.25 | `PROFILE_REGRESS` latency |
 
-**Surpass ship** is wall ratio &gt; 1.0 on the agreed unprofiled cell metric.
+Normalize all three into `IterFact.walls[]` with tok/s **primary**. Escalate if
+**any** wall is `PROFILE_REGRESS`.
+
+**Surpass ship** is primary wall ratio &gt; 1.0 on the agreed unprofiled cell metric.
 
 ## Decision table
 
 | Wall vs vLLM | Profiler top_path | Action |
 |--------------|-------------------|--------|
-| ≥ 1.0 unprofiled | any | **Ship** (matrix + ITW tag + IO case) |
+| ≥ 1.0 unprofiled primary | any | **Ship** (matrix + ITW tag + IO case) |
 | Improved, still &lt; 1.0 | same as last turn | New lever from re-rank; do not retune same dial blindly |
 | Flat | `host_graph_command` | Host sync / COMMAND / sample D2H — not more F&P-only knobs |
-| `PROFILE_REGRESS` only | none yet | Run matched profiler before code changes |
+| `PROFILE_REGRESS` only | none yet | Run matched profiler before code changes (not on mars) |
 | Capture conflict on GPU | — | Non-destructive device / SKIP_STOP; never kill foreign jobs |
 
-## Integration sketch (IO)
+## Integration (IO harness)
 
-Near-term: `run-aiperf` / `run-aiperf-dual` / `compare-aiperf`; suite
-`facts/` + `review/`; FINDINGS under suite dirs.
+| Bin | Role |
+|-----|------|
+| `harness/bin/run-aiperf` / `run-aiperf-dual` / `compare-aiperf` | Wall observe |
+| `harness/bin/parse-promo-facts` | Validate / canonicalize envelope |
+| `harness/bin/rank-promotion` | Host-first + CU/score backlog |
+| `harness/bin/run-promotion-loop-step` | Observe→Parse one turn; exit before promote |
+| `harness/bin/emit-promo-facts` | Compact warehouse rows (`promo_facts` suite) |
 
-Follow-on (optional): `harness/bin/rank-promotion`, thin
-`run-promotion-loop-step` via `DLPTI_ROOT` / `MCTRACER_ROOT`, warehouse emit of
-backlog beside AIPerf summaries.
+Env: `SUITE_DIR`, `DEVICE_TRACK`, `DLPTI_ROOT`, `MCTRACER_ROOT`,
+`BENCH_WAREHOUSE_REPO`.
