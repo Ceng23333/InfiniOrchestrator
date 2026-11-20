@@ -17,9 +17,16 @@ This document is the **normative contract** for:
    `walls[]`, backlog, ship).
 3. Harness bins and compact warehouse emit identity columns.
 
-**Promote** (pick one lever, rebuild candidate) is **AI-led** and out of SOP
-scripts. Visualization (HTML review, Canvas, ops panel) is an explicit
-**non-goal** for this phase.
+**Promote** (pick one lever, rebuild candidate) is owned by **AutoHelix + Codex**
+(iteration / accept / reject / budget). InfiniOrchestrator remains the
+deterministic measure backend (`loop_step` → facts/backlog; env hooks
+`PROMO_LEVER_APPLIED`, `PROMO_EXHAUSTED`, `PROMO_AGENT_IDS`, `AUTOHELIX_RUN_ID`).
+Harness still never auto-applies levers. Surpass/ship stays human after the
+ITW `stop_surpass.py` helper. Grafana publish is **deferred**; use
+`autohelix watch` for the first campaigns. Visualization remains an allowed
+**consumer** of validated facts (see
+[continuous-profiling-viz.md](./continuous-profiling-viz.md)), but is **not**
+part of the Observe→Parse SOP itself.
 
 ```mermaid
 flowchart LR
@@ -61,8 +68,8 @@ rebuild; it does not replace wall ratio.
 2. If behind / any PROFILE_REGRESS → Observe matched profiler (same prompt/window)
 3. Parse → namespaced profile/<run_id>/compare.json + promotion_backlog.json
 4. Normalize/rank → emit promo-facts-1 under $SUITE_DIR/facts/
-5. STOP for AI Promote (SOP exits here)
-6. (AI) pick one top_path lever → ITW/env rebuild candidate → re-enter Observe
+5. Measure returns (`controller: autohelix`); AutoHelix accepts/rejects
+6. Codex (inside AutoHelix) applies one top_path lever → ITW rebuild → re-observe
 ```
 
 ```mermaid
@@ -106,8 +113,8 @@ HTML `review/` is **out of scope** here (future consumer of the same envelope).
 
 | `device_track` | Wall | Profiler in SOP | Notes |
 |----------------|------|-----------------|-------|
-| `denglin_qy` | harness / AIPerf | **DLPTI** (`DLPTI_ROOT`) | MiniCPM5 `*-qy-*-perf`, c610 |
-| `metax_qy` | prefer `run-aiperf-dual` | **mcTracer** (`MCTRACER_ROOT`) | `qwen38-27b-qy-*`, showroom |
+| `qy` | harness / AIPerf | **DLPTI** (`DLPTI_ROOT`) | MiniCPM5 `*-qy-*-perf`, c610 |
+| `metax` | prefer `run-aiperf-dual` | **mcTracer** (`MCTRACER_ROOT`) | `qwen38-27b-qy-*`, showroom |
 | `mars` | LongBench / harness / AIPerf | **none** (wall-only) until matched kit | Phytium / Hygon |
 | `other` | as configured | as configured | must still set `vendor_profiler` |
 
@@ -173,13 +180,13 @@ in layout 1.1.
 **`WallSource`:** `aiperf` | `harness` | `evalscope`  
 (producer only — **not** the metric name)
 
-**`VendorProfiler`:** `dlpti` | `mctracer` | `aiperf` | `none`
+**`VendorProfiler`:** `dlpti` | `mctracer` | `hctracer` | `aiperf` | `none`
 
-**`DeviceTrack`:** `denglin_qy` | `metax_qy` | `mars` | `other`
+**`DeviceTrack`:** `qy` | `metax` | `mars` | `other`
 
 **`HostSignalFamily`:** `driver` | `runtime` | `command` | `api` | `gap` | `graph`
 
-**`HostSignalMappedFrom`:** `dlpti` | `mctracer`
+**`HostSignalMappedFrom`:** `dlpti` | `mctracer` | `hctracer`
 
 **`ShipAction`:** `matrix` | `itw_tag` | `io_case` | `none`  
 (v1: one primary action string)
@@ -301,7 +308,7 @@ Unchanged from the converged skill spec:
     {
       "campaign_id": "qwen38-27b-qy-tp4-decode",
       "host": "metax-showroom",
-      "device_track": "metax_qy",
+      "device_track": "metax",
       "vendor_profiler": "mctracer",
       "hw_profile_id": "metax-qy-tp4",
       "hw_abbr": "qy",
@@ -410,7 +417,7 @@ Exit codes: `0` success (facts emitted), `1` observe/parse failure, `2` usage/co
 | Variable | Purpose |
 |----------|---------|
 | `SUITE_DIR` | Suite root |
-| `DEVICE_TRACK` | `denglin_qy` \| `metax_qy` \| `mars` \| `other` |
+| `DEVICE_TRACK` | `qy` \| `metax` \| `mars` \| `other` |
 | `DLPTI_ROOT` | Denglin QY profiler kit root |
 | `MCTRACER_ROOT` | MetaX mcTracer kit root |
 | `CASE_PATH` / case paths | Lift Standalone identity into CampaignFact |
@@ -481,11 +488,13 @@ Do **not** invent ratios at emit time — only copy validated facts.
 
 ## 6. Non-goals
 
-- HTML review / `review.md` freeze / template regeneration / leftover pies
-- Ops panel / Grafana / Cursor Canvas projections
+- Building Grafana / Pyroscope / HTML review **inside** Observe→Parse SOP scripts
+  (viz consumes facts; see [continuous-profiling-viz.md](./continuous-profiling-viz.md))
+- Freezing HTML review as the primary continuous-ops UI (Grafana folder is preferred)
 - Auto-promote / auto-rebuild in harness SOP
 - Replacing vendor DLPTI / mcTracer kits
 - Distribution (`n ≥ 2`) topology facts
+- Inventing ratios or shipping on profiled walls in any consumer (including Grafana)
 
 ---
 

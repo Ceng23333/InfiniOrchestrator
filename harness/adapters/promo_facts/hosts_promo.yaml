@@ -1,0 +1,55 @@
+# Promo continuous-profiling host inventory (facts-only fetch).
+# Paths are relative to InfiniOrchestrator root unless absolute / SSH remote.
+
+aggregator:
+  output_dir: bench_results/continuous_profiling_latest
+  local_seed:
+    baseline: bench_results/unified_promo_baseline_20261117
+    candidate: bench_results/unified_promo_candidate_20261117
+
+hosts:
+  - host: c610
+    device_track: qy
+    hw_profile_id: denglin-qy
+    model: MiniCPM5.16a3
+    ssh: c610
+    remote_roots:
+      baseline: /home/admin01/workspace_c610/nov_milestone/unified_promo_baseline_20261117
+      candidate: /home/admin01/workspace_c610/nov_milestone/unified_promo_candidate_20261117
+    local_suite_dirs:
+      baseline: bench_results/unified_promo_baseline_20261117/c610
+      candidate: bench_results/unified_promo_candidate_20261117/c610
+    # Lightweight parsed compares only (never raw profile/ traces)
+    profile_summary_local: bench_results/continuous_profiling_fixtures/c610_dlpti_compare.json
+    backlog_local: bench_results/continuous_profiling_fixtures/qy_backlog.json
+
+  - host: metax-showroom
+    device_track: metax
+    hw_profile_id: metax-qy-tp4
+    model: Qwen3.8-27B
+    ssh: metax-showroom
+    remote_roots:
+      baseline: /home/metax/qy/unified_promo_baseline_20261117
+      candidate: /home/metax/qy/unified_promo_candidate_20261117
+    local_suite_dirs:
+      baseline: bench_results/unified_promo_baseline_20261117/metax-showroom
+      candidate: bench_results/unified_promo_candidate_20261117/metax-showroom
+    # mcTracer host_signals summary; wall turns stay on profile_turns_local
+    profile_summary_local: bench_results/continuous_profiling_fixtures/metax_mctracer_host_signals.json
+    profile_turns_local: bench_results/continuous_profiling_fixtures/metax_peak_compare.json
+    backlog_local: bench_results/continuous_profiling_fixtures/metax_backlog.json
+
+  - host: metax-9
+    device_track: mars
+    hw_profile_id: mars-phytium
+    vendor_profiler: hctracer
+    model: Qwen3-32B
+    ssh: metax-9
+    remote_roots:
+      baseline: /root/zenghua/workspace/unified_promo_baseline_20261117
+      candidate: /root/zenghua/workspace/unified_promo_candidate_20261117
+    local_suite_dirs:
+      baseline: bench_results/unified_promo_baseline_20261117/metax-9
+      candidate: bench_results/unified_promo_candidate_20261117/metax-9
+    # hcTracer lightweight summary (overwritten after kick)
+    profile_summary_local: bench_results/continuous_profiling_fixtures/mars_hctracer_host_signals.json

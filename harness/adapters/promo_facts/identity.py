@@ -89,10 +89,10 @@ def campaign_identity_from_cases(
 
 def _infer_track(hw_profile_id: str) -> str:
 	hid = hw_profile_id.lower()
-	if "denglin" in hid or "qy-ks" in hid:
-		return "denglin_qy"
+	if "denglin" in hid or "qy-ks" in hid or hid.startswith("qy") or "-qy-" in hid:
+		return "qy"
 	if "metax" in hid:
-		return "metax_qy"
+		return "metax"
 	if "mars" in hid or "phytium" in hid or "hygon" in hid:
 		return "mars"
 	return os.environ.get("DEVICE_TRACK", "other")
@@ -100,7 +100,7 @@ def _infer_track(hw_profile_id: str) -> str:
 
 def _default_profiler(track: str) -> str:
 	return {
-		"denglin_qy": "dlpti",
-		"metax_qy": "mctracer",
+		"qy": "dlpti",
+		"metax": "mctracer",
 		"mars": "none",
 	}.get(track, "none")

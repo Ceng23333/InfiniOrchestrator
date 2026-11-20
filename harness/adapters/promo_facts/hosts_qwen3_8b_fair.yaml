@@ -1,0 +1,46 @@
+# Fair-bench inventory: Qwen3-8B TP4 EvalScope across c610 / metax-showroom / metax-9.
+# All hosts share model=Qwen3-8B so Grafana model filter is uniform.
+# Point local_suite_dirs at a concrete SUITE_ROOT after phase1, e.g.:
+#   bench_results/qwen3_8b_fair_<TS>/{c610,metax-showroom,metax-9}
+
+aggregator:
+  output_dir: bench_results/qwen3_8b_fair_latest
+  local_seed:
+    candidate: bench_results/qwen3_8b_fair_latest
+
+hosts:
+  - host: c610
+    device_track: qy
+    hw_profile_id: denglin-qy
+    model: Qwen3-8B
+    ssh: c610
+    vendor_profiler: dlpti
+    remote_roots:
+      candidate: /tmp/qwen3_8b_fair_suite_latest_c610
+    local_suite_dirs:
+      candidate: bench_results/qwen3_8b_fair_latest/c610
+    profile_summary_local: bench_results/qwen3_8b_fair_latest/c610/profile_host_signals.json
+
+  - host: metax-showroom
+    device_track: metax
+    hw_profile_id: metax-qy-tp4
+    model: Qwen3-8B
+    ssh: metax-showroom
+    vendor_profiler: mctracer
+    remote_roots:
+      candidate: /tmp/qwen3_8b_fair_suite_latest_metax-showroom
+    local_suite_dirs:
+      candidate: bench_results/qwen3_8b_fair_latest/metax-showroom
+    profile_summary_local: bench_results/qwen3_8b_fair_latest/metax-showroom/profile_host_signals.json
+
+  - host: metax-9
+    device_track: mars
+    hw_profile_id: mars-phytium
+    model: Qwen3-8B
+    ssh: metax-9
+    vendor_profiler: hctracer
+    remote_roots:
+      candidate: /tmp/qwen3_8b_fair_suite_latest_metax-9
+    local_suite_dirs:
+      candidate: bench_results/qwen3_8b_fair_latest/metax-9
+    profile_summary_local: bench_results/qwen3_8b_fair_latest/metax-9/profile_host_signals.json

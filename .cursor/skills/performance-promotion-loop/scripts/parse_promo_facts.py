@@ -23,10 +23,10 @@ SCHEMA_VERSION = "promo-facts-1"
 
 WALL_GATES = frozenset({"PASS", "PROFILE_REGRESS", "SURPASS", "NO_GO"})
 WALL_SOURCES = frozenset({"aiperf", "harness", "evalscope"})
-VENDOR_PROFILERS = frozenset({"dlpti", "mctracer", "aiperf", "none"})
-DEVICE_TRACKS = frozenset({"denglin_qy", "metax_qy", "mars", "other"})
+VENDOR_PROFILERS = frozenset({"dlpti", "mctracer", "hctracer", "aiperf", "none"})
+DEVICE_TRACKS = frozenset({"qy", "metax", "mars", "other"})
 HOST_FAMILIES = frozenset({"driver", "runtime", "command", "api", "gap", "graph"})
-HOST_MAPPED_FROM = frozenset({"dlpti", "mctracer"})
+HOST_MAPPED_FROM = frozenset({"dlpti", "mctracer", "hctracer"})
 SHIP_ACTIONS = frozenset({"matrix", "itw_tag", "io_case", "none"})
 
 JsonDict = Dict[str, Any]
@@ -337,16 +337,18 @@ def parse_iter(obj: Any, path: str) -> JsonDict:
 
 def _infer_device_track(vendor_profiler: str, host: str) -> str:
 	if vendor_profiler == "dlpti":
-		return "denglin_qy"
+		return "qy"
 	if vendor_profiler == "mctracer":
-		return "metax_qy"
+		return "metax"
+	if vendor_profiler == "hctracer":
+		return "mars"
 	host_l = host.lower()
 	if "mars" in host_l or "phytium" in host_l or "hygon" in host_l:
 		return "mars"
 	if "metax" in host_l or "showroom" in host_l:
-		return "metax_qy"
+		return "metax"
 	if "c610" in host_l or "denglin" in host_l:
-		return "denglin_qy"
+		return "qy"
 	return "other"
 
 

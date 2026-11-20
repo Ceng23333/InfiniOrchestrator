@@ -149,9 +149,13 @@ def walls_from_suite(suite_dir: Path) -> List[Dict[str, Any]]:
 		return []
 	# AIPerf dual shape (nested baseline/candidate objects or explicit ratios)
 	if _is_aiperf_compare(compare):
-		source = "aiperf"
-		if str(compare.get("baseline_backend") or "").lower() not in ("", "vllm"):
-			source = "harness"
+		explicit = str(compare.get("source") or "").lower()
+		if explicit in {"aiperf", "harness", "evalscope"}:
+			source = explicit
+		else:
+			source = "aiperf"
+			if str(compare.get("baseline_backend") or "").lower() not in ("", "vllm"):
+				source = "harness"
 		return walls_from_aiperf_compare(compare, source=source)
 	# Generic harness wall (scalar baseline/candidate + WALL_DECODE_RATIO)
 	ratio = compare.get("WALL_DECODE_RATIO") or compare.get("wall_ratio")

@@ -1,35 +1,37 @@
 ---
 name: performance-promotion-loop
 description: >-
-  Runs InfiniLM vs vLLM performance promotion loops. Use when observing/profiling
-  InfiniLM against a vLLM baseline (AIPerf, DLPTI, mcTracer), ranking promotion
-  paths, emitting suite promo-facts-1, or deciding whether to tag an ITW pin /
-  update an InfiniOrchestrator case after a surpass gate. Observe→Parse is a
-  deterministic SOP; Promote is AI-led.
+  Runs InfiniLM vs vLLM performance promotion loops under AutoHelix. Use when
+  observing/profiling InfiniLM against a vLLM baseline, ranking promotion paths,
+  emitting suite promo-facts-1, or applying one top_path lever inside an
+  AutoHelix iteration. Observe→Parse is deterministic (InfiniOrchestrator);
+  iteration/accept/reject is AutoHelix; Codex applies one lever; surpass/ship is human.
 ---
 
 # Performance promotion loop
 
 Closed loop for InfiniLM performance work integrated with InfiniOrchestrator
-(harness + playground cases) and InfiniTensorWorktree (code/pin).
+(harness + playground cases), InfiniTensorWorktree (code/pin), and **AutoHelix**.
 
 **Facts** (`promo-facts-1`) are the durable product of each Observe→Parse turn.
-**Promote** (one lever + rebuild) is **AI-led** and outside harness SOP scripts.
-HTML review / Canvas visualization is **out of current scope** (future consumer
-of the same envelope).
+**Iteration / accept / reject / budget** is owned by **AutoHelix**.
+**Codex** (this agent) applies **one** `top_path` lever per accepted iteration.
+**Surpass / ship** is **human** after `scripts/promo/stop_surpass.py`.
+Grafana publish is **deferred** — use `autohelix watch`.
 
-**Normative design:**
-[`docs/design/performance-promotion-e2e.md`](../../../docs/design/performance-promotion-e2e.md)
+**Normative design:** InfiniOrchestrator
+`docs/design/performance-promotion-e2e.md`; ITW `autohelix/promo-unified-metax9.yaml`.
 
 **Pattern (every turn):**
 
-1. **Observe** — tools only (client wall + matched profiler when behind)
-2. **Parse → facts** — host-aware compare → ranked backlog → envelope facts
-3. **Stop for AI** — SOP / harness exits; do not auto-apply levers
-4. **Promote / rebuild** — AI applies **one** top lever, rebuilds candidate, re-observes
+1. **Observe** — AutoHelix runs `scripts/promo/observe.py` → IO loop_step
+2. **Parse → facts** — compare → ranked backlog → envelope facts
+3. **AutoHelix gate** — constraints + metric gates decide accept/reject
+4. **Promote / rebuild** — Codex applies **one** top lever under `deployment/infinilm-prod/` only
 
-Do not skip observe. Do not ship matrix/ITW/IO case until the **surpass gate**
-passes on an **unprofiled primary** wall metric.
+Do not skip observe. Do not invent `WALL_DECODE_RATIO`. Do not edit
+`scripts/promo/` or `autohelix/`. Do not ship matrix/ITW/IO case until human
+confirms surpass.
 
 ## When to use
 
@@ -42,9 +44,11 @@ passes on an **unprofiled primary** wall metric.
 
 | Role | Owns | Does not |
 |------|------|----------|
-| **InfiniOrchestrator** | Client observe, gates, cases, suite facts, harness SOP | InfiniLM kernel source; auto-promote |
+| **InfiniOrchestrator** | Client observe, gates, cases, suite facts, harness measure | InfiniLM kernel source; auto-promote; iteration budget |
+| **AutoHelix** | Iteration / accept / reject / budget / watch UI | Applying levers; inventing ratios |
+| **Codex (agent)** | One `top_path` lever under `deployment/infinilm-prod/` | Editing `scripts/promo/` / `autohelix/`; ship |
 | **InfiniTensorWorktree** | Lever code/env, rebuild image/worktree, ITW release tag | AIPerf dual recipe |
-| **Host profiler kit** | Matched capture + summarize/compare/promote (DLPTI on Denglin QY; mcTracer on MetaX QY/showroom) | Shipping IO cases alone |
+| **Host profiler kit** | Matched capture + summarize/compare (DLPTI / mcTracer / hcTracer) | Shipping IO cases alone |
 
 Client wall is the **KPI**. Profiler compare ranks **where** to spend the next
 rebuild — it does not replace wall ratio.
@@ -78,28 +82,30 @@ Turn N (SOP):
 - [ ] Observe wall (vLLM baseline frozen first, then InfiniLM candidate)
 - [ ] Write $SUITE_DIR/compare.json; record multi-metric walls (tok/s + TTFT + success_rate when AIPerf)
 - [ ] If behind / any PROFILE_REGRESS → Observe matched profiler (same prompt/window)
-      · denglin_qy → DLPTI_ROOT
-      · metax_qy → MCTRACER_ROOT
+      · qy → DLPTI_ROOT
+      · metax → MCTRACER_ROOT
       · mars → wall-only (skip profiler until kit exists)
 - [ ] Parse → namespaced profile/<run_id>/compare.json + promotion_backlog
 - [ ] Emit/update $SUITE_DIR/facts/ (promo-facts-1; never invent WALL_DECODE_RATIO)
-- [ ] STOP — print backlog; leave Promote to AI
+- [ ] Return to AutoHelix (`controller: autohelix`); Codex applies one lever if accepted
 ```
 
 Harness bins: `parse-promo-facts`, `rank-promotion`, `run-promotion-loop-step`
-(exits before promote), `emit-promo-facts`.
+(measure backend), `emit-promo-facts`. ITW: `scripts/promo/observe.py`,
+`gate_correctness.py`, `stop_surpass.py`.
 
-## Promote / rebuild (AI-led; not SOP)
+## Promote / rebuild (Codex inside AutoHelix)
 
-1. Apply **only** `top_path` (or explicit user override). One lever per turn.
-2. Change lives in ITW (env/policy/code) or case env — not AIPerf profiles.
-3. Rebuild/restart **candidate**; keep vLLM frozen.
-4. Re-observe unprofiled wall; update facts.
-5. Re-rank if still behind (do not assume prior `top_path`).
+1. Read backlog (`artifacts/promo/suite/promotion_backlog.json` or profile run dir).
+2. Apply **only** `top_path` (or explicit user override). One lever per turn.
+3. Editable scope: **`deployment/infinilm-prod/` only** — not AIPerf profiles,
+   not `scripts/promo/`, not `autohelix/`.
+4. Rebuild/restart **candidate**; keep vLLM frozen.
+5. Exit cleanly so AutoHelix re-observes; do not assume prior `top_path`.
 
-**Surpass / ship:** unprofiled **primary** KPI **exceeds** frozen vLLM
-(ratio &gt; 1.0). Then matrix + ITW tag + IO case. If improved but not surpass →
-`FINDINGS_surpass_nogo.md`; do not retag.
+**Surpass / ship:** human runs `python scripts/promo/stop_surpass.py` (exit 0
+when primary wall ratio &gt; 1.0), then matrix + ITW tag + IO case. Agent does
+**not** ship.
 
 ## Observe (condensed)
 
@@ -114,8 +120,8 @@ equally valid — record `WALL_DECODE_RATIO = infinilm / vllm` per metric.
 
 | `device_track` | Tool | Host signals |
 |----------------|------|--------------|
-| `denglin_qy` | DLPTI | DRIVER/RUNTIME/COMMAND + CU gap + buckets |
-| `metax_qy` | mcTracer | api_*/inter_kernel_gap + post-load GPU |
+| `qy` | DLPTI | DRIVER/RUNTIME/COMMAND + CU gap + buckets |
+| `metax` | mcTracer | api_*/inter_kernel_gap + post-load GPU |
 | `mars` | none until kit | wall-only |
 
 Never rank from a single-backend trace. Never mix prompt shapes in one compare.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One Observe→Parse promotion turn. Exits before AI Promote.
+# One Observe→Parse promotion turn. Measure backend for AutoHelix.
 set -euo pipefail
 
 _HARNESS_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
