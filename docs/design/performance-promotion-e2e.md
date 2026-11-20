@@ -26,7 +26,10 @@ ITW `stop_surpass.py` helper. Grafana publish is **deferred**; use
 `autohelix watch` for the first campaigns. Visualization remains an allowed
 **consumer** of validated facts (see
 [continuous-profiling-viz.md](./continuous-profiling-viz.md)), but is **not**
-part of the Observe→Parse SOP itself.
+part of the Observe→Parse SOP itself. Tooling feature requirements for
+continuous profiling on the LLM inference stack (Nsight vs hcTracer, CUPTI vs
+HCPTI, scheduler-effort gaps) are surveyed in
+[continuous-profiling-llm-tooling-survey.md](./continuous-profiling-llm-tooling-survey.md).
 
 ```mermaid
 flowchart LR
@@ -180,7 +183,11 @@ in layout 1.1.
 **`WallSource`:** `aiperf` | `harness` | `evalscope`  
 (producer only — **not** the metric name)
 
-**`VendorProfiler`:** `dlpti` | `mctracer` | `hctracer` | `aiperf` | `none`
+**`VendorProfiler`:** `dlpti` | `mctracer` | `hctracer` | `aiperf` | `none`  
+(Mars continuous/attach path: `hctracer`. See
+[continuous-profiling-llm-tooling-survey.md](./continuous-profiling-llm-tooling-survey.md)
+for Nsight/hcTracer and CUPTI/HCPTI requirements; host families below are
+**not** LLM scheduler-effort.)
 
 **`DeviceTrack`:** `qy` | `metax` | `mars` | `other`
 
