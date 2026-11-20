@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Wrapper → InfiniOrchestrator/scripts/run_unified_promo_recipe.sh
+set -euo pipefail
+
+_HARNESS_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_HARNESS_BIN_DIR}/../lib/paths.sh"
+
+exec bash "${IO_ROOT}/scripts/run_unified_promo_recipe.sh" "$@"

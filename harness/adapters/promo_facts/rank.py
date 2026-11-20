@@ -46,7 +46,15 @@ def _num(v: Any) -> Optional[float]:
 def _host_signal_map(compare: Dict[str, Any]) -> Dict[str, float]:
 	"""Extract family → ratio from profiler compare shapes (DLPTI / mcTracer)."""
 	out: Dict[str, float] = {}
-	host = compare.get("host") or compare.get("host_signals") or {}
+	# Prefer host_signals when present. Some dual payloads set host=hostname str,
+	# which must not shadow the real signal list/map (rank would see empty host).
+	host = compare.get("host_signals")
+	if host is None:
+		host = compare.get("host")
+	if isinstance(host, str):
+		host = compare.get("host_signals") or {}
+	if host is None:
+		host = {}
 	if isinstance(host, list):
 		for item in host:
 			if not isinstance(item, dict):
