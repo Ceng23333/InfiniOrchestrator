@@ -26,7 +26,7 @@ Normative pipe + harness/warehouse:
 |----------------|------|----------|-----|
 | `denglin_qy` | harness / AIPerf | DLPTI | `DLPTI_ROOT` |
 | `metax_qy` | `run-aiperf-dual` | mcTracer | `MCTRACER_ROOT` |
-| `mars` | LongBench / harness / AIPerf | **none** until kit | — |
+| `mars` | LongBench / harness / AIPerf | hcTracer + [InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler) | — |
 | `other` | as configured | as configured | — |
 
 ## Host tooling
@@ -47,8 +47,12 @@ Normative pipe + harness/warehouse:
 
 ### Mars (`mars`)
 
-Wall A/B only until a matched profiler kit exists. Emit `walls[]` + empty backlog
-when no profiler ran; `vendor_profiler` = `aiperf` or `none`.
+Wall A/B is the default. For matched diagnostics, capture with hcTracer and
+normalize with [InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler).
+Keep `vendor_profiler` = `hctracer` when that evidence enters promo facts; emit
+`walls[]` plus an empty backlog when no profiler ran and use `aiperf` or
+`none`. InfiniProfiler output ranks a lever but does not replace the unprofiled
+surpass gate.
 
 ## Lever map
 

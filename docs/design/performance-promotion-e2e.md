@@ -184,7 +184,8 @@ in layout 1.1.
 (producer only — **not** the metric name)
 
 **`VendorProfiler`:** `dlpti` | `mctracer` | `hctracer` | `aiperf` | `none`  
-(Mars continuous/attach path: `hctracer`. See
+(Mars continuous/attach path: `hctracer`, normalized by
+[InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler). See
 [continuous-profiling-llm-tooling-survey.md](./continuous-profiling-llm-tooling-survey.md)
 for Nsight/hcTracer and CUPTI/HCPTI requirements; host families below are
 **not** LLM scheduler-effort.)

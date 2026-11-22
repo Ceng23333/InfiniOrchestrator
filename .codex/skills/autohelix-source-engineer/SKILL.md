@@ -23,7 +23,8 @@ Read, in order:
 2. `artifacts/worktree_version.json`;
 3. `.campaign/history.jsonl`;
 4. the current `promotion_backlog.json`;
-5. matched InfiniProfiler artifacts.
+5. matched artifacts from
+   [InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler).
 
 Known failed approach: enabling a Qwen3-8B TP4 P64 Mars MHA graph-capture
 allowlist alone passed startup but crashed the first real generation. The
@@ -40,6 +41,9 @@ csrc/infinicore/src/graph/graph.cc
 csrc/infinicore/src/ops/random_sample/random_sample_metax.cc
 python/infinilm/
 ```
+
+InfiniProfiler artifacts are diagnostic evidence for choosing one lever; they
+do not prove acceptance or promotion.
 
 ## One-lever contract
 

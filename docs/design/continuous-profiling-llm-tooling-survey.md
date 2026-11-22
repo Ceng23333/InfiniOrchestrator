@@ -2,6 +2,8 @@
 
 Date: 2026-11-20  
 Related: [performance-promotion-e2e.md](./performance-promotion-e2e.md),
+[InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler) for hcTracer
+normalization and promotion-request tooling,
 promo kits under `harness/adapters/promo_facts/kits/` (`hctracer`, `dlpti`,
 `chrome_trace_*.py`)
 
@@ -60,6 +62,11 @@ Map for InfiniOrchestrator:
   signal class**, not harder parsing of host `gap`/`command`.
 - **Human debug** benefits from nsys-parity CPU stacks when available; Mars
   today relies on hcTracer + EvalScope + source reading.
+
+The Mars implementation path is hcTracer capture followed by
+[InfiniProfiler](https://github.com/Ceng23333/InfiniProfiler) normalization
+into host families and diagnostic promotion requests. It is evidence tooling:
+the unprofiled wall remains the promotion gate.
 
 ## 3. Deep dive A — Nsight Systems / Compute vs hcTracer
 
