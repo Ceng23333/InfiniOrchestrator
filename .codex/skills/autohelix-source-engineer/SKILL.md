@@ -1,29 +1,29 @@
 ---
 name: autohelix-source-engineer
 description: >-
-  Apply, rebuild, launch, and measure one safe InfiniLM source lever inside an
-  AutoHelix iteration worktree. Use when AutoHelix assigns a source-edit
-  iteration for Mars/Qwen3 serving, when investigating graph replay or sampler
-  failures, or when turning InfiniProfiler evidence into a candidate patch.
-  Do not use this skill to operate the campaign, edit InfiniOrchestrator, or
-  promote from profiled evidence.
+  Apply one safe InfiniLM source lever inside a source-edit campaign worktree.
+  Use when the spec runner assigns a Mars/Qwen3 iteration, when investigating
+  graph replay or sampler failures, or when turning InfiniProfiler evidence
+  into a candidate patch. Do not use this skill to operate the campaign, run
+  its constraints, edit InfiniOrchestrator, or promote from profiled evidence.
 ---
 
-# AutoHelix source engineer
+# Source-edit engineer
 
-Work only in the current InfiniLM AutoHelix worktree. The full source tree is
-the editability boundary. AutoHelix owns acceptance; this skill owns one
-candidate source mechanism and its build/restart proof.
+Work only in the current versioned InfiniLM campaign worktree. The editable
+scope in `autohelix/source-edit.yaml` is the source boundary. The spec runner
+owns acceptance, provenance, constraints, and budget; this skill owns one
+candidate source mechanism and leaves the build/restart proof to the runner.
 
 ## Context before editing
 
 Read, in order:
 
-1. the rendered AutoHelix prompt;
-2. `.autohelix/hints.md`;
-3. `.autohelix/notes/iter-*.md`;
-4. `.autohelix/observations/iter-*/`;
-5. the current `promotion_backlog.json` and matched InfiniProfiler artifacts.
+1. the rendered prompt;
+2. `artifacts/worktree_version.json`;
+3. `.campaign/history.jsonl`;
+4. the current `promotion_backlog.json`;
+5. matched InfiniProfiler artifacts.
 
 Known failed approach: enabling a Qwen3-8B TP4 P64 Mars MHA graph-capture
 allowlist alone passed startup but crashed the first real generation. The
@@ -57,58 +57,26 @@ an acceptable source lever. Do not edit:
 ```text
 scripts/promo/
 autohelix/
-.autohelix/
+.campaign/
 deployment/infinilm-prod/
 ```
+
+Do not edit `artifacts/worktree_version.json`. The runner writes it at worktree
+creation, after the source edit, after each constraint, and before acceptance
+or rejection. A failed source candidate is committed to
+`campaign/rejected/<run>-iter-<n>`, so its version remains traceable even when
+the build or measurement fails.
 
 If the evidence is insufficient to choose one safe source mechanism, stop,
 write notes, and leave the tree unchanged.
 
-## Build and prove artifacts
+## Runner-owned proof
 
-Run:
-
-```bash
-bash scripts/promo/build_candidate.sh
-bash scripts/promo/verify_source_rebuild.sh
-```
-
-These commands require a source diff, rebuild `infinicore_runtime`,
-`_infinicore`, and `_infinilm`, and verify artifact hashes. If build caching
-hides the edited source, stop and report the reproducibility problem rather
-than relabeling a stale binary.
-
-## Launch and functionally smoke
-
-Run:
-
-```bash
-bash scripts/promo/launch_candidate.sh
-```
-
-Health alone is insufficient. Before wall measurement, make one bounded chat
-completion and require HTTP 200, non-empty content, no RankWorker exception,
-and continued `/health` success. If generation hangs or the RankWorker stops,
-record the server context, stop, and reject the mechanism.
-
-## Measure and record
-
-Run:
-
-```bash
-python scripts/promo/observe_source.py
-```
-
-Then write:
-
-```text
-.autohelix/notes/iter-N.md
-.autohelix/commit_summary.txt
-```
-
-The note must state the mechanism, source files, expected signal, actual
-measurement, correctness result, and whether the mechanism moved. Do not claim
-promotion from profiler evidence.
+After the agent stops, the spec runner records provenance, rebuilds and
+verifies `infinicore_runtime`, `_infinicore`, and `_infinilm`, launches the
+candidate, performs a real-generation smoke, observes an unprofiled wall, and
+writes final provenance. Do not relabel a stale binary or claim acceptance from
+agent output.
 
 ## Boundaries
 
@@ -117,8 +85,9 @@ Do not:
 - operate or relaunch the campaign;
 - edit InfiniOrchestrator;
 - change multiple unrelated levers;
-- overwrite the frozen vLLM baseline;
+- overwrite the frozen vLLM comparison baseline;
 - edit metrics, constraints, scope, or AutoHelix configuration;
+- edit `artifacts/worktree_version.json` or accepted/rejected branches;
 - ship after surpass without explicit human approval.
 
 The Cursor counterpart is
