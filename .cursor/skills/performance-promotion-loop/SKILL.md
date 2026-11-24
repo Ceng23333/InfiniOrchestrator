@@ -1,25 +1,27 @@
 ---
-name: source-edit-campaign-integration-index
+name: performance-promotion-loop
 description: >-
-  Index for the split source-edit promotion skills. Prefer autohelix-campaign-operator
-  for Cursor-driven observation and spec-runner control, or autohelix-source-engineer
-  for Codex-driven InfiniLM source patches. This file no longer describes a
-  single deployment-only lever loop or AutoHelix controller.
+  Index for InfiniLM vs vLLM promotion skills. Prefer autohelix-campaign-operator
+  for Cursor soft-harness loops driven by AutoHelix 0.1.1 yaml (no autohelix run
+  / Codex). Supporting facts/reference/scripts remain under this folder.
 ---
 
-# Source-edit campaign integration index
+# Performance promotion loop (index)
 
-The old performance-promotion-loop skill mixed campaign operation with
-candidate source editing. The source-edit campaign integration is now split by
-role:
+The closed loop is no longer “AutoHelix harness + Codex agent” for Cursor
+campaigns. Prefer the yaml soft-harness:
 
 - [Cursor: autohelix-campaign-operator](../autohelix-campaign-operator/SKILL.md)
-  owns observation, profiling evidence, spec-runner launch/resume, monitoring,
-  versioned-worktree provenance, and reporting.
-- [Codex: autohelix-source-engineer](../../../.codex/skills/autohelix-source-engineer/SKILL.md)
-  owns one InfiniLM source mechanism inside the editable scope.
+  — load AutoHelix 0.1.1 yaml; Cursor runs observe → one `top_path` lever →
+  metric gates → next iter. Do not invoke `autohelix run` or Codex.
 
-Both roles preserve the ownership boundary: InfiniOrchestrator produces
-deterministic evidence, the spec runner decides iteration acceptance, and
-humans decide ship. Do not invoke `autohelix run`, edit InfiniLM source from
-the operator role, or apply candidate levers from the operator role.
+Evidence helpers (not the controller):
+
+- [facts.md](facts.md) — `promo-facts-1` envelope
+- [reference.md](reference.md) — device-track / lever map
+- [scripts/parse_promo_facts.py](scripts/parse_promo_facts.py)
+- [review.md](review.md) — offline HTML review
+
+Normative design remains
+[`docs/design/performance-promotion-e2e.md`](../../../docs/design/performance-promotion-e2e.md).
+Surpass / ship stays human after unprofiled primary wall ratio > 1.0.
