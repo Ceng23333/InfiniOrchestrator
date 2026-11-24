@@ -106,6 +106,39 @@ Confirm before looping:
 - `promote.may_apply=false` / `stop_before_promote` → improve under editable
   scope only; **do not ship/land**.
 
+## Source edit vs deploy knobs (hard)
+
+When `InfiniLM/` is in `scope.editable` **and** any of the following is true,
+the iter lever **must** be an InfiniLM **source code** change (Python and/or
+`csrc/`), not a deployment env/default knob flip:
+
+- `top_path` starts with `graph.` (e.g. `graph.replay_exclusive`)
+- Ranker `lever` / `lever_hint` mentions source scope / inspect source /
+  mechanism in InfiniLM
+- Suite notes say deployment-only / `host_graph_command` knobs are exhausted
+
+**Knob-only is invalid** for those iters: do **not** count as a completed
+lever changing only `deployment/infinilm-prod/start.sh` (or Dockerfile /
+manifest) defaults such as `INFINI_CUDAGRAPH_POLICY`,
+`INFINI_GRAPH_SKIP_TAIL_SYNC`, `INFINI_FA_INGRAPH`,
+`INFINI_MAX_NUM_BATCHED_TOKENS`, `ENABLE_GRAPH`, scheduler flags, etc.
+
+Deploy files may still be touched **only** as rebuild/restart glue after a
+real InfiniLM diff (e.g. to pick up a rebuilt `.so`), never as the sole
+mechanism.
+
+Ledger must record:
+
+- `lever_kind: source` | `deploy_knob` (reject/record `invalid_knob_only` if
+  a source-required path was answered with knobs only)
+- Paths under `InfiniLM/` that changed (git diff --stat)
+- Whether rebuild loaded the new bits into the candidate
+
+C550 note: `/pin` may be RO and image code lives under `/workspace/InfiniLM`.
+A source iter must still edit ITW `InfiniLM/` (or the mounted editable tree),
+rebuild/stage into the running candidate, and prove via constraints that the
+new code is what serves — not merely flip env and restart the old binary.
+
 ## Soft-loop algorithm
 
 For `iter = 1 .. budget.iterations`:
@@ -118,11 +151,15 @@ For `iter = 1 .. budget.iterations`:
 3. **Rank input** — Read suite `profile/autohelix_request.json` /
    `facts/backlog.json`. Apply **exactly one** `top_path` lever. Do not invent
    wall ratios or invent graph levers from `insufficient_evidence`.
-4. **Edit** — Change only files under `scope.editable`. Leave measure scripts,
-   `autohelix/` protocol body (except intentional constraint-list hardening),
-   `scripts/promo/`, and the frozen vLLM baseline untouched as levers.
-5. **Rebuild/restart** — Candidate only when the lever requires it; never
-   restart or overwrite the frozen vLLM baseline.
+4. **Edit** — Change only files under `scope.editable`. For source-required
+   paths (above), produce a real `InfiniLM/` diff for that one mechanism.
+   Leave measure scripts, `autohelix/` protocol body (except intentional
+   constraint-list hardening), `scripts/promo/`, and the frozen vLLM baseline
+   untouched as levers.
+5. **Rebuild/restart** — Rebuild candidate artifacts when the InfiniLM diff
+   needs them; restart candidate only; never overwrite the frozen vLLM
+   baseline. Env-only restart without a source/artifact change is not enough
+   for source-required paths.
 6. **Hard constraints** — Run every `constraints` entry (or the harder C550
    default set above if the yaml is observe-only). On failure → revert +
    `constraint_failed` + next iter (no metric accept).
@@ -133,15 +170,16 @@ For `iter = 1 .. budget.iterations`:
    if the metric regresses beyond `max_regression_pct` relative to the
    pre-lever observation (respect `higher`/`lower`). On pass, keep the diff.
 9. **Ledger** — `$SUITE_DIR/soft_harness/iter-N.md` must include lever,
-   constraint results, before/after metrics, and `accept` |
-   `constraint_failed` | `metrics_reject`. Refresh `$SUITE_DIR/STATUS.md`.
+   `lever_kind`, InfiniLM paths touched, constraint results, before/after
+   metrics, and `accept` | `constraint_failed` | `metrics_reject` |
+   `invalid_knob_only`. Refresh `$SUITE_DIR/STATUS.md`.
 
 ```text
 Load_AH_yaml → Observe → Parse_##autohelix
   → primary>1.0? stop (human ship)
   → iters left? else stop
-  → one top_path lever under editable
-  → rebuild/restart candidate
+  → one top_path lever (InfiniLM source when required)
+  → rebuild/restart candidate with new bits
   → HARD constraints (all must pass) else revert
   → re-observe → metric_gates → accept|revert → next
 ```
@@ -169,8 +207,13 @@ pkill -f 'autohelix run' || true
 
 ## Forbidden
 
+- Answering `graph.*` / source-scoped `top_path` with **only** deploy knob
+  switches (`INFINI_*` / `ENABLE_GRAPH` defaults in `start.sh`, Dockerfile,
+  manifests) while `InfiniLM/` is editable
 - Skipping or soft-failing `constraints` to reach metric gates faster
 - Treating `constraints` as interchangeable with `metrics.command`
+- Claiming constraint-pass after env restart without loading rebuilt InfiniLM
+  artifacts for a source lever
 - `autohelix run`, `autohelix watch` as the loop owner, `codex exec`
 - Inventing `WALL_DECODE_RATIO` / primary wall numbers
 - Multi-lever edits before re-observe
@@ -184,6 +227,7 @@ pkill -f 'autohelix run' || true
 ## Success for one apply turn
 
 - Soft loop engaged the suite `top_path` (not stuck on `insufficient_evidence`)
+- Source-required paths produced a real `InfiniLM/` diff (`lever_kind: source`)
 - Post-edit **hard constraints** all passed (or iter recorded `constraint_failed`
   with revert)
 - Metrics came from the yaml `metrics.command` only after constraint-pass

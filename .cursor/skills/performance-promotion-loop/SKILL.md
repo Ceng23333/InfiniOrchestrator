@@ -12,8 +12,9 @@ The closed loop is no longer “AutoHelix harness + Codex agent” for Cursor
 campaigns. Prefer the yaml soft-harness:
 
 - [Cursor: autohelix-campaign-operator](../autohelix-campaign-operator/SKILL.md)
-  — load AutoHelix 0.1.1 yaml; Cursor runs observe → one `top_path` lever →
-  metric gates → next iter. Do not invoke `autohelix run` or Codex.
+  — load AutoHelix 0.1.1 yaml; Cursor runs observe → one `top_path` lever
+  (**InfiniLM source** when `graph.*` / source-scoped; not deploy knobs only) →
+  hard constraints → metric gates. Do not invoke `autohelix run` or Codex.
 
 Evidence helpers (not the controller):
 
