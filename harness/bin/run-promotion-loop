@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Unix entry shim for the promotion loop controller.
+# usage: run-promotion-loop.sh run -c <campaign.yaml> [-n N] [--dry-run]
+set -euo pipefail
+PACKAGE="${PROMO_LOOP_PKG:?set PROMO_LOOP_PKG to the promo_loop package dir}"
+CMD="${1:-run}"; shift || true
+exec python "$PACKAGE/promo_loop" "$CMD" "$@"
