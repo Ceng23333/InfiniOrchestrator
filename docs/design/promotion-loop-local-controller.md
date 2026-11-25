@@ -276,7 +276,7 @@ constraints: [...]
 observables: [...]
 acceptance: {metric_gates: [{metric: primary_wall_ratio, max_regression_pct: 2}]}
 stop: {surpass_metric: primary_wall_ratio, surpass_threshold: 1.0}
-dashboard: {publish_dir: D:/promodash/c550/metax-49, serve_port: 8619}
+dashboard: {publish_dir: D:/promodash/c550, serve_port: 8619}   # root; controller serves <root>/<host>/dashboard.html
 agent: {type: codex, model: glm-5.3, timeout_seconds: 2700}
 budget: {iterations: 5}
 ```

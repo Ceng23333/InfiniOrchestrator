@@ -125,8 +125,9 @@ class Controller:
     def _save_output(self, tag: str, label: str, out: str) -> None:
         obs_dir = self.auto / "observations"
         obs_dir.mkdir(parents=True, exist_ok=True)
-        safe = label.replace(":", "-").replace("/", "-")
-        (obs_dir / f"{tag}-{safe}.log").write_text(out or "", encoding="utf-8")
+        # Windows: ':' would create an NTFS alternate data stream, not a file.
+        safe = re.sub(r'[<>:"/\\|?*]', "-", f"{tag}-{label}")
+        (obs_dir / f"{safe}.log").write_text(out or "", encoding="utf-8")
 
     def run_commands(self, commands: list[dict], local_cwd: Path | None, tag: str) -> str | None:
         for c in commands:
@@ -199,7 +200,6 @@ class Controller:
             return ""
         self._git("commit", "-m", f"promo-loop iter {i}: {summary[:150]}", cwd=wt)
         self._git("merge", f"autohelix-iter-{i}", "--no-edit", "--ff-only")
-        self._git("branch", "-D", f"autohelix-iter-{i}")
         return self._git("rev-parse", "--short", "HEAD").stdout.strip()
 
     def save_notes(self, wt: Path) -> None:
@@ -277,9 +277,10 @@ class Controller:
         return "\n".join(lines)
 
     def _emit_metrics_entry(self, metrics: dict[str, float], commit, reason: str, stop: bool = False) -> dict:
+        accepted = reason.startswith("accepted") or reason == "baseline"
         entry = {
             "iteration": self._iter,
-            "accepted": reason.startswith("accepted"),
+            "accepted": accepted,
             "metrics": metrics,
             "commit": commit or None,
             "reason": reason,
@@ -341,6 +342,7 @@ class Controller:
             if wt.exists():
                 self._git("worktree", "remove", "--force", str(wt), check=False)
                 self._git("worktree", "prune")
+                self._git("branch", "-D", f"autohelix-iter-{i}", check=False)
             return entry
         except Exception as exc:
             return self.run_observable_reject(wt, f"error: {type(exc).__name__}: {str(exc)[:220]}")
